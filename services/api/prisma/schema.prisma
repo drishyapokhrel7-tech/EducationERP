@@ -1,0 +1,223 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Organization / tenancy hierarchy (plan §6 "Organization") ──────────────
+// Only the top two tiers are modeled in Phase 1 (org, campus); the rest
+// of the hierarchy (faculty → department → program → academic_year →
+// semester/term → section) lands in Phase 2 with the Student/Academic core.
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  campuses  Campus[]
+  users     User[]
+  roles     Role[]
+  auditLogs AuditLog[]
+  loginEvents LoginEvent[]
+  accessPolicies AccessPolicy[]
+
+  @@map("organizations")
+}
+
+model Campus {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  code           String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  userRoles    UserRole[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+  @@map("campuses")
+}
+
+// ── Security (plan §6 "Security" + §7 RBAC) ─────────────────────────────────
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  INVITED
+  DEACTIVATED
+}
+
+model User {
+  id             String     @id @default(uuid())
+  organizationId String
+  email          String     @unique
+  passwordHash   String
+  firstName      String
+  lastName       String
+  status         UserStatus @default(INVITED)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  userRoles    UserRole[]
+  sessions     Session[]
+  loginEvents  LoginEvent[]
+  auditLogs    AuditLog[]
+
+  @@index([organizationId])
+  @@map("users")
+}
+
+// System-defined role catalogue from plan §7. organizationId is null for
+// the seeded system templates; an organization may in future clone one
+// into an org-scoped custom role (out of scope for Phase 1).
+model Role {
+  id             String   @id @default(uuid())
+  organizationId String?
+  name           String
+  description    String?
+  isSystem       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization    Organization?    @relation(fields: [organizationId], references: [id])
+  rolePermissions RolePermission[]
+  userRoles       UserRole[]
+
+  // NB: Postgres treats NULL as distinct within a unique index, so this
+  // constraint does not dedupe system roles (organizationId = null) —
+  // only org-scoped custom roles. Seed script (prisma/seed.ts) handles
+  // system-role idempotency with an explicit existence check instead.
+  @@unique([organizationId, name])
+  @@map("roles")
+}
+
+enum PermissionAction {
+  VIEW
+  CREATE
+  UPDATE
+  DELETE
+  APPROVE
+  EXPORT
+  PRINT
+  MANAGE
+  ADMINISTER
+}
+
+model Permission {
+  id          String            @id @default(uuid())
+  resource    String
+  action      PermissionAction
+  description String?
+
+  rolePermissions RolePermission[]
+
+  @@unique([resource, action])
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           String @id @default(uuid())
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id])
+  permission Permission @relation(fields: [permissionId], references: [id])
+
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// A user's role assignment, optionally scoped to one campus. No campus
+// scope = organization-wide (e.g. Org Admin).
+model UserRole {
+  id        String   @id @default(uuid())
+  userId    String
+  roleId    String
+  campusId  String?
+  createdAt DateTime @default(now())
+
+  user   User    @relation(fields: [userId], references: [id])
+  role   Role    @relation(fields: [roleId], references: [id])
+  campus Campus? @relation(fields: [campusId], references: [id])
+
+  @@unique([userId, roleId, campusId])
+  @@index([userId])
+  @@map("user_roles")
+}
+
+model Session {
+  id               String    @id @default(uuid())
+  userId           String
+  refreshTokenHash String
+  userAgent        String?
+  ipAddress        String?
+  createdAt        DateTime  @default(now())
+  expiresAt        DateTime
+  revokedAt        DateTime?
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model LoginEvent {
+  id             String   @id @default(uuid())
+  organizationId String?
+  userId         String?
+  email          String
+  success        Boolean
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime @default(now())
+
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  user         User?         @relation(fields: [userId], references: [id])
+
+  @@index([organizationId])
+  @@map("login_events")
+}
+
+model AuditLog {
+  id             String   @id @default(uuid())
+  organizationId String
+  userId         String?
+  action         String
+  resource       String
+  resourceId     String?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  user         User?        @relation(fields: [userId], references: [id])
+
+  @@index([organizationId])
+  @@index([resource, resourceId])
+  @@map("audit_logs")
+}
+
+model AccessPolicy {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  description    String?
+  rules          Json
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@unique([organizationId, name])
+  @@map("access_policies")
+}
