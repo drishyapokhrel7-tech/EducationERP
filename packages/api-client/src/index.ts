@@ -2,11 +2,14 @@ export * from "./types";
 
 import type {
   AcademicYear,
+  AdmissionApplication,
+  AdmissionStatusHistoryEntry,
   AttachCurriculumSubjectInput,
   AttachGuardianInput,
   AuthTokens,
   Campus,
   CreateAcademicYearInput,
+  CreateAdmissionApplicationInput,
   CreateCampusInput,
   CreateCurriculumInput,
   CreateDepartmentInput,
@@ -29,6 +32,7 @@ import type {
   Designation,
   Employee,
   EmploymentHistory,
+  EnrollApplicationInput,
   Faculty,
   Guardian,
   LoginInput,
@@ -46,6 +50,7 @@ import type {
   Subject,
   TeacherProfile,
   Term,
+  UpdateAdmissionStatusInput,
   UpdateStudentStatusInput,
   UpsertTeacherProfileInput,
 } from "./types";
@@ -250,6 +255,28 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
     updateStudentStatus: (studentId: string, input: UpdateStudentStatusInput) =>
       request<StudentStatusHistoryEntry>(`/organizations/me/students/${studentId}/status`, {
         method: "PUT",
+        body: JSON.stringify(input),
+      }),
+
+    listAdmissionApplications: () =>
+      request<AdmissionApplication[]>("/organizations/me/admission-applications"),
+    createAdmissionApplication: (input: CreateAdmissionApplicationInput) =>
+      request<AdmissionApplication>("/organizations/me/admission-applications", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    listAdmissionStatusHistory: (applicationId: string) =>
+      request<AdmissionStatusHistoryEntry[]>(
+        `/organizations/me/admission-applications/${applicationId}/status-history`,
+      ),
+    updateAdmissionStatus: (applicationId: string, input: UpdateAdmissionStatusInput) =>
+      request<AdmissionStatusHistoryEntry>(
+        `/organizations/me/admission-applications/${applicationId}/status`,
+        { method: "PUT", body: JSON.stringify(input) },
+      ),
+    enrollApplication: (applicationId: string, input: EnrollApplicationInput) =>
+      request<Student>(`/organizations/me/admission-applications/${applicationId}/enroll`, {
+        method: "POST",
         body: JSON.stringify(input),
       }),
   };

@@ -175,6 +175,56 @@ const STUDENTS: {
   },
 ];
 
+// Admission applications spanning the review pipeline (fictional
+// applicants, not real people) — one at each stage, plus one carried all
+// the way through to enrollment, to show the Admissions → Student bridge
+// actually working rather than just listing empty statuses.
+const APPLICATIONS: {
+  code: string;
+  firstName: string;
+  lastName: string;
+  dateOfBirth: string;
+  programCode: string;
+  guardianName?: string;
+  guardianPhone?: string;
+  score?: number;
+  finalStatus: "SUBMITTED" | "UNDER_REVIEW" | "ENROLLED";
+  enrollAs?: { studentCode: string; sectionCode: string };
+}[] = [
+  {
+    code: "APP-0001",
+    firstName: "Nirmala",
+    lastName: "Adhikari",
+    dateOfBirth: "2019-02-10",
+    programCode: "PLAYGROUP",
+    guardianName: "Ramesh Adhikari",
+    guardianPhone: "9801234571",
+    finalStatus: "SUBMITTED",
+  },
+  {
+    code: "APP-0002",
+    firstName: "Prakash",
+    lastName: "KC",
+    dateOfBirth: "2014-06-18",
+    programCode: "SECONDARY",
+    guardianName: "Dipak KC",
+    guardianPhone: "9801234572",
+    finalStatus: "UNDER_REVIEW",
+  },
+  {
+    code: "APP-0003",
+    firstName: "Anita",
+    lastName: "Poudel",
+    dateOfBirth: "2007-09-02",
+    programCode: "BSCCSIT",
+    guardianName: "Krishna Poudel",
+    guardianPhone: "9801234573",
+    score: 88,
+    finalStatus: "ENROLLED",
+    enrollAs: { studentCode: "STU-0004", sectionCode: "SEM1" },
+  },
+];
+
 async function main() {
   const organization = await prisma.organization.upsert({
     where: { slug: ORG_SLUG },
@@ -307,6 +357,38 @@ async function main() {
     );
   }
 
+  for (const a of APPLICATIONS) {
+    const application = await upsertAdmissionApplication(organization.id, a.code, {
+      programId: allProgramIds[a.programCode],
+      firstName: a.firstName,
+      lastName: a.lastName,
+      dateOfBirth: a.dateOfBirth,
+      guardianName: a.guardianName,
+      guardianPhone: a.guardianPhone,
+      score: a.score,
+    });
+
+    if (a.finalStatus === "UNDER_REVIEW" && application.status === "SUBMITTED") {
+      await setApplicationStatus(organization.id, application.id, "UNDER_REVIEW");
+    }
+
+    if (a.finalStatus === "ENROLLED" && application.status !== "ENROLLED" && a.enrollAs) {
+      if (application.status === "SUBMITTED") {
+        await setApplicationStatus(organization.id, application.id, "UNDER_REVIEW");
+        await setApplicationStatus(organization.id, application.id, "APPROVED");
+      }
+      await enrollApplication(
+        organization.id,
+        application.id,
+        a.enrollAs.studentCode,
+        allProgramIds[a.programCode],
+        sectionIds[a.enrollAs.sectionCode],
+        term.id,
+        "2026-08-15",
+      );
+    }
+  }
+
   // eslint-disable-next-line no-console
   console.log(`Demo org ready: ${organization.name} (slug: ${organization.slug})`);
   // eslint-disable-next-line no-console
@@ -429,7 +511,7 @@ async function upsertStudent(
   firstName: string,
   lastName: string,
   dateOfBirth: string,
-  gender: string,
+  gender?: string,
 ) {
   const existing = await prisma.student.findFirst({ where: { organizationId, studentCode } });
   if (existing) return existing;
@@ -471,6 +553,103 @@ async function upsertEnrollment(
   return prisma.studentEnrollment.create({
     data: { organizationId, studentId, programId, sectionId, termId, enrollmentDate: new Date(enrollmentDate) },
   });
+}
+
+async function upsertAdmissionApplication(
+  organizationId: string,
+  applicationCode: string,
+  data: {
+    programId: string;
+    firstName: string;
+    lastName: string;
+    dateOfBirth: string;
+    guardianName?: string;
+    guardianPhone?: string;
+    score?: number;
+  },
+) {
+  // AdmissionApplication has no natural unique code column (real intake
+  // wouldn't need one — this is purely so this demo script can be
+  // re-run safely); track it via a note prefix instead of adding a
+  // schema-only field just for seeding idempotency.
+  const marker = `demo-seed:${applicationCode}`;
+  const existing = await prisma.admissionApplication.findFirst({
+    where: { organizationId, notes: marker },
+  });
+  if (existing) return existing;
+  return prisma.admissionApplication.create({
+    data: {
+      organizationId,
+      programId: data.programId,
+      applicantFirstName: data.firstName,
+      applicantLastName: data.lastName,
+      dateOfBirth: new Date(data.dateOfBirth),
+      guardianName: data.guardianName,
+      guardianPhone: data.guardianPhone,
+      appliedDate: new Date("2026-06-01"),
+      score: data.score,
+      notes: marker,
+    },
+  });
+}
+
+async function setApplicationStatus(
+  organizationId: string,
+  applicationId: string,
+  status: "UNDER_REVIEW" | "APPROVED" | "REJECTED",
+) {
+  await prisma.admissionApplication.update({ where: { id: applicationId }, data: { status } });
+  await prisma.admissionStatusHistory.create({
+    data: { organizationId, applicationId, status, effectiveDate: new Date() },
+  });
+}
+
+async function enrollApplication(
+  organizationId: string,
+  applicationId: string,
+  studentCode: string,
+  programId: string,
+  sectionId: string,
+  termId: string,
+  enrollmentDate: string,
+) {
+  const application = await prisma.admissionApplication.findUnique({ where: { id: applicationId } });
+  if (!application || application.status === "ENROLLED") return application;
+
+  const student = await upsertStudent(
+    organizationId,
+    studentCode,
+    application.applicantFirstName,
+    application.applicantLastName,
+    application.dateOfBirth.toISOString().slice(0, 10),
+    application.gender ?? undefined,
+  );
+
+  if (application.guardianName) {
+    const parts = application.guardianName.trim().split(" ");
+    const firstName = parts[0];
+    const lastName = parts.slice(1).join(" ") || parts[0];
+    const guardian = await upsertGuardian(organizationId, firstName, lastName, application.guardianPhone ?? "Unknown");
+    await upsertStudentGuardian(organizationId, student.id, guardian.id, "Guardian", true);
+  }
+
+  await upsertEnrollment(organizationId, student.id, programId, sectionId, termId, enrollmentDate);
+
+  await prisma.admissionApplication.update({
+    where: { id: applicationId },
+    data: { status: "ENROLLED", enrolledStudentId: student.id },
+  });
+  await prisma.admissionStatusHistory.create({
+    data: {
+      organizationId,
+      applicationId,
+      status: "ENROLLED",
+      reason: "Enrolled",
+      effectiveDate: new Date(enrollmentDate),
+    },
+  });
+
+  return student;
 }
 
 main()

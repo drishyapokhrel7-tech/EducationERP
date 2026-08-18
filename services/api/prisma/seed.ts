@@ -31,7 +31,8 @@ const SYSTEM_ROLES = [
 // added the staff six, slice 2c added subject/curriculum (curriculum
 // covers curriculum_subjects too), slice 2d added student/guardian/
 // enrollment (guardian covers student_guardians attachment; enrollment
-// covers both creating and status-changing a StudentEnrollment).
+// covers both creating and status-changing a StudentEnrollment), slice
+// 2e added admission (covers both status updates and the enroll action).
 const RESOURCES = [
   "organization",
   "campus",
@@ -54,6 +55,7 @@ const RESOURCES = [
   "student",
   "guardian",
   "enrollment",
+  "admission",
 ];
 const ACTIONS = Object.values(PermissionAction);
 

@@ -321,13 +321,88 @@ fixes are complementary, not redundant.
   correctly. Removed it afterward so the demo org matches the seed
   script's own data exactly.
 
+All four slices done, stopped per plan §21 step 17. User replied
+"proceed" for the offered default (Admissions, over Documents/
+import-export — chosen because it doesn't need the still-open
+object-storage decision and builds directly on Student/Enrollment).
+
+## Slice 2e — Admissions
+
+Two tables, a scoped-down first cut of plan §5's full scope (online
+applications, document upload, review, scoring, entrance exams,
+interviews, merit lists, approval, admission fees, enrollment,
+configurable workflows): `AdmissionApplication` (program applied to,
+applicant details, optional guardian name/phone carried on the
+application itself rather than requiring a Guardian row up front, score,
+notes, a 6-state `AdmissionStatus` including `ENROLLED`) and
+`AdmissionStatusHistory` (audit trail, same shape as
+`StudentStatusHistory`). Deferred: document upload (blocked on the
+still-open object-storage decision, see `PHASE_1_NOTES.md` open items),
+admission fees (needs Finance), merit lists (a derived view over
+applications, not its own data), configurable workflows (far beyond this
+slice).
+
+The interesting part is the **enroll action**
+(`POST .../admission-applications/:id/enroll`), the actual bridge
+between Admissions and the Student core built in slice 2d: given a
+section/term/student-code, it creates a real `Student` (+ a `Guardian` +
+`StudentGuardian` if the application had guardian info) + a
+`StudentEnrollment`, sets the application to `ENROLLED`, and links
+`enrolledStudentId` back to the new student — all in one transaction.
+Two business rules enforced server-side (not just UI disabling): only an
+`APPROVED` application can be enrolled, and an application can't be
+enrolled twice (`enrolledStudentId` already set) — both return 400, not
+404 (this isn't a not-found case, it's a valid resource in the wrong
+state). `UpdateAdmissionStatusDto` deliberately excludes `ENROLLED` from
+the settable statuses — it's reachable only through the enroll action,
+which needs data (section, term, student code) a plain status-PUT
+doesn't have and has real side effects a status flip shouldn't carry.
+
+Same RLS + FK-vs-RLS parent-guard pattern as every prior slice.
+`/dashboard/admissions` UI: application list with inline status-update
+and (once `APPROVED`) an enroll form. e2e suite now 15/15, including a
+case that specifically checks the two business-rule 400s and a guard
+case for both cross-tenant application-creation and cross-tenant
+enrollment.
+
+Demo seed extended with three applications spanning the pipeline
+(fictional applicants, not real people): one still `SUBMITTED`, one
+`UNDER_REVIEW`, and one carried all the way through to `ENROLLED` —
+producing the demo org's 4th student, linked back to its originating
+application.
+
+## Verified (slice 2e)
+
+- `pnpm typecheck` / `lint` / `build` clean across all three packages.
+- `services/api` e2e: 15/15 — including confirmation that the
+  `withTenant` timeout fix from slice 2d holds under this slice's larger
+  cleanup (5 tables in the delete order now touch admissions).
+- `pnpm run demo:seed` run twice — idempotent (application idempotency
+  tracked via a `demo-seed:<code>` marker in the `notes` field, since
+  `AdmissionApplication` has no natural business key) — then verified
+  directly against Postgres: 3 applications at their expected statuses,
+  the enrolled one correctly linked to a 4th student.
+- Browser pass, logged in as the demo admin: cold load of
+  `/dashboard/admissions` (first exercise of this page) shows all 3
+  seeded applications correctly, including the enrolled one showing no
+  status-editor (by design — an enrolled application is done). Submitted
+  a brand-new application, walked it through APPROVED → Enroll live
+  through the UI, and confirmed the resulting student appeared on
+  `/dashboard/students`. One screenshot briefly looked like a repeat of
+  slice 2d's bug (new application missing from the list right after a
+  "Saved" toast) — checked the network response before concluding
+  anything: the data was already correct server-side, a second
+  screenshot showed it rendered, so this was a screenshot-timing
+  artifact, not a regression. Removed the test application + student
+  afterward so the demo org matches the seed script's own data exactly.
+
 ## Next step
 
-All four slices done, stopped per plan §21 step 17. Phase 2's remaining
-scope is Admissions and Documents/import-export (plan §20) — Student
-lifecycle being in place now unblocks both, since Admissions is
-essentially "the intake workflow that creates a Student +
-StudentEnrollment" and Documents needs Student to attach to. Phase 3
-(Teaching, Learning, Timetable & Attendance — courses, class schedules,
-rooms, periods, teaching assignments) is a separate phase, not a Phase 2
-remainder.
+All five slices done, stopped per plan §21 step 17. Phase 2's only
+remaining scope is Documents/import-export (plan §20) — still blocked on
+the object-storage backend decision (`PHASE_1_NOTES.md`/
+`PHASE_0_ARCHITECTURE.md` open items) for the document-upload half, though
+CSV/Excel import for students/staff doesn't need that and could go first.
+Phase 3 (Teaching, Learning, Timetable & Attendance — courses, class
+schedules, rooms, periods, teaching assignments) is a separate phase, not
+a Phase 2 remainder.

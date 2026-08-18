@@ -79,6 +79,10 @@ describe("Tenant isolation (e2e)", () => {
         "employee",
         "staffType",
         "designation",
+        // admission_applications.enrolledStudentId FKs to Student, so
+        // these must go before the student delete.
+        "admissionStatusHistory",
+        "admissionApplication",
         "studentStatusHistory",
         "studentEnrollment",
         "studentGuardian",
@@ -596,6 +600,191 @@ describe("Tenant isolation (e2e)", () => {
         .post(`/organizations/me/students/${studentB.body.id}/guardians`)
         .set(...auth(tokenA))
         .send({ guardianId: guardianA.body.id, relationship: "Guardian" })
+        .expect(404);
+    });
+  });
+
+  describe("admissions (application → status review → enroll)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    async function buildEnrollmentTarget(token: string, suffix: string) {
+      const campus = await request(app.getHttpServer())
+        .post("/organizations/me/campuses")
+        .set(...auth(token))
+        .send({ name: `Admission Campus ${suffix}`, code: `ACAMP${suffix}` })
+        .expect(201);
+      const faculty = await request(app.getHttpServer())
+        .post("/organizations/me/faculties")
+        .set(...auth(token))
+        .send({ campusId: campus.body.id, name: `Admission Faculty ${suffix}`, code: `AFAC${suffix}` })
+        .expect(201);
+      const department = await request(app.getHttpServer())
+        .post("/organizations/me/departments")
+        .set(...auth(token))
+        .send({ facultyId: faculty.body.id, name: `Admission Dept ${suffix}`, code: `ADEP${suffix}` })
+        .expect(201);
+      const program = await request(app.getHttpServer())
+        .post("/organizations/me/programs")
+        .set(...auth(token))
+        .send({ departmentId: department.body.id, name: `Admission Program ${suffix}`, code: `APROG${suffix}` })
+        .expect(201);
+      const year = await request(app.getHttpServer())
+        .post("/organizations/me/academic-years")
+        .set(...auth(token))
+        .send({ name: `Admission Year ${suffix}`, startDate: "2099-08-01", endDate: "2100-06-30" })
+        .expect(201);
+      const term = await request(app.getHttpServer())
+        .post("/organizations/me/terms")
+        .set(...auth(token))
+        .send({
+          academicYearId: year.body.id,
+          name: `Admission Term ${suffix}`,
+          code: `AT${suffix}`,
+          sequence: 1,
+          startDate: "2099-08-01",
+          endDate: "2099-12-15",
+        })
+        .expect(201);
+      const section = await request(app.getHttpServer())
+        .post("/organizations/me/sections")
+        .set(...auth(token))
+        .send({ programId: program.body.id, termId: term.body.id, name: `Admission Section ${suffix}`, code: `AS${suffix}` })
+        .expect(201);
+      return { programId: program.body.id, sectionId: section.body.id, termId: term.body.id };
+    }
+
+    it("takes an application from submission through approval to a real enrollment, scoped to org A", async () => {
+      const target = await buildEnrollmentTarget(tokenA, "ADMA");
+
+      const application = await request(app.getHttpServer())
+        .post("/organizations/me/admission-applications")
+        .set(...auth(tokenA))
+        .send({
+          programId: target.programId,
+          applicantFirstName: "Marie",
+          applicantLastName: "Curie",
+          dateOfBirth: "2015-11-07",
+          guardianName: "Pierre Curie",
+          guardianPhone: "555-0200",
+          appliedDate: "2099-01-01",
+          score: 92,
+        })
+        .expect(201);
+      expect(application.body.organizationId).toBe(orgAId);
+      expect(application.body.status).toBe("SUBMITTED");
+
+      await request(app.getHttpServer())
+        .put(`/organizations/me/admission-applications/${application.body.id}/status`)
+        .set(...auth(tokenA))
+        .send({ status: "UNDER_REVIEW", effectiveDate: "2099-01-02" })
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .put(`/organizations/me/admission-applications/${application.body.id}/status`)
+        .set(...auth(tokenA))
+        .send({ status: "APPROVED", effectiveDate: "2099-01-05" })
+        .expect(200);
+
+      // Enrolling before APPROVED-only precondition would be violated is
+      // not tested separately here — this application is already
+      // APPROVED at this point — so instead verify the *other* business
+      // rule: a non-approved application can't be enrolled (use a second
+      // application still at SUBMITTED).
+      const notApproved = await request(app.getHttpServer())
+        .post("/organizations/me/admission-applications")
+        .set(...auth(tokenA))
+        .send({
+          programId: target.programId,
+          applicantFirstName: "Not",
+          applicantLastName: "Approved",
+          dateOfBirth: "2015-01-01",
+          appliedDate: "2099-01-01",
+        })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/admission-applications/${notApproved.body.id}/enroll`)
+        .set(...auth(tokenA))
+        .send({ studentCode: "SHOULD-FAIL", sectionId: target.sectionId, termId: target.termId, enrollmentDate: "2099-08-01" })
+        .expect(400);
+
+      const student = await request(app.getHttpServer())
+        .post(`/organizations/me/admission-applications/${application.body.id}/enroll`)
+        .set(...auth(tokenA))
+        .send({
+          studentCode: "ADM-STU-001",
+          sectionId: target.sectionId,
+          termId: target.termId,
+          enrollmentDate: "2099-08-01",
+        })
+        .expect(201);
+      expect(student.body.organizationId).toBe(orgAId);
+      expect(student.body.firstName).toBe("Marie");
+
+      // Guardian carried over from the application.
+      const students = await request(app.getHttpServer())
+        .get("/organizations/me/students")
+        .set(...auth(tokenA))
+        .expect(200);
+      const enrolled = students.body.find((s: { id: string }) => s.id === student.body.id);
+      expect(enrolled.guardians).toHaveLength(1);
+      expect(enrolled.guardians[0].guardian.firstName).toBe("Pierre");
+
+      // Enrolling the same application twice is rejected.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/admission-applications/${application.body.id}/enroll`)
+        .set(...auth(tokenA))
+        .send({ studentCode: "ADM-STU-002", sectionId: target.sectionId, termId: target.termId, enrollmentDate: "2099-08-01" })
+        .expect(400);
+
+      const listB = await request(app.getHttpServer())
+        .get("/organizations/me/admission-applications")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(listB.body).toEqual([]);
+    });
+
+    it("rejects creating an application under another tenant's program, and enrolling under another tenant's section/term (404)", async () => {
+      const target = await buildEnrollmentTarget(tokenA, "ADMGUARD");
+
+      await request(app.getHttpServer())
+        .post("/organizations/me/admission-applications")
+        .set(...auth(tokenB))
+        .send({
+          programId: target.programId,
+          applicantFirstName: "Sneaky",
+          applicantLastName: "Applicant",
+          dateOfBirth: "2015-01-01",
+          appliedDate: "2099-01-01",
+        })
+        .expect(404);
+
+      const targetB = await buildEnrollmentTarget(tokenB, "ADMGUARDB");
+      const applicationB = await request(app.getHttpServer())
+        .post("/organizations/me/admission-applications")
+        .set(...auth(tokenB))
+        .send({
+          programId: targetB.programId,
+          applicantFirstName: "Real",
+          applicantLastName: "ApplicantB",
+          dateOfBirth: "2015-01-01",
+          appliedDate: "2099-01-01",
+        })
+        .expect(201);
+      await request(app.getHttpServer())
+        .put(`/organizations/me/admission-applications/${applicationB.body.id}/status`)
+        .set(...auth(tokenB))
+        .send({ status: "APPROVED", effectiveDate: "2099-01-05" })
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/admission-applications/${applicationB.body.id}/enroll`)
+        .set(...auth(tokenB))
+        .send({
+          studentCode: "SNEAK-ENROLL",
+          sectionId: target.sectionId,
+          termId: target.termId,
+          enrollmentDate: "2099-08-01",
+        })
         .expect(404);
     });
   });

@@ -46,6 +46,8 @@ model Organization {
   studentGuardians    StudentGuardian[]
   studentEnrollments  StudentEnrollment[]
   studentStatusHistories StudentStatusHistory[]
+  admissionApplications AdmissionApplication[]
+  admissionStatusHistories AdmissionStatusHistory[]
 
   @@map("organizations")
 }
@@ -134,6 +136,7 @@ model Program {
   sections     Section[]
   curricula    Curriculum[]
   studentEnrollments StudentEnrollment[]
+  admissionApplications AdmissionApplication[]
 
   @@unique([departmentId, code])
   @@index([organizationId])
@@ -617,6 +620,7 @@ model Student {
   guardians     StudentGuardian[]
   enrollments   StudentEnrollment[]
   statusHistory StudentStatusHistory[]
+  admissionApplication AdmissionApplication?
 
   @@unique([organizationId, studentCode])
   @@index([organizationId])
@@ -705,4 +709,74 @@ model StudentStatusHistory {
   @@index([organizationId])
   @@index([studentId])
   @@map("student_status_history")
+}
+
+// ── Admissions (plan §5 "Admissions") ───────────────────────────────────────
+// A scoped-down first slice of the plan's full Admissions scope (online
+// applications, document upload, review, scoring, entrance exams,
+// interviews, merit lists, approval, admission fees, enrollment,
+// configurable workflows): application intake, status review with an
+// audit trail, and the enroll action that turns an approved application
+// into a real Student + StudentEnrollment. Deferred: document upload
+// (needs an object-storage decision, still an open item — see
+// PHASE_1_NOTES.md), admission fees (needs the Finance domain), merit
+// lists (a derived/computed view over applications, not its own data),
+// configurable workflows (far beyond this slice).
+
+enum AdmissionStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  INTERVIEW_SCHEDULED
+  APPROVED
+  REJECTED
+  ENROLLED
+}
+
+model AdmissionApplication {
+  id                  String          @id @default(uuid())
+  organizationId      String
+  programId           String
+  applicantFirstName  String
+  applicantLastName   String
+  dateOfBirth         DateTime
+  gender              String?
+  guardianName        String?
+  guardianPhone       String?
+  appliedDate         DateTime
+  status              AdmissionStatus @default(SUBMITTED)
+  // Entrance-exam/interview score — a plain number, not tied to any
+  // specific exam's scale (plan §1: don't hard-code institution-specific
+  // structures).
+  score               Float?
+  notes                String?
+  // Set only once the enroll action has run; the application row is kept
+  // afterward as the historical record of how this student was admitted.
+  enrolledStudentId   String?         @unique
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  organization    Organization           @relation(fields: [organizationId], references: [id])
+  program         Program                @relation(fields: [programId], references: [id])
+  enrolledStudent Student?               @relation(fields: [enrolledStudentId], references: [id])
+  statusHistory   AdmissionStatusHistory[]
+
+  @@index([organizationId])
+  @@map("admission_applications")
+}
+
+model AdmissionStatusHistory {
+  id             String          @id @default(uuid())
+  organizationId String
+  applicationId  String
+  status         AdmissionStatus
+  reason         String?
+  effectiveDate  DateTime
+  createdAt      DateTime        @default(now())
+
+  organization Organization         @relation(fields: [organizationId], references: [id])
+  application  AdmissionApplication @relation(fields: [applicationId], references: [id])
+
+  @@index([organizationId])
+  @@index([applicationId])
+  @@map("admission_status_history")
 }

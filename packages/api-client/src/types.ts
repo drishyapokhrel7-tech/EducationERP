@@ -391,3 +391,63 @@ export interface UpdateStudentStatusInput {
   reason?: string;
   effectiveDate: string;
 }
+
+export type AdmissionStatus =
+  | "SUBMITTED"
+  | "UNDER_REVIEW"
+  | "INTERVIEW_SCHEDULED"
+  | "APPROVED"
+  | "REJECTED"
+  | "ENROLLED";
+
+export interface AdmissionApplication {
+  id: string;
+  organizationId: string;
+  programId: string;
+  applicantFirstName: string;
+  applicantLastName: string;
+  dateOfBirth: string;
+  gender: string | null;
+  guardianName: string | null;
+  guardianPhone: string | null;
+  appliedDate: string;
+  status: AdmissionStatus;
+  score: number | null;
+  notes: string | null;
+  enrolledStudentId: string | null;
+  program: Program;
+}
+
+export interface CreateAdmissionApplicationInput {
+  programId: string;
+  applicantFirstName: string;
+  applicantLastName: string;
+  dateOfBirth: string;
+  gender?: string;
+  guardianName?: string;
+  guardianPhone?: string;
+  appliedDate: string;
+  score?: number;
+  notes?: string;
+}
+
+export interface AdmissionStatusHistoryEntry {
+  id: string;
+  applicationId: string;
+  status: AdmissionStatus;
+  reason: string | null;
+  effectiveDate: string;
+}
+
+export interface UpdateAdmissionStatusInput {
+  status: Exclude<AdmissionStatus, "ENROLLED">;
+  reason?: string;
+  effectiveDate: string;
+}
+
+export interface EnrollApplicationInput {
+  studentCode: string;
+  sectionId: string;
+  termId: string;
+  enrollmentDate: string;
+}
