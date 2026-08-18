@@ -67,12 +67,16 @@ describe("Tenant isolation (e2e)", () => {
       // organizations delete below on the audit_logs FK. withTenant is
       // mandatory here, not just for app code.
       for (const orgId of [orgAId, orgBId]) {
-        await prisma.withTenant(orgId, (tx) =>
-          tx.campus.deleteMany({ where: { organizationId: orgId } }),
-        );
-        await prisma.withTenant(orgId, (tx) =>
-          tx.auditLog.deleteMany({ where: { organizationId: orgId } }),
-        );
+        await prisma.withTenant(orgId, async (tx) => {
+          await tx.section.deleteMany({ where: { organizationId: orgId } });
+          await tx.term.deleteMany({ where: { organizationId: orgId } });
+          await tx.academicYear.deleteMany({ where: { organizationId: orgId } });
+          await tx.program.deleteMany({ where: { organizationId: orgId } });
+          await tx.department.deleteMany({ where: { organizationId: orgId } });
+          await tx.faculty.deleteMany({ where: { organizationId: orgId } });
+          await tx.campus.deleteMany({ where: { organizationId: orgId } });
+          await tx.auditLog.deleteMany({ where: { organizationId: orgId } });
+        });
       }
       await prisma.userRole.deleteMany({ where: { user: { organizationId: { in: [orgAId, orgBId] } } } });
       await prisma.session.deleteMany({ where: { user: { organizationId: { in: [orgAId, orgBId] } } } });
@@ -153,5 +157,85 @@ describe("Tenant isolation (e2e)", () => {
         }),
       ),
     ).rejects.toThrow(/row-level security/i);
+  });
+
+  describe("org hierarchy (faculty → department → program → year → term → section)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    it("builds the whole chain for org A and each step is scoped to it", async () => {
+      const campus = await request(app.getHttpServer())
+        .post("/organizations/me/campuses")
+        .set(...auth(tokenA))
+        .send({ name: "Chain Campus", code: "CHAIN" })
+        .expect(201);
+
+      const faculty = await request(app.getHttpServer())
+        .post("/organizations/me/faculties")
+        .set(...auth(tokenA))
+        .send({ campusId: campus.body.id, name: "Faculty", code: "FAC" })
+        .expect(201);
+      expect(faculty.body.organizationId).toBe(orgAId);
+
+      const department = await request(app.getHttpServer())
+        .post("/organizations/me/departments")
+        .set(...auth(tokenA))
+        .send({ facultyId: faculty.body.id, name: "Department", code: "DEP" })
+        .expect(201);
+
+      const program = await request(app.getHttpServer())
+        .post("/organizations/me/programs")
+        .set(...auth(tokenA))
+        .send({ departmentId: department.body.id, name: "Program", code: "PROG" })
+        .expect(201);
+
+      const year = await request(app.getHttpServer())
+        .post("/organizations/me/academic-years")
+        .set(...auth(tokenA))
+        .send({ name: "2099-2100", startDate: "2099-08-01", endDate: "2100-06-30" })
+        .expect(201);
+
+      const term = await request(app.getHttpServer())
+        .post("/organizations/me/terms")
+        .set(...auth(tokenA))
+        .send({
+          academicYearId: year.body.id,
+          name: "Term",
+          code: "T1",
+          sequence: 1,
+          startDate: "2099-08-01",
+          endDate: "2099-12-15",
+        })
+        .expect(201);
+
+      const section = await request(app.getHttpServer())
+        .post("/organizations/me/sections")
+        .set(...auth(tokenA))
+        .send({ programId: program.body.id, termId: term.body.id, name: "Section", code: "A" })
+        .expect(201);
+      expect(section.body.organizationId).toBe(orgAId);
+
+      // Org B sees none of it via list endpoints.
+      for (const path of ["faculties", "departments", "programs", "academic-years", "terms", "sections"]) {
+        const res = await request(app.getHttpServer())
+          .get(`/organizations/me/${path}`)
+          .set(...auth(tokenB))
+          .expect(200);
+        expect(res.body).toEqual([]);
+      }
+    });
+
+    it("rejects creating a child under another tenant's parent, even with a well-formed id (404, not a silent cross-tenant link)", async () => {
+      const campusA = await request(app.getHttpServer())
+        .post("/organizations/me/campuses")
+        .set(...auth(tokenA))
+        .send({ name: "Guard Campus", code: "GUARD" })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post("/organizations/me/faculties")
+        .set(...auth(tokenB))
+        .send({ campusId: campusA.body.id, name: "Sneaky Faculty", code: "SNEAK" })
+        .expect(404);
+    });
   });
 });

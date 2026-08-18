@@ -8,9 +8,9 @@ datasource db {
 }
 
 // ── Organization / tenancy hierarchy (plan §6 "Organization") ──────────────
-// Only the top two tiers are modeled in Phase 1 (org, campus); the rest
-// of the hierarchy (faculty → department → program → academic_year →
-// semester/term → section) lands in Phase 2 with the Student/Academic core.
+// Organization → Campus → Faculty → Department → Program → AcademicYear →
+// Term → Section, matching plan §4's stated hierarchy exactly. Phase 1
+// modeled only the top two tiers; Phase 2 completes the rest.
 
 model Organization {
   id        String   @id @default(uuid())
@@ -26,6 +26,12 @@ model Organization {
   auditLogs AuditLog[]
   loginEvents LoginEvent[]
   accessPolicies AccessPolicy[]
+  faculties      Faculty[]
+  departments    Department[]
+  programs       Program[]
+  academicYears  AcademicYear[]
+  terms          Term[]
+  sections       Section[]
 
   @@map("organizations")
 }
@@ -41,10 +47,132 @@ model Campus {
 
   organization Organization @relation(fields: [organizationId], references: [id])
   userRoles    UserRole[]
+  faculties    Faculty[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
   @@map("campuses")
+}
+
+model Faculty {
+  id             String   @id @default(uuid())
+  organizationId String
+  campusId       String
+  name           String
+  code           String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  campus       Campus       @relation(fields: [campusId], references: [id])
+  departments  Department[]
+
+  @@unique([campusId, code])
+  @@index([organizationId])
+  @@map("faculties")
+}
+
+model Department {
+  id             String   @id @default(uuid())
+  organizationId String
+  facultyId      String
+  name           String
+  code           String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  faculty      Faculty      @relation(fields: [facultyId], references: [id])
+  programs     Program[]
+
+  @@unique([facultyId, code])
+  @@index([organizationId])
+  @@map("departments")
+}
+
+model Program {
+  id             String   @id @default(uuid())
+  organizationId String
+  departmentId   String
+  name           String
+  code           String
+  // Free text, not an enum: institutions span schools (grades) and
+  // colleges (degrees) with no fixed vocabulary — plan §1 explicitly
+  // forbids hard-coding institution-specific structures like this.
+  level          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  department   Department   @relation(fields: [departmentId], references: [id])
+  sections     Section[]
+
+  @@unique([departmentId, code])
+  @@index([organizationId])
+  @@map("programs")
+}
+
+model AcademicYear {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  startDate      DateTime
+  endDate        DateTime
+  isCurrent      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  terms        Term[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("academic_years")
+}
+
+model Term {
+  id             String   @id @default(uuid())
+  organizationId String
+  academicYearId String
+  name           String
+  code           String
+  sequence       Int
+  startDate      DateTime
+  endDate        DateTime
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
+  sections     Section[]
+
+  @@unique([academicYearId, code])
+  @@index([organizationId])
+  @@map("terms")
+}
+
+model Section {
+  id             String   @id @default(uuid())
+  organizationId String
+  programId      String
+  termId         String
+  name           String
+  code           String
+  capacity       Int?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  program      Program      @relation(fields: [programId], references: [id])
+  term         Term         @relation(fields: [termId], references: [id])
+
+  @@unique([termId, programId, code])
+  @@index([organizationId])
+  @@map("sections")
 }
 
 // ── Security (plan §6 "Security" + §7 RBAC) ─────────────────────────────────

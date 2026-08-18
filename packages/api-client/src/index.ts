@@ -1,13 +1,25 @@
 export * from "./types";
 
 import type {
+  AcademicYear,
   AuthTokens,
   Campus,
+  CreateAcademicYearInput,
   CreateCampusInput,
+  CreateDepartmentInput,
+  CreateFacultyInput,
+  CreateProgramInput,
+  CreateSectionInput,
+  CreateTermInput,
+  Department,
+  Faculty,
   LoginInput,
   Organization,
+  Program,
   RegisterOrganizationInput,
   SafeUser,
+  Section,
+  Term,
 } from "./types";
 
 export class ApiError extends Error {
@@ -68,6 +80,48 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
 
     createCampus: (input: CreateCampusInput) =>
       request<Campus>("/organizations/me/campuses", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+
+    listFaculties: () => request<Faculty[]>("/organizations/me/faculties"),
+    createFaculty: (input: CreateFacultyInput) =>
+      request<Faculty>("/organizations/me/faculties", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+
+    listDepartments: () => request<Department[]>("/organizations/me/departments"),
+    createDepartment: (input: CreateDepartmentInput) =>
+      request<Department>("/organizations/me/departments", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+
+    listPrograms: () => request<Program[]>("/organizations/me/programs"),
+    createProgram: (input: CreateProgramInput) =>
+      request<Program>("/organizations/me/programs", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+
+    listAcademicYears: () => request<AcademicYear[]>("/organizations/me/academic-years"),
+    createAcademicYear: (input: CreateAcademicYearInput) =>
+      request<AcademicYear>("/organizations/me/academic-years", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+
+    listTerms: () => request<Term[]>("/organizations/me/terms"),
+    createTerm: (input: CreateTermInput) =>
+      request<Term>("/organizations/me/terms", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+
+    listSections: () => request<Section[]>("/organizations/me/sections"),
+    createSection: (input: CreateSectionInput) =>
+      request<Section>("/organizations/me/sections", {
         method: "POST",
         body: JSON.stringify(input),
       }),

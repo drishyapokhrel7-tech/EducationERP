@@ -1,29 +1,45 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   Building2,
   LayoutDashboard,
   LogOut,
+  Network,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth-context";
 
-const NAV = [{ href: "/dashboard", label: "Overview", icon: LayoutDashboard }];
+const NAV = [
+  { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
+  { href: "/dashboard/org-structure", label: "Org structure", icon: Network },
+];
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const router = useRouter();
+  // On a cold full-page load, useSyncExternalStore's client snapshot isn't
+  // guaranteed to have replaced the (always-null) server snapshot before
+  // this component's effects run — observed in practice as a real bug:
+  // a valid logged-in session got redirected to /login on any fresh load
+  // of a nested dashboard route. `mounted` defers the redirect decision
+  // to a render that's unambiguously past hydration.
+  const [mounted, setMounted] = useState(false);
+  // Intentional one-shot post-hydration flag, not a derived/external-state
+  // read — see comment above for why this needs to exist at all.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
-    if (!user) {
+    if (mounted && !user) {
       router.replace("/login");
     }
-  }, [user, router]);
+  }, [mounted, user, router]);
 
-  if (!user) {
+  if (!mounted || !user) {
     return (
       <main className="flex flex-1 items-center justify-center">
         <p className="text-muted-foreground text-sm">Loading…</p>
@@ -42,14 +58,14 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         </div>
         <nav className="flex flex-1 flex-col gap-1">
           {NAV.map(({ href, label, icon: Icon }) => (
-            <a
+            <Link
               key={href}
               href={href}
               className="hover:bg-sidebar-accent flex items-center gap-2 rounded-md px-2 py-2 text-sm"
             >
               <Icon className="size-4" />
               {label}
-            </a>
+            </Link>
           ))}
         </nav>
         <div className="flex items-center gap-2 border-t pt-4">

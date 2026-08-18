@@ -26,8 +26,20 @@ const SYSTEM_ROLES = [
   "Parent/Guardian",
 ];
 
-// Resources that exist as of Phase 1. Grows with each later phase.
-const PHASE_1_RESOURCES = ["organization", "campus", "user", "role"];
+// Resources that exist so far. Grows with each phase — Phase 1 added the
+// first four, Phase 2 slice 2a added the org-hierarchy six.
+const RESOURCES = [
+  "organization",
+  "campus",
+  "user",
+  "role",
+  "faculty",
+  "department",
+  "program",
+  "academic_year",
+  "term",
+  "section",
+];
 const ACTIONS = Object.values(PermissionAction);
 
 async function main() {
@@ -43,7 +55,7 @@ async function main() {
   }
 
   const permissions = [];
-  for (const resource of PHASE_1_RESOURCES) {
+  for (const resource of RESOURCES) {
     for (const action of ACTIONS) {
       const permission = await prisma.permission.upsert({
         where: { resource_action: { resource, action } },
@@ -54,6 +66,10 @@ async function main() {
     }
   }
 
+  // Still just these two, same as Phase 1: which of Campus Admin/
+  // Principal/Academic Coordinator/Department Head should manage which
+  // org-hierarchy resource is a real product decision, not something to
+  // guess at here — deferred until that's actually specified.
   const fullAccessRoleNames = ["Super Admin", "Organization Admin"];
   for (const roleName of fullAccessRoleNames) {
     const role = await prisma.role.findFirst({ where: { name: roleName, isSystem: true } });
