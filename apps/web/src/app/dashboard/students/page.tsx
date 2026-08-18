@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import useSWR from "swr";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
+import type { ImportResult } from "@education-erp/api-client";
 
 function EntityCard({
   title,
@@ -82,6 +83,45 @@ export default function StudentsPage() {
     enrollmentDate: "",
   });
 
+  const importFileRef = useRef<HTMLInputElement>(null);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  async function handleImport() {
+    const file = importFileRef.current?.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    try {
+      const result = await api.importStudents(file);
+      setImportResult(result);
+      students.mutate();
+      if (importFileRef.current) importFileRef.current.value = "";
+      toast.success(`Imported ${result.created} of ${result.totalRows} row(s)`);
+    } catch {
+      toast.error("Import failed — check the file is a valid CSV");
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const blob = await api.exportStudents();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "students.csv";
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Export failed");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   async function submit(action: () => Promise<unknown>, onSuccess: () => void) {
     try {
       await action();
@@ -101,6 +141,50 @@ export default function StudentsPage() {
           a program, section and term.
         </p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Import / Export</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="space-y-2">
+              <Label>Import students (CSV)</Label>
+              <Input
+                ref={importFileRef}
+                type="file"
+                accept=".csv,text/csv"
+                className="w-64"
+              />
+            </div>
+            <Button type="button" disabled={importing} onClick={handleImport}>
+              {importing ? "Importing..." : "Import"}
+            </Button>
+            <Button type="button" variant="outline" disabled={exporting} onClick={handleExport}>
+              {exporting ? "Exporting..." : "Export CSV"}
+            </Button>
+          </div>
+          <p className="text-muted-foreground text-xs">
+            CSV columns: studentCode, firstName, lastName, dateOfBirth, gender (optional)
+          </p>
+          {importResult ? (
+            <div className="text-sm">
+              <p>
+                {importResult.created} of {importResult.totalRows} row(s) created.
+              </p>
+              {importResult.errors.length > 0 ? (
+                <ul className="text-destructive mt-2 list-disc space-y-1 pl-5">
+                  {importResult.errors.map((e, i) => (
+                    <li key={i}>
+                      Row {e.row}: {e.message}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
 
       <EntityCard
         title="Students"

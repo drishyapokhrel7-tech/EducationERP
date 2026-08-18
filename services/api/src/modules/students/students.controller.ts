@@ -1,4 +1,17 @@
-import { Body, Controller, Get, Param, Post, Put, UseGuards } from "@nestjs/common";
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Header,
+  Param,
+  Post,
+  Put,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import { StudentsService } from "./students.service";
 import { CreateStudentDto } from "./dto/create-student.dto";
 import { CreateGuardianDto } from "./dto/create-guardian.dto";
@@ -80,5 +93,30 @@ export class StudentsController {
     @Body() dto: UpdateStudentStatusDto,
   ) {
     return this.students.updateStatus(user.organizationId, studentId, dto);
+  }
+
+  // No storage config → multer's default (memory only, never written to
+  // disk) — deliberate: object storage for real document uploads is
+  // still an open decision, this endpoint only ever needs the file
+  // transiently to parse it.
+  @Post("students/import")
+  @RequirePermissions("student:create")
+  @UseInterceptors(FileInterceptor("file"))
+  importStudents(
+    @CurrentUser() user: JwtPayload,
+    @UploadedFile() file: Express.Multer.File | undefined,
+  ) {
+    if (!file) {
+      throw new BadRequestException("No file uploaded (expected a multipart field named 'file')");
+    }
+    return this.students.importStudents(user.organizationId, file.buffer);
+  }
+
+  @Get("students/export")
+  @RequirePermissions("student:export")
+  @Header("Content-Type", "text/csv")
+  @Header("Content-Disposition", 'attachment; filename="students.csv"')
+  exportStudents(@CurrentUser() user: JwtPayload) {
+    return this.students.exportStudentsCsv(user.organizationId);
   }
 }

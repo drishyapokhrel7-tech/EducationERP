@@ -788,4 +788,82 @@ describe("Tenant isolation (e2e)", () => {
         .expect(404);
     });
   });
+
+  describe("student import/export (CSV)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    it("imports valid rows, reports invalid/duplicate rows without failing the batch, and stays tenant-scoped", async () => {
+      const csv = [
+        "studentCode,firstName,lastName,dateOfBirth,gender",
+        "IMP-001,Rosalind,Franklin,2015-02-01,Female",
+        "IMP-002,Alan,Turing,2015-03-01,Male",
+        // missing lastName -> reported error, not created
+        "IMP-003,NoLastName,,2015-04-01,",
+        // duplicate of IMP-001 within the same file -> reported error
+        "IMP-001,Dup,Licate,2015-02-01,Female",
+      ].join("\n");
+
+      const res = await request(app.getHttpServer())
+        .post("/organizations/me/students/import")
+        .set(...auth(tokenA))
+        .attach("file", Buffer.from(csv), "students.csv")
+        .expect(201);
+
+      expect(res.body.totalRows).toBe(4);
+      expect(res.body.created).toBe(2);
+      expect(res.body.errors).toHaveLength(2);
+      expect(res.body.errors.map((e: { row: number }) => e.row).sort()).toEqual([4, 5]);
+
+      // Re-importing the same two valid rows now reports them as
+      // already-existing duplicates rather than creating them again.
+      const reimport = await request(app.getHttpServer())
+        .post("/organizations/me/students/import")
+        .set(...auth(tokenA))
+        .attach(
+          "file",
+          Buffer.from("studentCode,firstName,lastName,dateOfBirth,gender\nIMP-001,Rosalind,Franklin,2015-02-01,Female"),
+          "students.csv",
+        )
+        .expect(201);
+      expect(reimport.body.created).toBe(0);
+      expect(reimport.body.errors).toHaveLength(1);
+
+      // Org B's import of the same studentCode succeeds — import is
+      // tenant-scoped, not globally unique.
+      const crossTenant = await request(app.getHttpServer())
+        .post("/organizations/me/students/import")
+        .set(...auth(tokenB))
+        .attach(
+          "file",
+          Buffer.from("studentCode,firstName,lastName,dateOfBirth,gender\nIMP-001,Other,Org,2015-02-01,Female"),
+          "students.csv",
+        )
+        .expect(201);
+      expect(crossTenant.body.created).toBe(1);
+
+      // Org A's export contains only its own imported students, not org B's.
+      const exportA = await request(app.getHttpServer())
+        .get("/organizations/me/students/export")
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(exportA.text).toContain("IMP-001,Rosalind,Franklin");
+      expect(exportA.text).toContain("IMP-002,Alan,Turing");
+      expect(exportA.text).not.toContain("Other,Org");
+
+      const exportB = await request(app.getHttpServer())
+        .get("/organizations/me/students/export")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(exportB.text).toContain("IMP-001,Other,Org");
+      expect(exportB.text).not.toContain("Rosalind");
+    });
+
+    it("rejects a malformed CSV file with a 400, not a 500", async () => {
+      await request(app.getHttpServer())
+        .post("/organizations/me/students/import")
+        .set(...auth(tokenA))
+        .attach("file", Buffer.from('studentCode,firstName\n"unterminated quote,x'), "bad.csv")
+        .expect(400);
+    });
+  });
 });

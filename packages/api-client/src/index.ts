@@ -35,6 +35,7 @@ import type {
   EnrollApplicationInput,
   Faculty,
   Guardian,
+  ImportResult,
   LoginInput,
   Organization,
   Program,
@@ -83,6 +84,33 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       throw new ApiError(res.status, body);
     }
     return body as T;
+  }
+
+  // Multipart upload: no Content-Type set manually — the browser adds
+  // the multipart boundary itself when the body is a FormData instance,
+  // and setting it by hand breaks that.
+  async function requestForm<T>(path: string, form: FormData): Promise<T> {
+    const token = getAccessToken?.();
+    const headers: Record<string, string> = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const res = await fetch(`${baseUrl}${path}`, { method: "POST", body: form, headers });
+    const body = await res.json().catch(() => undefined);
+    if (!res.ok) throw new ApiError(res.status, body);
+    return body as T;
+  }
+
+  // The response is a raw CSV file, not JSON — fetched as a Blob so the
+  // caller can trigger a normal browser download.
+  async function requestBlob(path: string): Promise<Blob> {
+    const token = getAccessToken?.();
+    const headers: Record<string, string> = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const res = await fetch(`${baseUrl}${path}`, { headers });
+    if (!res.ok) {
+      const body = await res.json().catch(() => undefined);
+      throw new ApiError(res.status, body);
+    }
+    return res.blob();
   }
 
   return {
@@ -279,6 +307,13 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         method: "POST",
         body: JSON.stringify(input),
       }),
+
+    importStudents: (file: File) => {
+      const form = new FormData();
+      form.append("file", file);
+      return requestForm<ImportResult>("/organizations/me/students/import", form);
+    },
+    exportStudents: () => requestBlob("/organizations/me/students/export"),
   };
 }
 

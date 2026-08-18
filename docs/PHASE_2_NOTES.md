@@ -396,13 +396,74 @@ application.
   artifact, not a regression. Removed the test application + student
   afterward so the demo org matches the seed script's own data exactly.
 
+## Slice 2f — Student CSV import/export
+
+## What shipped
+
+`POST /organizations/me/students/import` (multipart, field name `file`)
+and `GET /organizations/me/students/export`. Only the CSV half of plan
+§20's Documents/import-export scope — real document uploads (transcripts,
+certificates) still need the object-storage backend decision
+(`PHASE_1_NOTES.md`/`PHASE_0_ARCHITECTURE.md` open items), but a CSV
+import/export doesn't touch storage at all: the uploaded file is parsed
+in memory via `csv-parse/sync` and discarded, never written to disk
+(Multer's default memory storage, no config needed). `student:export` is
+just the existing `export` action from the 9-action permission set
+(plan §7) on the existing `student` resource — no new permission seed
+entry needed.
+
+Import validates and creates row-by-row inside one `withTenant`
+transaction: missing required fields, unparseable dates, and duplicate
+`studentCode` (both within the file and against existing rows) are
+collected as per-row errors and returned alongside the count created —
+one bad row doesn't fail the batch (plan §19's "rollback where
+practical," applied per-row since each row is an independent insert, not
+one where a partial failure would leave related rows inconsistent).
+Export streams the caller's org's non-deleted students back as
+`text/csv` with a `Content-Disposition: attachment` header, ordered by
+`studentCode`.
+
+Web UI: a new "Import/Export" card at the top of `/dashboard/students`
+— file input + Import button showing a summary line and a per-row error
+list, and an Export CSV button that fetches the response as a `Blob` and
+triggers a download via a temporary anchor element (`URL.createObjectURL`
++ `.click()` + `URL.revokeObjectURL`). Two new `api-client` internal
+helpers, `requestForm` (multipart, no manual `Content-Type` — the browser
+sets the multipart boundary itself) and `requestBlob` (fetches the CSV
+response as a `Blob` instead of parsing JSON), alongside the existing
+`request` helper.
+
+## Verified (slice 2f)
+
+- `pnpm typecheck` / `lint` / `build` clean across all three packages.
+- `services/api` e2e: 17/17, including two new cases — valid rows
+  created while invalid/duplicate rows are reported not silently
+  dropped, a re-import of already-existing rows reports them as
+  duplicates rather than creating them again, import/export both stay
+  tenant-scoped (org B importing the same `studentCode` succeeds
+  independently, and each org's export contains only its own rows), and
+  a malformed CSV returns 400 not 500. Jest's default 5000ms hook timeout
+  started failing every test in this file (not just the new ones) on this
+  run — `beforeAll`'s module compile + two org registrations over the
+  network to Neon no longer fit in 5s. Raised `testTimeout` to 30000 in
+  `jest-e2e.json`, the same class of fix as slice 2d's `withTenant`
+  timeout: Neon's latency, not the number of tables in the delete order,
+  is what's driving these.
+- Browser pass, logged in as the demo admin on `/dashboard/students`:
+  exported the seeded students, then imported a 3-row CSV with one
+  missing-field row and one duplicate `studentCode` row — UI reported
+  "1 of 3 row(s) created" with both errors listed by row number, and the
+  new student appeared in the list immediately with a success toast.
+  (Also spot-checked cross-tenant isolation for `/organizations/me/students`
+  directly against Postgres, since e2e already covers it via the API.)
+  Removed the test import row afterward so the demo org matches the seed
+  script's own data.
+
 ## Next step
 
-All five slices done, stopped per plan §21 step 17. Phase 2's only
-remaining scope is Documents/import-export (plan §20) — still blocked on
-the object-storage backend decision (`PHASE_1_NOTES.md`/
-`PHASE_0_ARCHITECTURE.md` open items) for the document-upload half, though
-CSV/Excel import for students/staff doesn't need that and could go first.
-Phase 3 (Teaching, Learning, Timetable & Attendance — courses, class
-schedules, rooms, periods, teaching assignments) is a separate phase, not
-a Phase 2 remainder.
+All six slices done — Phase 2 (plan §20: Student & Academic Core) is
+complete, stopped per plan §21 step 17. Remaining out-of-scope items
+carried forward, not part of Phase 2: real document uploads (blocked on
+the object-storage decision) and Phase 3 (Teaching, Learning, Timetable &
+Attendance — courses, class schedules, rooms, periods, teaching
+assignments), which is a separate phase, not a Phase 2 remainder.

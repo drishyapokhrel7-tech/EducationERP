@@ -1,10 +1,12 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { parse } from "csv-parse/sync";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateStudentDto } from "./dto/create-student.dto";
 import { CreateGuardianDto } from "./dto/create-guardian.dto";
 import { AttachGuardianDto } from "./dto/attach-guardian.dto";
 import { CreateEnrollmentDto } from "./dto/create-enrollment.dto";
 import { UpdateStudentStatusDto } from "./dto/update-student-status.dto";
+import { ImportResult, ImportRowError } from "./dto/import-result.dto";
 
 /** Same load-bearing parent-guard pattern as every prior slice's service. */
 @Injectable()
@@ -142,4 +144,101 @@ export class StudentsService {
       });
     });
   }
+
+  /**
+   * Parses in-memory, never persists the file — the object-storage
+   * backend for real document uploads is still an open decision (see
+   * PHASE_1_NOTES.md); a transient parse-then-discard CSV import doesn't
+   * need it. Invalid/duplicate rows are skipped and reported, not fatal
+   * to the whole batch — "rollback where practical" (plan §19) applied
+   * per-row, since each row is a single independent insert.
+   */
+  async importStudents(organizationId: string, csvBuffer: Buffer): Promise<ImportResult> {
+    let records: Record<string, string>[];
+    try {
+      // csv-parse's `parse()` return type is untyped `any` regardless of
+      // input (checked the .d.ts — no generic support in this version);
+      // the cast documents the shape `columns: true` actually produces.
+      records = parse(csvBuffer, {
+        columns: true,
+        skip_empty_lines: true,
+        trim: true,
+      }) as Record<string, string>[];
+    } catch (err) {
+      throw new BadRequestException(`Could not parse CSV: ${(err as Error).message}`);
+    }
+
+    const errors: ImportRowError[] = [];
+    const seenCodes = new Set<string>();
+    let created = 0;
+
+    await this.prisma.withTenant(organizationId, async (tx) => {
+      for (let i = 0; i < records.length; i++) {
+        const rowNumber = i + 2; // header occupies row 1
+        const row = records[i];
+        const studentCode = row.studentCode?.trim();
+        const firstName = row.firstName?.trim();
+        const lastName = row.lastName?.trim();
+        const dateOfBirthRaw = row.dateOfBirth?.trim();
+        const gender = row.gender?.trim() || undefined;
+
+        if (!studentCode || !firstName || !lastName || !dateOfBirthRaw) {
+          errors.push({
+            row: rowNumber,
+            message: "Missing required field (studentCode, firstName, lastName, dateOfBirth)",
+          });
+          continue;
+        }
+        const dateOfBirth = new Date(dateOfBirthRaw);
+        if (Number.isNaN(dateOfBirth.getTime())) {
+          errors.push({ row: rowNumber, message: `Invalid dateOfBirth "${dateOfBirthRaw}"` });
+          continue;
+        }
+        if (seenCodes.has(studentCode)) {
+          errors.push({ row: rowNumber, message: `Duplicate studentCode "${studentCode}" within this file` });
+          continue;
+        }
+        const existing = await tx.student.findFirst({ where: { organizationId, studentCode } });
+        if (existing) {
+          errors.push({ row: rowNumber, message: `studentCode "${studentCode}" already exists` });
+          continue;
+        }
+
+        await tx.student.create({
+          data: { organizationId, studentCode, firstName, lastName, dateOfBirth, gender },
+        });
+        seenCodes.add(studentCode);
+        created++;
+      }
+    });
+
+    return { totalRows: records.length, created, errors };
+  }
+
+  async exportStudentsCsv(organizationId: string): Promise<string> {
+    const students = await this.prisma.withTenant(organizationId, (tx) =>
+      tx.student.findMany({ where: { organizationId, deletedAt: null }, orderBy: { studentCode: "asc" } }),
+    );
+    const header = "studentCode,firstName,lastName,dateOfBirth,gender,status";
+    const rows = students.map((s) =>
+      [
+        s.studentCode,
+        s.firstName,
+        s.lastName,
+        s.dateOfBirth.toISOString().slice(0, 10),
+        s.gender ?? "",
+        s.status,
+      ]
+        .map(csvEscape)
+        .join(","),
+    );
+    return [header, ...rows].join("\n");
+  }
+}
+
+function csvEscape(field: string): string {
+  if (/[",\n]/.test(field)) {
+    return `"${field.replace(/"/g, '""')}"`;
+  }
+  return field;
 }
