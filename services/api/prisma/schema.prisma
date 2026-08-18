@@ -32,6 +32,12 @@ model Organization {
   academicYears  AcademicYear[]
   terms          Term[]
   sections       Section[]
+  staffTypes     StaffType[]
+  designations   Designation[]
+  employees      Employee[]
+  employmentHistories EmploymentHistory[]
+  qualifications      Qualification[]
+  teacherProfiles     TeacherProfile[]
 
   @@map("organizations")
 }
@@ -83,9 +89,11 @@ model Department {
   updatedAt      DateTime @updatedAt
   deletedAt      DateTime?
 
-  organization Organization @relation(fields: [organizationId], references: [id])
-  faculty      Faculty      @relation(fields: [facultyId], references: [id])
-  programs     Program[]
+  organization        Organization        @relation(fields: [organizationId], references: [id])
+  faculty             Faculty             @relation(fields: [facultyId], references: [id])
+  programs            Program[]
+  employees           Employee[]
+  employmentHistories EmploymentHistory[]
 
   @@unique([facultyId, code])
   @@index([organizationId])
@@ -201,6 +209,7 @@ model User {
   sessions     Session[]
   loginEvents  LoginEvent[]
   auditLogs    AuditLog[]
+  employee     Employee?
 
   @@index([organizationId])
   @@map("users")
@@ -348,4 +357,138 @@ model AccessPolicy {
 
   @@unique([organizationId, name])
   @@map("access_policies")
+}
+
+// ── Staff (plan §6 "Staff") ──────────────────────────────────────────────
+// teacher_subjects and staff_documents are deferred: the former needs
+// Subject to exist (Academic structure, a later slice), the latter needs
+// the Documents & Certificates domain (a later phase).
+
+model StaffType {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  code           String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  employees    Employee[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+  @@map("staff_types")
+}
+
+model Designation {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  code           String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization       Organization        @relation(fields: [organizationId], references: [id])
+  employees           Employee[]
+  employmentHistories EmploymentHistory[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+  @@map("designations")
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  ON_LEAVE
+  SUSPENDED
+  TERMINATED
+}
+
+model Employee {
+  id             String         @id @default(uuid())
+  organizationId String
+  // Set only for staff who also log in (teachers, admins, ...); many
+  // support/non-teaching staff may never get a User account.
+  userId         String?        @unique
+  staffTypeId    String
+  designationId  String
+  departmentId   String?
+  employeeCode   String
+  firstName      String
+  lastName       String
+  email          String
+  phone          String?
+  dateOfJoining  DateTime
+  status         EmployeeStatus @default(ACTIVE)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  deletedAt      DateTime?
+
+  organization      Organization        @relation(fields: [organizationId], references: [id])
+  user               User?               @relation(fields: [userId], references: [id])
+  staffType          StaffType           @relation(fields: [staffTypeId], references: [id])
+  designation        Designation         @relation(fields: [designationId], references: [id])
+  department         Department?         @relation(fields: [departmentId], references: [id])
+  employmentHistory  EmploymentHistory[]
+  qualifications     Qualification[]
+  teacherProfile     TeacherProfile?
+
+  @@unique([organizationId, employeeCode])
+  @@unique([organizationId, email])
+  @@index([organizationId])
+  @@map("employees")
+}
+
+model EmploymentHistory {
+  id             String    @id @default(uuid())
+  organizationId String
+  employeeId     String
+  designationId  String
+  departmentId   String?
+  startDate      DateTime
+  endDate        DateTime?
+  reason         String?
+  createdAt      DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  employee     Employee     @relation(fields: [employeeId], references: [id])
+  designation  Designation  @relation(fields: [designationId], references: [id])
+  department   Department?  @relation(fields: [departmentId], references: [id])
+
+  @@index([organizationId])
+  @@index([employeeId])
+  @@map("employment_history")
+}
+
+model Qualification {
+  id             String   @id @default(uuid())
+  organizationId String
+  employeeId     String
+  degree         String
+  institution    String
+  yearCompleted  Int?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  employee     Employee     @relation(fields: [employeeId], references: [id])
+
+  @@index([organizationId])
+  @@index([employeeId])
+  @@map("qualifications")
+}
+
+model TeacherProfile {
+  id             String   @id @default(uuid())
+  organizationId String
+  employeeId     String   @unique
+  bio            String?
+  specialization String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  employee     Employee     @relation(fields: [employeeId], references: [id])
+
+  @@index([organizationId])
+  @@map("teacher_profiles")
 }

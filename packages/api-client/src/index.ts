@@ -7,19 +7,31 @@ import type {
   CreateAcademicYearInput,
   CreateCampusInput,
   CreateDepartmentInput,
+  CreateDesignationInput,
+  CreateEmployeeInput,
+  CreateEmploymentHistoryInput,
   CreateFacultyInput,
   CreateProgramInput,
+  CreateQualificationInput,
   CreateSectionInput,
+  CreateStaffTypeInput,
   CreateTermInput,
   Department,
+  Designation,
+  Employee,
+  EmploymentHistory,
   Faculty,
   LoginInput,
   Organization,
   Program,
+  Qualification,
   RegisterOrganizationInput,
   SafeUser,
   Section,
+  StaffType,
+  TeacherProfile,
   Term,
+  UpsertTeacherProfileInput,
 } from "./types";
 
 export class ApiError extends Error {
@@ -123,6 +135,51 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
     createSection: (input: CreateSectionInput) =>
       request<Section>("/organizations/me/sections", {
         method: "POST",
+        body: JSON.stringify(input),
+      }),
+
+    listStaffTypes: () => request<StaffType[]>("/organizations/me/staff-types"),
+    createStaffType: (input: CreateStaffTypeInput) =>
+      request<StaffType>("/organizations/me/staff-types", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+
+    listDesignations: () => request<Designation[]>("/organizations/me/designations"),
+    createDesignation: (input: CreateDesignationInput) =>
+      request<Designation>("/organizations/me/designations", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+
+    listEmployees: () => request<Employee[]>("/organizations/me/employees"),
+    createEmployee: (input: CreateEmployeeInput) =>
+      request<Employee>("/organizations/me/employees", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+
+    listEmploymentHistory: (employeeId: string) =>
+      request<EmploymentHistory[]>(`/organizations/me/employees/${employeeId}/employment-history`),
+    createEmploymentHistory: (employeeId: string, input: CreateEmploymentHistoryInput) =>
+      request<EmploymentHistory>(`/organizations/me/employees/${employeeId}/employment-history`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+
+    listQualifications: (employeeId: string) =>
+      request<Qualification[]>(`/organizations/me/employees/${employeeId}/qualifications`),
+    createQualification: (employeeId: string, input: CreateQualificationInput) =>
+      request<Qualification>(`/organizations/me/employees/${employeeId}/qualifications`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+
+    getTeacherProfile: (employeeId: string) =>
+      request<TeacherProfile | null>(`/organizations/me/employees/${employeeId}/teacher-profile`),
+    upsertTeacherProfile: (employeeId: string, input: UpsertTeacherProfileInput) =>
+      request<TeacherProfile>(`/organizations/me/employees/${employeeId}/teacher-profile`, {
+        method: "PUT",
         body: JSON.stringify(input),
       }),
   };

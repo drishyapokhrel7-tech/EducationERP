@@ -4,6 +4,7 @@ import { PrismaModule } from "./prisma/prisma.module";
 import { AuthModule } from "./modules/auth/auth.module";
 import { OrganizationsModule } from "./modules/organizations/organizations.module";
 import { OrgStructureModule } from "./modules/org-structure/org-structure.module";
+import { StaffModule } from "./modules/staff/staff.module";
 import { QueueModule } from "./queue/queue.module";
 import { HealthController } from "./common/health.controller";
 
@@ -14,6 +15,7 @@ import { HealthController } from "./common/health.controller";
     AuthModule,
     OrganizationsModule,
     OrgStructureModule,
+    StaffModule,
     QueueModule,
   ],
   controllers: [HealthController],

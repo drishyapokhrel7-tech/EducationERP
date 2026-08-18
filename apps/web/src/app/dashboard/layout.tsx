@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   LogOut,
   Network,
+  Users,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,7 @@ import { useAuth } from "@/lib/auth-context";
 const NAV = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { href: "/dashboard/org-structure", label: "Org structure", icon: Network },
+  { href: "/dashboard/staff", label: "Staff", icon: Users },
 ];
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {

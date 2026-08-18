@@ -27,7 +27,8 @@ const SYSTEM_ROLES = [
 ];
 
 // Resources that exist so far. Grows with each phase — Phase 1 added the
-// first four, Phase 2 slice 2a added the org-hierarchy six.
+// first four, Phase 2 slice 2a added the org-hierarchy six, slice 2b
+// added the staff six.
 const RESOURCES = [
   "organization",
   "campus",
@@ -39,6 +40,12 @@ const RESOURCES = [
   "academic_year",
   "term",
   "section",
+  "staff_type",
+  "designation",
+  "employee",
+  "employment_history",
+  "qualification",
+  "teacher_profile",
 ];
 const ACTIONS = Object.values(PermissionAction);
 

@@ -68,6 +68,14 @@ describe("Tenant isolation (e2e)", () => {
       // mandatory here, not just for app code.
       for (const orgId of [orgAId, orgBId]) {
         await prisma.withTenant(orgId, async (tx) => {
+          // Staff rows first — employees reference department, so they
+          // must go before the department delete further down.
+          await tx.teacherProfile.deleteMany({ where: { organizationId: orgId } });
+          await tx.qualification.deleteMany({ where: { organizationId: orgId } });
+          await tx.employmentHistory.deleteMany({ where: { organizationId: orgId } });
+          await tx.employee.deleteMany({ where: { organizationId: orgId } });
+          await tx.staffType.deleteMany({ where: { organizationId: orgId } });
+          await tx.designation.deleteMany({ where: { organizationId: orgId } });
           await tx.section.deleteMany({ where: { organizationId: orgId } });
           await tx.term.deleteMany({ where: { organizationId: orgId } });
           await tx.academicYear.deleteMany({ where: { organizationId: orgId } });
@@ -235,6 +243,101 @@ describe("Tenant isolation (e2e)", () => {
         .post("/organizations/me/faculties")
         .set(...auth(tokenB))
         .send({ campusId: campusA.body.id, name: "Sneaky Faculty", code: "SNEAK" })
+        .expect(404);
+    });
+  });
+
+  describe("staff (staff type → designation → employee → employment history/qualifications/teacher profile)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    it("builds an employee for org A and each step is scoped to it", async () => {
+      const staffType = await request(app.getHttpServer())
+        .post("/organizations/me/staff-types")
+        .set(...auth(tokenA))
+        .send({ name: "Teaching", code: "TEACH" })
+        .expect(201);
+
+      const designation = await request(app.getHttpServer())
+        .post("/organizations/me/designations")
+        .set(...auth(tokenA))
+        .send({ name: "Teacher", code: "TCHR" })
+        .expect(201);
+
+      const employee = await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(tokenA))
+        .send({
+          staffTypeId: staffType.body.id,
+          designationId: designation.body.id,
+          employeeCode: "EMP-001",
+          firstName: "Grace",
+          lastName: "Hopper",
+          email: "grace@staff-e2e.test",
+          dateOfJoining: "2026-01-01",
+        })
+        .expect(201);
+      expect(employee.body.organizationId).toBe(orgAId);
+
+      const history = await request(app.getHttpServer())
+        .post(`/organizations/me/employees/${employee.body.id}/employment-history`)
+        .set(...auth(tokenA))
+        .send({ designationId: designation.body.id, startDate: "2026-01-01" })
+        .expect(201);
+      expect(history.body.employeeId).toBe(employee.body.id);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/employees/${employee.body.id}/qualifications`)
+        .set(...auth(tokenA))
+        .send({ degree: "PhD Mathematics", institution: "Yale" })
+        .expect(201);
+
+      const profile = await request(app.getHttpServer())
+        .put(`/organizations/me/employees/${employee.body.id}/teacher-profile`)
+        .set(...auth(tokenA))
+        .send({ specialization: "Compilers" })
+        .expect(200);
+      expect(profile.body.specialization).toBe("Compilers");
+
+      // Org B sees none of it via list endpoints.
+      for (const path of ["staff-types", "designations", "employees"]) {
+        const res = await request(app.getHttpServer())
+          .get(`/organizations/me/${path}`)
+          .set(...auth(tokenB))
+          .expect(200);
+        expect(res.body).toEqual([]);
+      }
+
+      // Org B can't reach into org A's employee sub-resources by id either.
+      await request(app.getHttpServer())
+        .get(`/organizations/me/employees/${employee.body.id}/employment-history`)
+        .set(...auth(tokenB))
+        .expect(404);
+    });
+
+    it("rejects creating an employee under another tenant's staff type/designation (404)", async () => {
+      const staffTypeA = await request(app.getHttpServer())
+        .post("/organizations/me/staff-types")
+        .set(...auth(tokenA))
+        .send({ name: "Guard Type", code: "GTYPE" })
+        .expect(201);
+      const designationA = await request(app.getHttpServer())
+        .post("/organizations/me/designations")
+        .set(...auth(tokenA))
+        .send({ name: "Guard Designation", code: "GDESIG" })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(tokenB))
+        .send({
+          staffTypeId: staffTypeA.body.id,
+          designationId: designationA.body.id,
+          employeeCode: "SNEAK-001",
+          firstName: "Sneaky",
+          lastName: "Employee",
+          email: "sneaky@staff-e2e.test",
+          dateOfJoining: "2026-01-01",
+        })
         .expect(404);
     });
   });

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
 
@@ -122,21 +122,13 @@ export default function OrgStructurePage() {
         >
           <div className="space-y-2">
             <Label>Campus</Label>
-            <Select
+            <NativeSelect
+              className="w-40"
+              placeholder="Select campus"
               value={facultyForm.campusId}
-              onValueChange={(v) => setFacultyForm((f) => ({ ...f, campusId: v ?? "" }))}
-            >
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Select campus" />
-              </SelectTrigger>
-              <SelectContent>
-                {campuses.data?.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              onChange={(v) => setFacultyForm((f) => ({ ...f, campusId: v }))}
+              options={(campuses.data ?? []).map((c) => ({ value: c.id, label: c.name }))}
+            />
           </div>
           <div className="space-y-2">
             <Label>Name</Label>
@@ -186,21 +178,13 @@ export default function OrgStructurePage() {
         >
           <div className="space-y-2">
             <Label>Faculty</Label>
-            <Select
+            <NativeSelect
+              className="w-40"
+              placeholder="Select faculty"
               value={departmentForm.facultyId}
-              onValueChange={(v) => setDepartmentForm((f) => ({ ...f, facultyId: v ?? "" }))}
-            >
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Select faculty" />
-              </SelectTrigger>
-              <SelectContent>
-                {faculties.data?.map((f) => (
-                  <SelectItem key={f.id} value={f.id}>
-                    {f.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              onChange={(v) => setDepartmentForm((f) => ({ ...f, facultyId: v }))}
+              options={(faculties.data ?? []).map((f) => ({ value: f.id, label: f.name }))}
+            />
           </div>
           <div className="space-y-2">
             <Label>Name</Label>
@@ -255,21 +239,13 @@ export default function OrgStructurePage() {
         >
           <div className="space-y-2">
             <Label>Department</Label>
-            <Select
+            <NativeSelect
+              className="w-40"
+              placeholder="Select department"
               value={programForm.departmentId}
-              onValueChange={(v) => setProgramForm((f) => ({ ...f, departmentId: v ?? "" }))}
-            >
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Select department" />
-              </SelectTrigger>
-              <SelectContent>
-                {departments.data?.map((d) => (
-                  <SelectItem key={d.id} value={d.id}>
-                    {d.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              onChange={(v) => setProgramForm((f) => ({ ...f, departmentId: v }))}
+              options={(departments.data ?? []).map((d) => ({ value: d.id, label: d.name }))}
+            />
           </div>
           <div className="space-y-2">
             <Label>Name</Label>
@@ -391,21 +367,13 @@ export default function OrgStructurePage() {
         >
           <div className="space-y-2">
             <Label>Academic year</Label>
-            <Select
+            <NativeSelect
+              className="w-40"
+              placeholder="Select year"
               value={termForm.academicYearId}
-              onValueChange={(v) => setTermForm((f) => ({ ...f, academicYearId: v ?? "" }))}
-            >
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Select year" />
-              </SelectTrigger>
-              <SelectContent>
-                {academicYears.data?.map((y) => (
-                  <SelectItem key={y.id} value={y.id}>
-                    {y.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              onChange={(v) => setTermForm((f) => ({ ...f, academicYearId: v }))}
+              options={(academicYears.data ?? []).map((y) => ({ value: y.id, label: y.name }))}
+            />
           </div>
           <div className="space-y-2">
             <Label>Name</Label>
@@ -492,39 +460,23 @@ export default function OrgStructurePage() {
         >
           <div className="space-y-2">
             <Label>Program</Label>
-            <Select
+            <NativeSelect
+              className="w-40"
+              placeholder="Select program"
               value={sectionForm.programId}
-              onValueChange={(v) => setSectionForm((f) => ({ ...f, programId: v ?? "" }))}
-            >
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Select program" />
-              </SelectTrigger>
-              <SelectContent>
-                {programs.data?.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              onChange={(v) => setSectionForm((f) => ({ ...f, programId: v }))}
+              options={(programs.data ?? []).map((p) => ({ value: p.id, label: p.name }))}
+            />
           </div>
           <div className="space-y-2">
             <Label>Term</Label>
-            <Select
+            <NativeSelect
+              className="w-40"
+              placeholder="Select term"
               value={sectionForm.termId}
-              onValueChange={(v) => setSectionForm((f) => ({ ...f, termId: v ?? "" }))}
-            >
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Select term" />
-              </SelectTrigger>
-              <SelectContent>
-                {terms.data?.map((t) => (
-                  <SelectItem key={t.id} value={t.id}>
-                    {t.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              onChange={(v) => setSectionForm((f) => ({ ...f, termId: v }))}
+              options={(terms.data ?? []).map((t) => ({ value: t.id, label: t.name }))}
+            />
           </div>
           <div className="space-y-2">
             <Label>Name</Label>

@@ -149,3 +149,107 @@ export interface CreateSectionInput {
   code: string;
   capacity?: number;
 }
+
+export interface StaffType {
+  id: string;
+  organizationId: string;
+  name: string;
+  code: string;
+}
+
+export interface CreateStaffTypeInput {
+  name: string;
+  code: string;
+}
+
+export interface Designation {
+  id: string;
+  organizationId: string;
+  name: string;
+  code: string;
+}
+
+export interface CreateDesignationInput {
+  name: string;
+  code: string;
+}
+
+export type EmployeeStatus = "ACTIVE" | "ON_LEAVE" | "SUSPENDED" | "TERMINATED";
+
+export interface Employee {
+  id: string;
+  organizationId: string;
+  userId: string | null;
+  staffTypeId: string;
+  designationId: string;
+  departmentId: string | null;
+  employeeCode: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string | null;
+  dateOfJoining: string;
+  status: EmployeeStatus;
+  staffType?: StaffType;
+  designation?: Designation;
+  department?: Department | null;
+}
+
+export interface CreateEmployeeInput {
+  staffTypeId: string;
+  designationId: string;
+  departmentId?: string;
+  employeeCode: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string;
+  dateOfJoining: string;
+}
+
+export interface EmploymentHistory {
+  id: string;
+  organizationId: string;
+  employeeId: string;
+  designationId: string;
+  departmentId: string | null;
+  startDate: string;
+  endDate: string | null;
+  reason: string | null;
+}
+
+export interface CreateEmploymentHistoryInput {
+  designationId: string;
+  departmentId?: string;
+  startDate: string;
+  endDate?: string;
+  reason?: string;
+}
+
+export interface Qualification {
+  id: string;
+  organizationId: string;
+  employeeId: string;
+  degree: string;
+  institution: string;
+  yearCompleted: number | null;
+}
+
+export interface CreateQualificationInput {
+  degree: string;
+  institution: string;
+  yearCompleted?: number;
+}
+
+export interface TeacherProfile {
+  id: string;
+  organizationId: string;
+  employeeId: string;
+  bio: string | null;
+  specialization: string | null;
+}
+
+export interface UpsertTeacherProfileInput {
+  bio?: string;
+  specialization?: string;
+}
