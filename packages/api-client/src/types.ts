@@ -88,6 +88,9 @@ export interface Program {
   name: string;
   code: string;
   level: string | null;
+  durationSemesters: number | null;
+  creditHours: number | null;
+  entranceExam: string | null;
 }
 
 export interface CreateProgramInput {
@@ -95,6 +98,9 @@ export interface CreateProgramInput {
   name: string;
   code: string;
   level?: string;
+  durationSemesters?: number;
+  creditHours?: number;
+  entranceExam?: string;
 }
 
 export interface AcademicYear {
@@ -252,4 +258,44 @@ export interface TeacherProfile {
 export interface UpsertTeacherProfileInput {
   bio?: string;
   specialization?: string;
+}
+
+export interface Subject {
+  id: string;
+  organizationId: string;
+  name: string;
+  code: string;
+}
+
+export interface CreateSubjectInput {
+  name: string;
+  code: string;
+}
+
+export interface CurriculumSubject {
+  id: string;
+  curriculumId: string;
+  subjectId: string;
+  isCompulsory: boolean;
+  subject: Subject;
+}
+
+export interface Curriculum {
+  id: string;
+  organizationId: string;
+  programId: string;
+  name: string;
+  code: string;
+  subjects: CurriculumSubject[];
+}
+
+export interface CreateCurriculumInput {
+  programId: string;
+  name: string;
+  code: string;
+}
+
+export interface AttachCurriculumSubjectInput {
+  subjectId: string;
+  isCompulsory?: boolean;
 }

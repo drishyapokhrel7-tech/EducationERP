@@ -181,10 +181,72 @@ generalizes.
   selects populated simultaneously; re-verified the Section form on
   `/dashboard/org-structure` the same way.
 
+Both slices done, stopped per plan §21 step 17.
+
+## Slice 2c — Academic structure (subjects/curriculum) + real demo data
+
+User pointed at two real Nepali institution websites
+([Samriddhi School](https://samriddhischool.edu.np/) for Pre-School
+through +2, [Prime College](https://prime.edu.np/programs/) for
+bachelor's/master's) as reference data, then clarified: modern
+institutions commonly run the full Pre-School-to-Master's range under
+one roof — so this became both a schema slice (Subject/Curriculum, the
+`courses`/scheduling half of plan §6 "Academic" deferred to a later
+slice once Student enrollment exists to schedule around) and a demo-data
+task: one seeded organization spanning that whole range, not two
+separate ones.
+
+**Schema**: `Subject` (org-wide catalog), `Curriculum` (one named subject
+combination for a `Program` — a program can have several, e.g. +2
+Management's five real streams), `CurriculumSubject` (join,
+`isCompulsory` flag). `Program` gained three optional fields
+(`durationSemesters`, `creditHours`, `entranceExam`) — generic, not
+bachelor-specific despite reading that way; free text/nullable, no
+hard-coded exam-board enum. Same RLS + FK-vs-RLS parent-guard pattern as
+every prior slice (`academics.service.ts`). API:
+`GET`/`POST /organizations/me/{subjects,curricula}` +
+`POST /organizations/me/curricula/:id/subjects`. Web:
+`/dashboard/academics`. e2e suite now 11/11 (2 new academics cases,
+same shape as prior slices' parent-guard tests).
+
+**Demo data** (`prisma/seed-demo.ts`, `pnpm run demo:seed`, idempotent):
+one organization, **"Everest Academy & College"** — a fictional name,
+deliberately not either real institution's actual name/branding, since
+literally naming a demo tenant "Samriddhi School" or "Prime College"
+would misleadingly imply affiliation with or endorsement by the real
+institution. The *structure* is real, sourced from the two sites: 14
+programs (Play Group/Nursery/JKG/SKG, Primary Grade 1–5, Secondary Grade
+6–10, +2 Management, and six bachelor's programs + MBS with their actual
+semester/credit-hour/entrance-exam data), 19 subjects, and 7 curricula —
+a shared Primary curriculum (9 subjects), a shared Secondary curriculum
+(10 subjects), and +2 Management's five actual subject-combination
+options (6 subjects each, verified against the source table subject-for-
+subject). Two faculties ("School", "College") under one campus keep the
+two wings organizationally distinct while remaining one tenant. Demo
+login: `admin@everest-academy.demo` / `DemoPass123!` (synthetic
+credential, not a real person).
+
+## Verified (slice 2c)
+
+- `pnpm typecheck` / `lint` / `build` clean across all three packages.
+- `services/api` e2e: 11/11.
+- `pnpm run demo:seed` run twice — confirmed idempotent (no duplicate
+  rows), then verified row counts and content directly against Postgres:
+  14 programs with correct metadata, 7 curricula with correct
+  subject-count per curriculum (9/10/6/6/6/6/6).
+- Browser pass, logged in as the demo admin: cold load of
+  `/dashboard/org-structure` shows all 14 programs including credit
+  hours/entrance exam metadata; cold load of `/dashboard/academics`
+  (first real exercise of this new page) shows all 19 subjects and all 7
+  curricula with their correct subject lists; cold load of
+  `/dashboard/staff` confirmed no auth-bug regression (correctly empty —
+  no staff seeded for this org).
+
 ## Next step
 
-Both slices done, stopped per plan §21 step 17. Phase 2 continues with
-Academic structure (`subjects`, `courses`, `curriculum`,
-`teaching_assignments`, `class_schedules`, `rooms`, `periods`) or Student
-lifecycle (`students`, guardians, enrollment — now unblocked, since both
-Programs/Sections and Staff exist) next.
+All three slices done, stopped per plan §21 step 17. Phase 2 continues
+with Course/scheduling (`courses`, `course_sections`,
+`teaching_assignments`, `class_schedules`, `rooms`, `periods` — the rest
+of plan §6 "Academic", deferred from slice 2c) or Student lifecycle
+(`students`, guardians, enrollment — unblocked, since Programs/Sections,
+Staff, and now Curriculum all exist) next.

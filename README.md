@@ -43,6 +43,15 @@ pnpm exec prisma migrate dev
 pnpm run prisma:seed
 ```
 
+Optionally seed a demo organization ("Everest Academy & College",
+Pre-School through Master's, real program/subject structure sourced from
+two public Nepali institution sites — see `docs/PHASE_2_NOTES.md` slice
+2c) to explore the app with realistic data:
+
+```bash
+pnpm run demo:seed   # idempotent; login: admin@everest-academy.demo / DemoPass123!
+```
+
 Run everything:
 
 ```bash

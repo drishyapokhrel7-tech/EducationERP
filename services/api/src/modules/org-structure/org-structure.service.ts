@@ -77,6 +77,9 @@ export class OrgStructureService {
           name: dto.name,
           code: dto.code,
           level: dto.level,
+          durationSemesters: dto.durationSemesters,
+          creditHours: dto.creditHours,
+          entranceExam: dto.entranceExam,
         },
       });
     });

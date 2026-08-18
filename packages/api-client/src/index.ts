@@ -2,10 +2,12 @@ export * from "./types";
 
 import type {
   AcademicYear,
+  AttachCurriculumSubjectInput,
   AuthTokens,
   Campus,
   CreateAcademicYearInput,
   CreateCampusInput,
+  CreateCurriculumInput,
   CreateDepartmentInput,
   CreateDesignationInput,
   CreateEmployeeInput,
@@ -15,7 +17,10 @@ import type {
   CreateQualificationInput,
   CreateSectionInput,
   CreateStaffTypeInput,
+  CreateSubjectInput,
   CreateTermInput,
+  Curriculum,
+  CurriculumSubject,
   Department,
   Designation,
   Employee,
@@ -29,6 +34,7 @@ import type {
   SafeUser,
   Section,
   StaffType,
+  Subject,
   TeacherProfile,
   Term,
   UpsertTeacherProfileInput,
@@ -180,6 +186,25 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
     upsertTeacherProfile: (employeeId: string, input: UpsertTeacherProfileInput) =>
       request<TeacherProfile>(`/organizations/me/employees/${employeeId}/teacher-profile`, {
         method: "PUT",
+        body: JSON.stringify(input),
+      }),
+
+    listSubjects: () => request<Subject[]>("/organizations/me/subjects"),
+    createSubject: (input: CreateSubjectInput) =>
+      request<Subject>("/organizations/me/subjects", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+
+    listCurricula: () => request<Curriculum[]>("/organizations/me/curricula"),
+    createCurriculum: (input: CreateCurriculumInput) =>
+      request<Curriculum>("/organizations/me/curricula", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    attachCurriculumSubject: (curriculumId: string, input: AttachCurriculumSubjectInput) =>
+      request<CurriculumSubject>(`/organizations/me/curricula/${curriculumId}/subjects`, {
+        method: "POST",
         body: JSON.stringify(input),
       }),
   };

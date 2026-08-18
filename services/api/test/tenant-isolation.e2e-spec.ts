@@ -79,6 +79,10 @@ describe("Tenant isolation (e2e)", () => {
           await tx.section.deleteMany({ where: { organizationId: orgId } });
           await tx.term.deleteMany({ where: { organizationId: orgId } });
           await tx.academicYear.deleteMany({ where: { organizationId: orgId } });
+          // curriculumSubject/curriculum reference program, so before it.
+          await tx.curriculumSubject.deleteMany({ where: { organizationId: orgId } });
+          await tx.curriculum.deleteMany({ where: { organizationId: orgId } });
+          await tx.subject.deleteMany({ where: { organizationId: orgId } });
           await tx.program.deleteMany({ where: { organizationId: orgId } });
           await tx.department.deleteMany({ where: { organizationId: orgId } });
           await tx.faculty.deleteMany({ where: { organizationId: orgId } });
@@ -338,6 +342,115 @@ describe("Tenant isolation (e2e)", () => {
           email: "sneaky@staff-e2e.test",
           dateOfJoining: "2026-01-01",
         })
+        .expect(404);
+    });
+  });
+
+  describe("academics (subject → curriculum → curriculum_subject)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    it("builds a curriculum with subjects for org A and each step is scoped to it", async () => {
+      const campus = await request(app.getHttpServer())
+        .post("/organizations/me/campuses")
+        .set(...auth(tokenA))
+        .send({ name: "Academics Campus", code: "ACAD" })
+        .expect(201);
+      const faculty = await request(app.getHttpServer())
+        .post("/organizations/me/faculties")
+        .set(...auth(tokenA))
+        .send({ campusId: campus.body.id, name: "Academics Faculty", code: "ACADFAC" })
+        .expect(201);
+      const department = await request(app.getHttpServer())
+        .post("/organizations/me/departments")
+        .set(...auth(tokenA))
+        .send({ facultyId: faculty.body.id, name: "Academics Dept", code: "ACADDEP" })
+        .expect(201);
+      const program = await request(app.getHttpServer())
+        .post("/organizations/me/programs")
+        .set(...auth(tokenA))
+        .send({ departmentId: department.body.id, name: "Test Program", code: "TESTPROG" })
+        .expect(201);
+
+      const subject = await request(app.getHttpServer())
+        .post("/organizations/me/subjects")
+        .set(...auth(tokenA))
+        .send({ name: "Mathematics", code: "MATH" })
+        .expect(201);
+      expect(subject.body.organizationId).toBe(orgAId);
+
+      const curriculum = await request(app.getHttpServer())
+        .post("/organizations/me/curricula")
+        .set(...auth(tokenA))
+        .send({ programId: program.body.id, name: "Option 1", code: "OPT1" })
+        .expect(201);
+
+      const attached = await request(app.getHttpServer())
+        .post(`/organizations/me/curricula/${curriculum.body.id}/subjects`)
+        .set(...auth(tokenA))
+        .send({ subjectId: subject.body.id, isCompulsory: true })
+        .expect(201);
+      expect(attached.body.curriculumId).toBe(curriculum.body.id);
+
+      const listedA = await request(app.getHttpServer())
+        .get("/organizations/me/curricula")
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(listedA.body).toHaveLength(1);
+      expect(listedA.body[0].subjects).toHaveLength(1);
+      expect(listedA.body[0].subjects[0].subject.code).toBe("MATH");
+
+      for (const path of ["subjects", "curricula"]) {
+        const res = await request(app.getHttpServer())
+          .get(`/organizations/me/${path}`)
+          .set(...auth(tokenB))
+          .expect(200);
+        expect(res.body).toEqual([]);
+      }
+    });
+
+    it("rejects attaching a subject to another tenant's curriculum, and creating a curriculum under another tenant's program (404)", async () => {
+      const campusA = await request(app.getHttpServer())
+        .post("/organizations/me/campuses")
+        .set(...auth(tokenA))
+        .send({ name: "Guard Academics Campus", code: "GACAD" })
+        .expect(201);
+      const facultyA = await request(app.getHttpServer())
+        .post("/organizations/me/faculties")
+        .set(...auth(tokenA))
+        .send({ campusId: campusA.body.id, name: "Guard Faculty", code: "GFAC2" })
+        .expect(201);
+      const departmentA = await request(app.getHttpServer())
+        .post("/organizations/me/departments")
+        .set(...auth(tokenA))
+        .send({ facultyId: facultyA.body.id, name: "Guard Dept", code: "GDEP2" })
+        .expect(201);
+      const programA = await request(app.getHttpServer())
+        .post("/organizations/me/programs")
+        .set(...auth(tokenA))
+        .send({ departmentId: departmentA.body.id, name: "Guard Program", code: "GPROG" })
+        .expect(201);
+      const curriculumA = await request(app.getHttpServer())
+        .post("/organizations/me/curricula")
+        .set(...auth(tokenA))
+        .send({ programId: programA.body.id, name: "Guard Curriculum", code: "GCURR" })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post("/organizations/me/curricula")
+        .set(...auth(tokenB))
+        .send({ programId: programA.body.id, name: "Sneaky Curriculum", code: "SNEAKC" })
+        .expect(404);
+
+      const subjectB = await request(app.getHttpServer())
+        .post("/organizations/me/subjects")
+        .set(...auth(tokenB))
+        .send({ name: "Sneaky Subject", code: "SNEAKS" })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/curricula/${curriculumA.body.id}/subjects`)
+        .set(...auth(tokenB))
+        .send({ subjectId: subjectB.body.id })
         .expect(404);
     });
   });

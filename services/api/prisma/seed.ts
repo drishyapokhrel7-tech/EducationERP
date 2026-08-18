@@ -28,7 +28,9 @@ const SYSTEM_ROLES = [
 
 // Resources that exist so far. Grows with each phase — Phase 1 added the
 // first four, Phase 2 slice 2a added the org-hierarchy six, slice 2b
-// added the staff six.
+// added the staff six, slice 2c added subject/curriculum (curriculum
+// covers curriculum_subjects too — attaching a subject to a curriculum
+// is gated as curriculum:manage, not a separate resource).
 const RESOURCES = [
   "organization",
   "campus",
@@ -46,6 +48,8 @@ const RESOURCES = [
   "employment_history",
   "qualification",
   "teacher_profile",
+  "subject",
+  "curriculum",
 ];
 const ACTIONS = Object.values(PermissionAction);
 

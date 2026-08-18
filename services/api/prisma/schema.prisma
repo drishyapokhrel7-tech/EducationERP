@@ -38,6 +38,9 @@ model Organization {
   employmentHistories EmploymentHistory[]
   qualifications      Qualification[]
   teacherProfiles     TeacherProfile[]
+  subjects            Subject[]
+  curricula           Curriculum[]
+  curriculumSubjects  CurriculumSubject[]
 
   @@map("organizations")
 }
@@ -110,6 +113,13 @@ model Program {
   // colleges (degrees) with no fixed vocabulary — plan §1 explicitly
   // forbids hard-coding institution-specific structures like this.
   level          String?
+  // Optional, generically applicable — not bachelor-specific despite
+  // reading that way: a school program could set durationSemesters to
+  // represent years just as validly. entranceExam is free text (e.g.
+  // "IOST", "CMAT", "None"), never an enum of specific exam boards.
+  durationSemesters Int?
+  creditHours       Int?
+  entranceExam      String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
   deletedAt      DateTime?
@@ -117,10 +127,72 @@ model Program {
   organization Organization @relation(fields: [organizationId], references: [id])
   department   Department   @relation(fields: [departmentId], references: [id])
   sections     Section[]
+  curricula    Curriculum[]
 
   @@unique([departmentId, code])
   @@index([organizationId])
   @@map("programs")
+}
+
+// ── Academic (plan §6 "Academic", subjects/curriculum slice) ───────────────
+// Subjects are an organization-wide catalog; a Curriculum names one
+// subject *combination* for a Program (e.g. a school program has one
+// curriculum, but a +2 Management program legitimately offers several
+// distinct combinations — modeled as separate Curriculum rows under the
+// same Program, not a single fixed list). Course/course_sections/
+// teaching_assignments/class_schedules/rooms/periods (the
+// scheduling-heavy remainder of plan §6 "Academic") are deferred to a
+// later slice once Student enrollment exists to schedule around.
+
+model Subject {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  code           String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization        Organization         @relation(fields: [organizationId], references: [id])
+  curriculumSubjects   CurriculumSubject[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+  @@map("subjects")
+}
+
+model Curriculum {
+  id             String   @id @default(uuid())
+  organizationId String
+  programId      String
+  name           String
+  code           String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id])
+  program      Program             @relation(fields: [programId], references: [id])
+  subjects     CurriculumSubject[]
+
+  @@unique([programId, code])
+  @@index([organizationId])
+  @@map("curricula")
+}
+
+model CurriculumSubject {
+  id             String   @id @default(uuid())
+  organizationId String
+  curriculumId   String
+  subjectId      String
+  isCompulsory   Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  curriculum   Curriculum   @relation(fields: [curriculumId], references: [id])
+  subject      Subject      @relation(fields: [subjectId], references: [id])
+
+  @@unique([curriculumId, subjectId])
+  @@index([organizationId])
+  @@map("curriculum_subjects")
 }
 
 model AcademicYear {

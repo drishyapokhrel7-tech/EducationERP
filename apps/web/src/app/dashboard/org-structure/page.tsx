@@ -213,10 +213,26 @@ export default function OrgStructurePage() {
         title="Programs"
         emptyLabel="No programs yet."
         items={programs.data}
-        renderItem={(p: { name: string; code: string; level: string | null }) => (
+        renderItem={(p: {
+          name: string;
+          code: string;
+          level: string | null;
+          durationSemesters: number | null;
+          creditHours: number | null;
+          entranceExam: string | null;
+        }) => (
           <span>
             {p.name} <span className="text-muted-foreground">{p.code}</span>
             {p.level ? <span className="text-muted-foreground"> · {p.level}</span> : null}
+            {p.durationSemesters ? (
+              <span className="text-muted-foreground"> · {p.durationSemesters} sem</span>
+            ) : null}
+            {p.creditHours ? (
+              <span className="text-muted-foreground"> · {p.creditHours} credit hrs</span>
+            ) : null}
+            {p.entranceExam ? (
+              <span className="text-muted-foreground"> · {p.entranceExam} entrance</span>
+            ) : null}
           </span>
         )}
       >

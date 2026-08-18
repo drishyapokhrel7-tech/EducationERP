@@ -1,4 +1,4 @@
-import { IsOptional, IsString, MinLength } from "class-validator";
+import { IsInt, IsOptional, IsPositive, IsString, MinLength } from "class-validator";
 
 export class CreateProgramDto {
   @IsString()
@@ -15,4 +15,18 @@ export class CreateProgramDto {
   @IsOptional()
   @IsString()
   level?: string;
+
+  @IsOptional()
+  @IsInt()
+  @IsPositive()
+  durationSemesters?: number;
+
+  @IsOptional()
+  @IsInt()
+  @IsPositive()
+  creditHours?: number;
+
+  @IsOptional()
+  @IsString()
+  entranceExam?: string;
 }

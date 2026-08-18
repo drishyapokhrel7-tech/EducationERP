@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
+  BookOpen,
   Building2,
   LayoutDashboard,
   LogOut,
@@ -18,6 +19,7 @@ const NAV = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { href: "/dashboard/org-structure", label: "Org structure", icon: Network },
   { href: "/dashboard/staff", label: "Staff", icon: Users },
+  { href: "/dashboard/academics", label: "Academics", icon: BookOpen },
 ];
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
