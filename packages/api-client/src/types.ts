@@ -462,3 +462,83 @@ export interface ImportResult {
   created: number;
   errors: ImportRowError[];
 }
+
+export interface Room {
+  id: string;
+  organizationId: string;
+  campusId: string;
+  name: string;
+  code: string;
+  capacity: number | null;
+  roomType: string | null;
+}
+
+export interface CreateRoomInput {
+  campusId: string;
+  name: string;
+  code: string;
+  capacity?: number;
+  roomType?: string;
+}
+
+export interface Period {
+  id: string;
+  organizationId: string;
+  name: string;
+  code: string;
+  sequence: number;
+  startTime: string;
+  endTime: string;
+}
+
+export interface CreatePeriodInput {
+  name: string;
+  code: string;
+  sequence: number;
+  startTime: string;
+  endTime: string;
+}
+
+export interface TeachingAssignment {
+  id: string;
+  organizationId: string;
+  employeeId: string;
+  subjectId: string;
+  sectionId: string;
+  termId: string;
+  employee: Employee;
+  subject: Subject;
+  section: Section;
+  term: Term;
+}
+
+export interface CreateTeachingAssignmentInput {
+  employeeId: string;
+  subjectId: string;
+  sectionId: string;
+  termId: string;
+}
+
+export interface ClassSchedule {
+  id: string;
+  organizationId: string;
+  termId: string;
+  teachingAssignmentId: string;
+  sectionId: string;
+  teacherId: string;
+  roomId: string;
+  periodId: string;
+  dayOfWeek: number;
+  room: Room;
+  period: Period;
+  section: Section;
+  teacher: Employee;
+  teachingAssignment: TeachingAssignment & { subject: Subject };
+}
+
+export interface CreateClassScheduleInput {
+  teachingAssignmentId: string;
+  roomId: string;
+  periodId: string;
+  dayOfWeek: number;
+}

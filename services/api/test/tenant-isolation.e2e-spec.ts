@@ -73,6 +73,12 @@ describe("Tenant isolation (e2e)", () => {
       // call here is its own short transaction; order still matters
       // (children before the parents they reference).
       const deleteOrder: string[] = [
+        // classSchedule references teachingAssignment/room/period/section/
+        // teacher(employee)/term, and teachingAssignment references
+        // employee/subject/section/term — both must go before every one
+        // of those parent tables, so they lead the whole list.
+        "classSchedule",
+        "teachingAssignment",
         "teacherProfile",
         "qualification",
         "employmentHistory",
@@ -97,6 +103,8 @@ describe("Tenant isolation (e2e)", () => {
         "program",
         "department",
         "faculty",
+        "room",
+        "period",
         "campus",
         "auditLog",
       ];
@@ -864,6 +872,185 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(tokenA))
         .attach("file", Buffer.from('studentCode,firstName\n"unterminated quote,x'), "bad.csv")
         .expect(400);
+    });
+  });
+
+  describe("timetable (room → period → teaching assignment → class schedule)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    async function buildTimetableTarget(token: string, suffix: string) {
+      const campus = await request(app.getHttpServer())
+        .post("/organizations/me/campuses")
+        .set(...auth(token))
+        .send({ name: `Timetable Campus ${suffix}`, code: `TTCAMP${suffix}` })
+        .expect(201);
+      const faculty = await request(app.getHttpServer())
+        .post("/organizations/me/faculties")
+        .set(...auth(token))
+        .send({ campusId: campus.body.id, name: `Timetable Faculty ${suffix}`, code: `TTFAC${suffix}` })
+        .expect(201);
+      const department = await request(app.getHttpServer())
+        .post("/organizations/me/departments")
+        .set(...auth(token))
+        .send({ facultyId: faculty.body.id, name: `Timetable Dept ${suffix}`, code: `TTDEP${suffix}` })
+        .expect(201);
+      const program = await request(app.getHttpServer())
+        .post("/organizations/me/programs")
+        .set(...auth(token))
+        .send({ departmentId: department.body.id, name: `Timetable Program ${suffix}`, code: `TTPROG${suffix}` })
+        .expect(201);
+      const year = await request(app.getHttpServer())
+        .post("/organizations/me/academic-years")
+        .set(...auth(token))
+        .send({ name: `Timetable Year ${suffix}`, startDate: "2099-08-01", endDate: "2100-06-30" })
+        .expect(201);
+      const term = await request(app.getHttpServer())
+        .post("/organizations/me/terms")
+        .set(...auth(token))
+        .send({
+          academicYearId: year.body.id,
+          name: `Timetable Term ${suffix}`,
+          code: `TTT${suffix}`,
+          sequence: 1,
+          startDate: "2099-08-01",
+          endDate: "2099-12-15",
+        })
+        .expect(201);
+      const section = await request(app.getHttpServer())
+        .post("/organizations/me/sections")
+        .set(...auth(token))
+        .send({ programId: program.body.id, termId: term.body.id, name: `Timetable Section ${suffix}`, code: `TS${suffix}` })
+        .expect(201);
+      const staffType = await request(app.getHttpServer())
+        .post("/organizations/me/staff-types")
+        .set(...auth(token))
+        .send({ name: `Timetable Staff Type ${suffix}`, code: `TST${suffix}` })
+        .expect(201);
+      const designation = await request(app.getHttpServer())
+        .post("/organizations/me/designations")
+        .set(...auth(token))
+        .send({ name: `Timetable Designation ${suffix}`, code: `TDS${suffix}` })
+        .expect(201);
+      const employee = await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(token))
+        .send({
+          staffTypeId: staffType.body.id,
+          designationId: designation.body.id,
+          employeeCode: `TTEMP-${suffix}`,
+          firstName: "Timetable",
+          lastName: `Teacher${suffix}`,
+          email: `ttteacher-${suffix}-${run}@rls-e2e.test`,
+          dateOfJoining: "2026-01-01",
+        })
+        .expect(201);
+      const subject = await request(app.getHttpServer())
+        .post("/organizations/me/subjects")
+        .set(...auth(token))
+        .send({ name: `Timetable Subject ${suffix}`, code: `TSUB${suffix}` })
+        .expect(201);
+      const room = await request(app.getHttpServer())
+        .post("/organizations/me/rooms")
+        .set(...auth(token))
+        .send({ campusId: campus.body.id, name: `Timetable Room ${suffix}`, code: `TRM${suffix}` })
+        .expect(201);
+      const period = await request(app.getHttpServer())
+        .post("/organizations/me/periods")
+        .set(...auth(token))
+        .send({ name: `Period ${suffix}`, code: `TP${suffix}`, sequence: 1, startTime: "09:00", endTime: "09:45" })
+        .expect(201);
+      return {
+        campusId: campus.body.id,
+        termId: term.body.id,
+        sectionId: section.body.id,
+        employeeId: employee.body.id,
+        subjectId: subject.body.id,
+        roomId: room.body.id,
+        periodId: period.body.id,
+      };
+    }
+
+    it("builds a full teaching-assignment + schedule chain for org A, scoped to it", async () => {
+      const t = await buildTimetableTarget(tokenA, "TTA");
+
+      const assignment = await request(app.getHttpServer())
+        .post("/organizations/me/teaching-assignments")
+        .set(...auth(tokenA))
+        .send({ employeeId: t.employeeId, subjectId: t.subjectId, sectionId: t.sectionId, termId: t.termId })
+        .expect(201);
+      expect(assignment.body.organizationId).toBe(orgAId);
+
+      const schedule = await request(app.getHttpServer())
+        .post("/organizations/me/class-schedules")
+        .set(...auth(tokenA))
+        .send({ teachingAssignmentId: assignment.body.id, roomId: t.roomId, periodId: t.periodId, dayOfWeek: 1 })
+        .expect(201);
+      expect(schedule.body.sectionId).toBe(t.sectionId);
+      expect(schedule.body.teacherId).toBe(t.employeeId);
+
+      for (const path of ["rooms", "periods", "teaching-assignments", "class-schedules"]) {
+        const res = await request(app.getHttpServer())
+          .get(`/organizations/me/${path}`)
+          .set(...auth(tokenB))
+          .expect(200);
+        expect(res.body).toEqual([]);
+      }
+    });
+
+    it("rejects creating a room under another tenant's campus, and a teaching assignment under another tenant's section (404)", async () => {
+      const t = await buildTimetableTarget(tokenA, "TTGUARD");
+
+      await request(app.getHttpServer())
+        .post("/organizations/me/rooms")
+        .set(...auth(tokenB))
+        .send({ campusId: t.campusId, name: "Sneaky Room", code: "SNEAKRM" })
+        .expect(404);
+
+      await request(app.getHttpServer())
+        .post("/organizations/me/teaching-assignments")
+        .set(...auth(tokenB))
+        .send({ employeeId: t.employeeId, subjectId: t.subjectId, sectionId: t.sectionId, termId: t.termId })
+        .expect(404);
+    });
+
+    it("rejects double-booking the same room, section or teacher in one term/day/period (409)", async () => {
+      const t = await buildTimetableTarget(tokenA, "TTCONF");
+
+      const assignment = await request(app.getHttpServer())
+        .post("/organizations/me/teaching-assignments")
+        .set(...auth(tokenA))
+        .send({ employeeId: t.employeeId, subjectId: t.subjectId, sectionId: t.sectionId, termId: t.termId })
+        .expect(201);
+
+      // Assigning the same section+subject+term a second time is rejected
+      // before it ever reaches the schedule step.
+      await request(app.getHttpServer())
+        .post("/organizations/me/teaching-assignments")
+        .set(...auth(tokenA))
+        .send({ employeeId: t.employeeId, subjectId: t.subjectId, sectionId: t.sectionId, termId: t.termId })
+        .expect(409);
+
+      await request(app.getHttpServer())
+        .post("/organizations/me/class-schedules")
+        .set(...auth(tokenA))
+        .send({ teachingAssignmentId: assignment.body.id, roomId: t.roomId, periodId: t.periodId, dayOfWeek: 2 })
+        .expect(201);
+
+      // Same room, same day/period, different section/teacher -> conflict.
+      // A second independent target is the simplest way to get a
+      // different section+teacher sharing the same term.
+      const t2 = await buildTimetableTarget(tokenA, "TTCONF2");
+      const assignment2 = await request(app.getHttpServer())
+        .post("/organizations/me/teaching-assignments")
+        .set(...auth(tokenA))
+        .send({ employeeId: t2.employeeId, subjectId: t2.subjectId, sectionId: t2.sectionId, termId: t.termId })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post("/organizations/me/class-schedules")
+        .set(...auth(tokenA))
+        .send({ teachingAssignmentId: assignment2.body.id, roomId: t.roomId, periodId: t.periodId, dayOfWeek: 2 })
+        .expect(409);
     });
   });
 });

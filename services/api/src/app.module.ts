@@ -8,6 +8,7 @@ import { StaffModule } from "./modules/staff/staff.module";
 import { AcademicsModule } from "./modules/academics/academics.module";
 import { StudentsModule } from "./modules/students/students.module";
 import { AdmissionsModule } from "./modules/admissions/admissions.module";
+import { TimetableModule } from "./modules/timetable/timetable.module";
 import { QueueModule } from "./queue/queue.module";
 import { HealthController } from "./common/health.controller";
 
@@ -22,6 +23,7 @@ import { HealthController } from "./common/health.controller";
     AcademicsModule,
     StudentsModule,
     AdmissionsModule,
+    TimetableModule,
     QueueModule,
   ],
   controllers: [HealthController],

@@ -54,6 +54,14 @@ import type {
   UpdateAdmissionStatusInput,
   UpdateStudentStatusInput,
   UpsertTeacherProfileInput,
+  Room,
+  CreateRoomInput,
+  Period,
+  CreatePeriodInput,
+  TeachingAssignment,
+  CreateTeachingAssignmentInput,
+  ClassSchedule,
+  CreateClassScheduleInput,
 } from "./types";
 
 export class ApiError extends Error {
@@ -314,6 +322,29 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       return requestForm<ImportResult>("/organizations/me/students/import", form);
     },
     exportStudents: () => requestBlob("/organizations/me/students/export"),
+
+    listRooms: () => request<Room[]>("/organizations/me/rooms"),
+    createRoom: (input: CreateRoomInput) =>
+      request<Room>("/organizations/me/rooms", { method: "POST", body: JSON.stringify(input) }),
+
+    listPeriods: () => request<Period[]>("/organizations/me/periods"),
+    createPeriod: (input: CreatePeriodInput) =>
+      request<Period>("/organizations/me/periods", { method: "POST", body: JSON.stringify(input) }),
+
+    listTeachingAssignments: () =>
+      request<TeachingAssignment[]>("/organizations/me/teaching-assignments"),
+    createTeachingAssignment: (input: CreateTeachingAssignmentInput) =>
+      request<TeachingAssignment>("/organizations/me/teaching-assignments", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+
+    listClassSchedules: () => request<ClassSchedule[]>("/organizations/me/class-schedules"),
+    createClassSchedule: (input: CreateClassScheduleInput) =>
+      request<ClassSchedule>("/organizations/me/class-schedules", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
   };
 }
 

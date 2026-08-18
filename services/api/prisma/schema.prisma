@@ -48,6 +48,10 @@ model Organization {
   studentStatusHistories StudentStatusHistory[]
   admissionApplications AdmissionApplication[]
   admissionStatusHistories AdmissionStatusHistory[]
+  rooms                 Room[]
+  periods               Period[]
+  teachingAssignments   TeachingAssignment[]
+  classSchedules        ClassSchedule[]
 
   @@map("organizations")
 }
@@ -64,6 +68,7 @@ model Campus {
   organization Organization @relation(fields: [organizationId], references: [id])
   userRoles    UserRole[]
   faculties    Faculty[]
+  rooms        Room[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -163,6 +168,7 @@ model Subject {
 
   organization        Organization         @relation(fields: [organizationId], references: [id])
   curriculumSubjects   CurriculumSubject[]
+  teachingAssignments  TeachingAssignment[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -238,6 +244,8 @@ model Term {
   academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
   sections     Section[]
   studentEnrollments StudentEnrollment[]
+  teachingAssignments TeachingAssignment[]
+  classSchedules      ClassSchedule[]
 
   @@unique([academicYearId, code])
   @@index([organizationId])
@@ -260,6 +268,8 @@ model Section {
   program      Program      @relation(fields: [programId], references: [id])
   term         Term         @relation(fields: [termId], references: [id])
   studentEnrollments StudentEnrollment[]
+  teachingAssignments TeachingAssignment[]
+  classSchedules      ClassSchedule[]
 
   @@unique([termId, programId, code])
   @@index([organizationId])
@@ -516,6 +526,8 @@ model Employee {
   employmentHistory  EmploymentHistory[]
   qualifications     Qualification[]
   teacherProfile     TeacherProfile?
+  teachingAssignments TeachingAssignment[]
+  classSchedulesAsTeacher ClassSchedule[]
 
   @@unique([organizationId, employeeCode])
   @@unique([organizationId, email])
@@ -779,4 +791,118 @@ model AdmissionStatusHistory {
   @@index([organizationId])
   @@index([applicationId])
   @@map("admission_status_history")
+}
+
+// ── Timetable & Scheduling (plan §6 "Academic": rooms, periods,
+// teaching_assignments, class_schedules — Phase 3 slice 3a) ────────────────
+// Section/Program/Term/Subject/Employee already exist from Phase 2; this
+// slice is the first piece of Phase 3 (Teaching, Learning, Timetable &
+// Attendance) and everything else in that phase (syllabus, lesson plans,
+// class sessions, "My Classes Today") is built on top of the weekly
+// schedule this establishes.
+
+model Room {
+  id             String   @id @default(uuid())
+  organizationId String
+  campusId       String
+  name           String
+  code           String
+  capacity       Int?
+  // Free text, not an enum — same reasoning as Program.level: room
+  // taxonomies (classroom/lab/auditorium/workshop) vary by institution
+  // type and plan §1 forbids hard-coding this kind of vocabulary.
+  roomType       String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  deletedAt      DateTime?
+
+  organization   Organization    @relation(fields: [organizationId], references: [id])
+  campus         Campus          @relation(fields: [campusId], references: [id])
+  classSchedules ClassSchedule[]
+
+  @@unique([campusId, code])
+  @@index([organizationId])
+  @@map("rooms")
+}
+
+model Period {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  code           String
+  // Ordering within a day (Period 1, Period 2, ...) — display only, not
+  // used for conflict checks (dayOfWeek + periodId does that).
+  sequence       Int
+  // "HH:mm" 24-hour strings, not a Time/DateTime column — a period is a
+  // recurring daily slot with no date component, and Postgres's `time`
+  // type doesn't map to a native Prisma scalar without extra tooling.
+  startTime      String
+  endTime        String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   Organization    @relation(fields: [organizationId], references: [id])
+  classSchedules ClassSchedule[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+  @@map("periods")
+}
+
+model TeachingAssignment {
+  id             String   @id @default(uuid())
+  organizationId String
+  employeeId     String
+  subjectId      String
+  sectionId      String
+  termId         String
+  createdAt      DateTime @default(now())
+
+  organization   Organization    @relation(fields: [organizationId], references: [id])
+  employee       Employee        @relation(fields: [employeeId], references: [id])
+  subject        Subject         @relation(fields: [subjectId], references: [id])
+  section        Section         @relation(fields: [sectionId], references: [id])
+  term           Term            @relation(fields: [termId], references: [id])
+  classSchedules ClassSchedule[]
+
+  // One teacher per subject+section+term — re-assigning means changing
+  // this row, not stacking a second one alongside it.
+  @@unique([sectionId, subjectId, termId])
+  @@index([organizationId])
+  @@map("teaching_assignments")
+}
+
+model ClassSchedule {
+  id                   String   @id @default(uuid())
+  organizationId       String
+  termId               String
+  teachingAssignmentId String
+  // sectionId and teacherId are denormalized off teachingAssignment
+  // (not just a convenience) — Postgres unique constraints need real
+  // columns to enforce "no double-booking" at the database level, not
+  // just in application code, the same reasoning every prior slice
+  // applied to FK-vs-RLS parent guards.
+  sectionId            String
+  teacherId            String
+  roomId               String
+  periodId             String
+  // 1=Monday .. 7=Sunday (ISO 8601), not an enum — day-name vocabularies
+  // and week structures vary by institution/locale (plan §1).
+  dayOfWeek            Int
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  organization       Organization       @relation(fields: [organizationId], references: [id])
+  term                Term               @relation(fields: [termId], references: [id])
+  teachingAssignment  TeachingAssignment @relation(fields: [teachingAssignmentId], references: [id])
+  section             Section            @relation(fields: [sectionId], references: [id])
+  teacher             Employee           @relation(fields: [teacherId], references: [id])
+  room                Room               @relation(fields: [roomId], references: [id])
+  period              Period             @relation(fields: [periodId], references: [id])
+
+  @@unique([termId, roomId, dayOfWeek, periodId], map: "class_schedules_room_slot_key")
+  @@unique([termId, sectionId, dayOfWeek, periodId], map: "class_schedules_section_slot_key")
+  @@unique([termId, teacherId, dayOfWeek, periodId], map: "class_schedules_teacher_slot_key")
+  @@index([organizationId])
+  @@map("class_schedules")
 }

@@ -6,6 +6,7 @@ import Link from "next/link";
 import {
   BookOpen,
   Building2,
+  CalendarClock,
   ClipboardList,
   GraduationCap,
   LayoutDashboard,
@@ -24,6 +25,7 @@ const NAV = [
   { href: "/dashboard/academics", label: "Academics", icon: BookOpen },
   { href: "/dashboard/students", label: "Students", icon: GraduationCap },
   { href: "/dashboard/admissions", label: "Admissions", icon: ClipboardList },
+  { href: "/dashboard/timetable", label: "Timetable", icon: CalendarClock },
 ];
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {

@@ -1,0 +1,172 @@
+import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { PrismaService } from "../../prisma/prisma.service";
+import { CreateRoomDto } from "./dto/create-room.dto";
+import { CreatePeriodDto } from "./dto/create-period.dto";
+import { CreateTeachingAssignmentDto } from "./dto/create-teaching-assignment.dto";
+import { CreateClassScheduleDto } from "./dto/create-class-schedule.dto";
+
+/**
+ * Same FK-vs-RLS parent-guard pattern as every prior slice's service.
+ * ClassSchedule additionally denormalizes sectionId/teacherId off its
+ * teachingAssignment so Postgres's own unique constraints (see the
+ * schema comment on ClassSchedule) can enforce "no double-booking" —
+ * this service pre-checks those same three dimensions before insert so
+ * a conflict comes back as a specific 409 message, not a raw constraint
+ * violation.
+ */
+@Injectable()
+export class TimetableService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  listRooms(organizationId: string) {
+    return this.prisma.withTenant(organizationId, (tx) =>
+      tx.room.findMany({ where: { organizationId, deletedAt: null } }),
+    );
+  }
+
+  async createRoom(organizationId: string, dto: CreateRoomDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const campus = await tx.campus.findUnique({ where: { id: dto.campusId } });
+      if (!campus) throw new NotFoundException("Campus not found");
+      return tx.room.create({
+        data: {
+          organizationId,
+          campusId: dto.campusId,
+          name: dto.name,
+          code: dto.code,
+          capacity: dto.capacity,
+          roomType: dto.roomType,
+        },
+      });
+    });
+  }
+
+  listPeriods(organizationId: string) {
+    return this.prisma.withTenant(organizationId, (tx) =>
+      tx.period.findMany({ where: { organizationId }, orderBy: { sequence: "asc" } }),
+    );
+  }
+
+  createPeriod(organizationId: string, dto: CreatePeriodDto) {
+    return this.prisma.withTenant(organizationId, (tx) =>
+      tx.period.create({
+        data: {
+          organizationId,
+          name: dto.name,
+          code: dto.code,
+          sequence: dto.sequence,
+          startTime: dto.startTime,
+          endTime: dto.endTime,
+        },
+      }),
+    );
+  }
+
+  listTeachingAssignments(organizationId: string) {
+    return this.prisma.withTenant(organizationId, (tx) =>
+      tx.teachingAssignment.findMany({
+        where: { organizationId },
+        include: { employee: true, subject: true, section: true, term: true },
+      }),
+    );
+  }
+
+  async createTeachingAssignment(organizationId: string, dto: CreateTeachingAssignmentDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const [employee, subject, section, term] = await Promise.all([
+        tx.employee.findUnique({ where: { id: dto.employeeId } }),
+        tx.subject.findUnique({ where: { id: dto.subjectId } }),
+        tx.section.findUnique({ where: { id: dto.sectionId } }),
+        tx.term.findUnique({ where: { id: dto.termId } }),
+      ]);
+      if (!employee) throw new NotFoundException("Employee not found");
+      if (!subject) throw new NotFoundException("Subject not found");
+      if (!section) throw new NotFoundException("Section not found");
+      if (!term) throw new NotFoundException("Term not found");
+
+      const existing = await tx.teachingAssignment.findUnique({
+        where: {
+          sectionId_subjectId_termId: {
+            sectionId: dto.sectionId,
+            subjectId: dto.subjectId,
+            termId: dto.termId,
+          },
+        },
+      });
+      if (existing) {
+        throw new ConflictException(
+          "This section already has a teacher assigned for this subject and term",
+        );
+      }
+
+      return tx.teachingAssignment.create({
+        data: {
+          organizationId,
+          employeeId: dto.employeeId,
+          subjectId: dto.subjectId,
+          sectionId: dto.sectionId,
+          termId: dto.termId,
+        },
+      });
+    });
+  }
+
+  listClassSchedules(organizationId: string) {
+    return this.prisma.withTenant(organizationId, (tx) =>
+      tx.classSchedule.findMany({
+        where: { organizationId },
+        include: {
+          room: true,
+          period: true,
+          section: true,
+          teacher: true,
+          teachingAssignment: { include: { subject: true } },
+        },
+        orderBy: [{ dayOfWeek: "asc" }, { period: { sequence: "asc" } }],
+      }),
+    );
+  }
+
+  async createClassSchedule(organizationId: string, dto: CreateClassScheduleDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const [teachingAssignment, room, period] = await Promise.all([
+        tx.teachingAssignment.findUnique({ where: { id: dto.teachingAssignmentId } }),
+        tx.room.findUnique({ where: { id: dto.roomId } }),
+        tx.period.findUnique({ where: { id: dto.periodId } }),
+      ]);
+      if (!teachingAssignment) throw new NotFoundException("Teaching assignment not found");
+      if (!room) throw new NotFoundException("Room not found");
+      if (!period) throw new NotFoundException("Period not found");
+
+      const { termId, sectionId, employeeId: teacherId } = teachingAssignment;
+
+      const [roomConflict, sectionConflict, teacherConflict] = await Promise.all([
+        tx.classSchedule.findFirst({
+          where: { termId, roomId: dto.roomId, dayOfWeek: dto.dayOfWeek, periodId: dto.periodId },
+        }),
+        tx.classSchedule.findFirst({
+          where: { termId, sectionId, dayOfWeek: dto.dayOfWeek, periodId: dto.periodId },
+        }),
+        tx.classSchedule.findFirst({
+          where: { termId, teacherId, dayOfWeek: dto.dayOfWeek, periodId: dto.periodId },
+        }),
+      ]);
+      if (roomConflict) throw new ConflictException("Room is already booked for this day and period");
+      if (sectionConflict) throw new ConflictException("Section already has a class in this day and period");
+      if (teacherConflict) throw new ConflictException("Teacher is already teaching another class in this day and period");
+
+      return tx.classSchedule.create({
+        data: {
+          organizationId,
+          termId,
+          teachingAssignmentId: dto.teachingAssignmentId,
+          sectionId,
+          teacherId,
+          roomId: dto.roomId,
+          periodId: dto.periodId,
+          dayOfWeek: dto.dayOfWeek,
+        },
+      });
+    });
+  }
+}
