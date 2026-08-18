@@ -129,6 +129,52 @@ const COLLEGE_PROGRAMS = [
   },
 ];
 
+// A handful of synthetic students (fictional names, not real people)
+// enrolled across a school program and a college program, so the demo
+// shows the full Student → Guardian → Enrollment chain working, not
+// just an empty list.
+const STUDENTS: {
+  code: string;
+  firstName: string;
+  lastName: string;
+  dateOfBirth: string;
+  gender: string;
+  programCode: string;
+  sectionCode: string;
+  guardian: { firstName: string; lastName: string; phone: string; relationship: string };
+}[] = [
+  {
+    code: "STU-0001",
+    firstName: "Aarav",
+    lastName: "Sharma",
+    dateOfBirth: "2018-03-15",
+    gender: "Male",
+    programCode: "PRIMARY",
+    sectionCode: "G3",
+    guardian: { firstName: "Bishnu", lastName: "Sharma", phone: "9801234561", relationship: "Father" },
+  },
+  {
+    code: "STU-0002",
+    firstName: "Sita",
+    lastName: "Gurung",
+    dateOfBirth: "2013-07-22",
+    gender: "Female",
+    programCode: "SECONDARY",
+    sectionCode: "G8",
+    guardian: { firstName: "Kamala", lastName: "Gurung", phone: "9801234562", relationship: "Mother" },
+  },
+  {
+    code: "STU-0003",
+    firstName: "Rohan",
+    lastName: "Thapa",
+    dateOfBirth: "2007-11-05",
+    gender: "Male",
+    programCode: "BSCCSIT",
+    sectionCode: "SEM1",
+    guardian: { firstName: "Suresh", lastName: "Thapa", phone: "9801234563", relationship: "Father" },
+  },
+];
+
 async function main() {
   const organization = await prisma.organization.upsert({
     where: { slug: ORG_SLUG },
@@ -215,6 +261,52 @@ async function main() {
     );
   }
 
+  const collegeProgramIds: Record<string, string> = {};
+  for (const p of COLLEGE_PROGRAMS) {
+    const program = await prisma.program.findFirst({ where: { departmentId: collegeDept.id, code: p.code } });
+    if (program) collegeProgramIds[p.code] = program.id;
+  }
+  const allProgramIds = { ...schoolProgramIds, ...collegeProgramIds };
+
+  const academicYear = await upsertAcademicYear(organization.id, "2026-2027", "2026-08-01", "2027-06-30");
+  const term = await upsertTerm(organization.id, academicYear.id, "Term 1", "T1", 1, "2026-08-01", "2026-12-15");
+
+  const sectionIds: Record<string, string> = {};
+  for (const s of [
+    { programCode: "PRIMARY", name: "Grade 3", code: "G3", capacity: 30 },
+    { programCode: "SECONDARY", name: "Grade 8", code: "G8", capacity: 30 },
+    { programCode: "BSCCSIT", name: "Semester 1", code: "SEM1", capacity: 40 },
+  ]) {
+    const section = await upsertSection(
+      organization.id,
+      allProgramIds[s.programCode],
+      term.id,
+      s.name,
+      s.code,
+      s.capacity,
+    );
+    sectionIds[s.code] = section.id;
+  }
+
+  for (const s of STUDENTS) {
+    const student = await upsertStudent(organization.id, s.code, s.firstName, s.lastName, s.dateOfBirth, s.gender);
+    const guardian = await upsertGuardian(
+      organization.id,
+      s.guardian.firstName,
+      s.guardian.lastName,
+      s.guardian.phone,
+    );
+    await upsertStudentGuardian(organization.id, student.id, guardian.id, s.guardian.relationship, true);
+    await upsertEnrollment(
+      organization.id,
+      student.id,
+      allProgramIds[s.programCode],
+      sectionIds[s.sectionCode],
+      term.id,
+      "2026-08-01",
+    );
+  }
+
   // eslint-disable-next-line no-console
   console.log(`Demo org ready: ${organization.name} (slug: ${organization.slug})`);
   // eslint-disable-next-line no-console
@@ -284,6 +376,101 @@ async function upsertCurriculumWithSubjects(
     }
   }
   return curriculum;
+}
+
+async function upsertAcademicYear(organizationId: string, name: string, startDate: string, endDate: string) {
+  const existing = await prisma.academicYear.findFirst({ where: { organizationId, name } });
+  if (existing) return existing;
+  return prisma.academicYear.create({
+    data: { organizationId, name, startDate: new Date(startDate), endDate: new Date(endDate), isCurrent: true },
+  });
+}
+
+async function upsertTerm(
+  organizationId: string,
+  academicYearId: string,
+  name: string,
+  code: string,
+  sequence: number,
+  startDate: string,
+  endDate: string,
+) {
+  const existing = await prisma.term.findFirst({ where: { academicYearId, code } });
+  if (existing) return existing;
+  return prisma.term.create({
+    data: {
+      organizationId,
+      academicYearId,
+      name,
+      code,
+      sequence,
+      startDate: new Date(startDate),
+      endDate: new Date(endDate),
+    },
+  });
+}
+
+async function upsertSection(
+  organizationId: string,
+  programId: string,
+  termId: string,
+  name: string,
+  code: string,
+  capacity: number,
+) {
+  const existing = await prisma.section.findFirst({ where: { termId, programId, code } });
+  if (existing) return existing;
+  return prisma.section.create({ data: { organizationId, programId, termId, name, code, capacity } });
+}
+
+async function upsertStudent(
+  organizationId: string,
+  studentCode: string,
+  firstName: string,
+  lastName: string,
+  dateOfBirth: string,
+  gender: string,
+) {
+  const existing = await prisma.student.findFirst({ where: { organizationId, studentCode } });
+  if (existing) return existing;
+  return prisma.student.create({
+    data: { organizationId, studentCode, firstName, lastName, dateOfBirth: new Date(dateOfBirth), gender },
+  });
+}
+
+async function upsertGuardian(organizationId: string, firstName: string, lastName: string, phone: string) {
+  const existing = await prisma.guardian.findFirst({ where: { organizationId, phone } });
+  if (existing) return existing;
+  return prisma.guardian.create({ data: { organizationId, firstName, lastName, phone } });
+}
+
+async function upsertStudentGuardian(
+  organizationId: string,
+  studentId: string,
+  guardianId: string,
+  relationship: string,
+  isPrimaryContact: boolean,
+) {
+  const existing = await prisma.studentGuardian.findFirst({ where: { studentId, guardianId } });
+  if (existing) return existing;
+  return prisma.studentGuardian.create({
+    data: { organizationId, studentId, guardianId, relationship, isPrimaryContact },
+  });
+}
+
+async function upsertEnrollment(
+  organizationId: string,
+  studentId: string,
+  programId: string,
+  sectionId: string,
+  termId: string,
+  enrollmentDate: string,
+) {
+  const existing = await prisma.studentEnrollment.findFirst({ where: { studentId, termId } });
+  if (existing) return existing;
+  return prisma.studentEnrollment.create({
+    data: { organizationId, studentId, programId, sectionId, termId, enrollmentDate: new Date(enrollmentDate) },
+  });
 }
 
 main()

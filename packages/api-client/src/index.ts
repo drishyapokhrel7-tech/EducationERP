@@ -3,6 +3,7 @@ export * from "./types";
 import type {
   AcademicYear,
   AttachCurriculumSubjectInput,
+  AttachGuardianInput,
   AuthTokens,
   Campus,
   CreateAcademicYearInput,
@@ -12,11 +13,14 @@ import type {
   CreateDesignationInput,
   CreateEmployeeInput,
   CreateEmploymentHistoryInput,
+  CreateEnrollmentInput,
   CreateFacultyInput,
+  CreateGuardianInput,
   CreateProgramInput,
   CreateQualificationInput,
   CreateSectionInput,
   CreateStaffTypeInput,
+  CreateStudentInput,
   CreateSubjectInput,
   CreateTermInput,
   Curriculum,
@@ -26,6 +30,7 @@ import type {
   Employee,
   EmploymentHistory,
   Faculty,
+  Guardian,
   LoginInput,
   Organization,
   Program,
@@ -34,9 +39,14 @@ import type {
   SafeUser,
   Section,
   StaffType,
+  Student,
+  StudentEnrollment,
+  StudentGuardian,
+  StudentStatusHistoryEntry,
   Subject,
   TeacherProfile,
   Term,
+  UpdateStudentStatusInput,
   UpsertTeacherProfileInput,
 } from "./types";
 
@@ -205,6 +215,41 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
     attachCurriculumSubject: (curriculumId: string, input: AttachCurriculumSubjectInput) =>
       request<CurriculumSubject>(`/organizations/me/curricula/${curriculumId}/subjects`, {
         method: "POST",
+        body: JSON.stringify(input),
+      }),
+
+    listStudents: () => request<Student[]>("/organizations/me/students"),
+    createStudent: (input: CreateStudentInput) =>
+      request<Student>("/organizations/me/students", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+
+    listGuardians: () => request<Guardian[]>("/organizations/me/guardians"),
+    createGuardian: (input: CreateGuardianInput) =>
+      request<Guardian>("/organizations/me/guardians", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    attachGuardian: (studentId: string, input: AttachGuardianInput) =>
+      request<StudentGuardian>(`/organizations/me/students/${studentId}/guardians`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+
+    listEnrollments: (studentId: string) =>
+      request<StudentEnrollment[]>(`/organizations/me/students/${studentId}/enrollments`),
+    createEnrollment: (studentId: string, input: CreateEnrollmentInput) =>
+      request<StudentEnrollment>(`/organizations/me/students/${studentId}/enrollments`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+
+    listStatusHistory: (studentId: string) =>
+      request<StudentStatusHistoryEntry[]>(`/organizations/me/students/${studentId}/status-history`),
+    updateStudentStatus: (studentId: string, input: UpdateStudentStatusInput) =>
+      request<StudentStatusHistoryEntry>(`/organizations/me/students/${studentId}/status`, {
+        method: "PUT",
         body: JSON.stringify(input),
       }),
   };

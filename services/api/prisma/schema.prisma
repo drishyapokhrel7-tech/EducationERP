@@ -41,6 +41,11 @@ model Organization {
   subjects            Subject[]
   curricula           Curriculum[]
   curriculumSubjects  CurriculumSubject[]
+  students            Student[]
+  guardians           Guardian[]
+  studentGuardians    StudentGuardian[]
+  studentEnrollments  StudentEnrollment[]
+  studentStatusHistories StudentStatusHistory[]
 
   @@map("organizations")
 }
@@ -128,6 +133,7 @@ model Program {
   department   Department   @relation(fields: [departmentId], references: [id])
   sections     Section[]
   curricula    Curriculum[]
+  studentEnrollments StudentEnrollment[]
 
   @@unique([departmentId, code])
   @@index([organizationId])
@@ -228,6 +234,7 @@ model Term {
   organization Organization @relation(fields: [organizationId], references: [id])
   academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
   sections     Section[]
+  studentEnrollments StudentEnrollment[]
 
   @@unique([academicYearId, code])
   @@index([organizationId])
@@ -249,6 +256,7 @@ model Section {
   organization Organization @relation(fields: [organizationId], references: [id])
   program      Program      @relation(fields: [programId], references: [id])
   term         Term         @relation(fields: [termId], references: [id])
+  studentEnrollments StudentEnrollment[]
 
   @@unique([termId, programId, code])
   @@index([organizationId])
@@ -282,6 +290,7 @@ model User {
   loginEvents  LoginEvent[]
   auditLogs    AuditLog[]
   employee     Employee?
+  student      Student?
 
   @@index([organizationId])
   @@map("users")
@@ -563,4 +572,137 @@ model TeacherProfile {
 
   @@index([organizationId])
   @@map("teacher_profiles")
+}
+
+// ── Student (plan §6 "Student") ─────────────────────────────────────────────
+// student_enrollments/student_programs/student_sections from the plan are
+// collapsed into one StudentEnrollment table: which program, section and
+// term a student is in for a given stretch is one coherent fact here, not
+// three independently-varying ones — same "collapse when the shape is
+// shared" call made for the org-hierarchy and staff slices. Deferred:
+// student_addresses/student_photos/student_identifiers (no pressing need
+// yet, easy to add as columns or tables later without a redesign) and
+// student_documents (needs the Documents & Certificates domain, a later
+// phase).
+
+enum StudentStatus {
+  ACTIVE
+  INACTIVE
+  GRADUATED
+  TRANSFERRED
+  WITHDRAWN
+}
+
+model Student {
+  id             String        @id @default(uuid())
+  organizationId String
+  // Set only if/when the student gets a portal login (plan §13 Student
+  // dashboard) — not required for the administrative record to exist.
+  userId         String?       @unique
+  studentCode    String
+  firstName      String
+  lastName       String
+  dateOfBirth    DateTime
+  // Free text, not an enum — plan §1 forbids hard-coding
+  // institution-specific vocabularies, and gender categories used on
+  // admission forms vary by institution/jurisdiction.
+  gender         String?
+  status         StudentStatus @default(ACTIVE)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
+
+  organization  Organization        @relation(fields: [organizationId], references: [id])
+  user          User?               @relation(fields: [userId], references: [id])
+  guardians     StudentGuardian[]
+  enrollments   StudentEnrollment[]
+  statusHistory StudentStatusHistory[]
+
+  @@unique([organizationId, studentCode])
+  @@index([organizationId])
+  @@map("students")
+}
+
+model Guardian {
+  id             String   @id @default(uuid())
+  organizationId String
+  firstName      String
+  lastName       String
+  phone          String
+  email          String?
+  occupation     String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id])
+  students     StudentGuardian[]
+
+  @@index([organizationId])
+  @@map("guardians")
+}
+
+model StudentGuardian {
+  id               String   @id @default(uuid())
+  organizationId   String
+  studentId        String
+  guardianId       String
+  // Free text ("Father", "Mother", "Guardian", ...) — plan §1 again;
+  // family structures aren't a fixed enum.
+  relationship     String
+  isPrimaryContact Boolean  @default(false)
+  createdAt        DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  student      Student      @relation(fields: [studentId], references: [id])
+  guardian     Guardian     @relation(fields: [guardianId], references: [id])
+
+  @@unique([studentId, guardianId])
+  @@index([organizationId])
+  @@map("student_guardians")
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  COMPLETED
+  WITHDRAWN
+}
+
+model StudentEnrollment {
+  id             String           @id @default(uuid())
+  organizationId String
+  studentId      String
+  programId      String
+  sectionId      String
+  termId         String
+  enrollmentDate DateTime
+  status         EnrollmentStatus @default(ACTIVE)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  student      Student      @relation(fields: [studentId], references: [id])
+  program      Program      @relation(fields: [programId], references: [id])
+  section      Section      @relation(fields: [sectionId], references: [id])
+  term         Term         @relation(fields: [termId], references: [id])
+
+  @@unique([studentId, termId])
+  @@index([organizationId])
+  @@map("student_enrollments")
+}
+
+model StudentStatusHistory {
+  id             String        @id @default(uuid())
+  organizationId String
+  studentId      String
+  status         StudentStatus
+  reason         String?
+  effectiveDate  DateTime
+  createdAt      DateTime      @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  student      Student      @relation(fields: [studentId], references: [id])
+
+  @@index([organizationId])
+  @@index([studentId])
+  @@map("student_status_history")
 }

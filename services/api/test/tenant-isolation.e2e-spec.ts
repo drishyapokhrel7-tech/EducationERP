@@ -66,29 +66,46 @@ describe("Tenant isolation (e2e)", () => {
       // deletes zero rows (not an error), which then breaks the
       // organizations delete below on the audit_logs FK. withTenant is
       // mandatory here, not just for app code.
+      // One withTenant call per table, not one giant transaction for all
+      // of them — the table list has grown across slices to the point
+      // where a single interactive transaction doing every delete
+      // sequentially blew Prisma's default 5s transaction timeout. Each
+      // call here is its own short transaction; order still matters
+      // (children before the parents they reference).
+      const deleteOrder: string[] = [
+        "teacherProfile",
+        "qualification",
+        "employmentHistory",
+        "employee",
+        "staffType",
+        "designation",
+        "studentStatusHistory",
+        "studentEnrollment",
+        "studentGuardian",
+        "student",
+        "guardian",
+        "section",
+        "term",
+        "academicYear",
+        "curriculumSubject",
+        "curriculum",
+        "subject",
+        "program",
+        "department",
+        "faculty",
+        "campus",
+        "auditLog",
+      ];
       for (const orgId of [orgAId, orgBId]) {
-        await prisma.withTenant(orgId, async (tx) => {
-          // Staff rows first — employees reference department, so they
-          // must go before the department delete further down.
-          await tx.teacherProfile.deleteMany({ where: { organizationId: orgId } });
-          await tx.qualification.deleteMany({ where: { organizationId: orgId } });
-          await tx.employmentHistory.deleteMany({ where: { organizationId: orgId } });
-          await tx.employee.deleteMany({ where: { organizationId: orgId } });
-          await tx.staffType.deleteMany({ where: { organizationId: orgId } });
-          await tx.designation.deleteMany({ where: { organizationId: orgId } });
-          await tx.section.deleteMany({ where: { organizationId: orgId } });
-          await tx.term.deleteMany({ where: { organizationId: orgId } });
-          await tx.academicYear.deleteMany({ where: { organizationId: orgId } });
-          // curriculumSubject/curriculum reference program, so before it.
-          await tx.curriculumSubject.deleteMany({ where: { organizationId: orgId } });
-          await tx.curriculum.deleteMany({ where: { organizationId: orgId } });
-          await tx.subject.deleteMany({ where: { organizationId: orgId } });
-          await tx.program.deleteMany({ where: { organizationId: orgId } });
-          await tx.department.deleteMany({ where: { organizationId: orgId } });
-          await tx.faculty.deleteMany({ where: { organizationId: orgId } });
-          await tx.campus.deleteMany({ where: { organizationId: orgId } });
-          await tx.auditLog.deleteMany({ where: { organizationId: orgId } });
-        });
+        for (const model of deleteOrder) {
+          await prisma.withTenant(orgId, (tx) =>
+            (tx as unknown as Record<string, { deleteMany: (args: unknown) => Promise<unknown> }>)[
+              model
+            ].deleteMany({
+              where: { organizationId: orgId },
+            }),
+          );
+        }
       }
       await prisma.userRole.deleteMany({ where: { user: { organizationId: { in: [orgAId, orgBId] } } } });
       await prisma.session.deleteMany({ where: { user: { organizationId: { in: [orgAId, orgBId] } } } });
@@ -451,6 +468,134 @@ describe("Tenant isolation (e2e)", () => {
         .post(`/organizations/me/curricula/${curriculumA.body.id}/subjects`)
         .set(...auth(tokenB))
         .send({ subjectId: subjectB.body.id })
+        .expect(404);
+    });
+  });
+
+  describe("students (student → guardian → enrollment → status history)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    async function buildEnrollmentTarget(token: string, suffix: string) {
+      const campus = await request(app.getHttpServer())
+        .post("/organizations/me/campuses")
+        .set(...auth(token))
+        .send({ name: `Student Campus ${suffix}`, code: `SCAMP${suffix}` })
+        .expect(201);
+      const faculty = await request(app.getHttpServer())
+        .post("/organizations/me/faculties")
+        .set(...auth(token))
+        .send({ campusId: campus.body.id, name: `Student Faculty ${suffix}`, code: `SFAC${suffix}` })
+        .expect(201);
+      const department = await request(app.getHttpServer())
+        .post("/organizations/me/departments")
+        .set(...auth(token))
+        .send({ facultyId: faculty.body.id, name: `Student Dept ${suffix}`, code: `SDEP${suffix}` })
+        .expect(201);
+      const program = await request(app.getHttpServer())
+        .post("/organizations/me/programs")
+        .set(...auth(token))
+        .send({ departmentId: department.body.id, name: `Student Program ${suffix}`, code: `SPROG${suffix}` })
+        .expect(201);
+      const year = await request(app.getHttpServer())
+        .post("/organizations/me/academic-years")
+        .set(...auth(token))
+        .send({ name: `${suffix} Year`, startDate: "2099-08-01", endDate: "2100-06-30" })
+        .expect(201);
+      const term = await request(app.getHttpServer())
+        .post("/organizations/me/terms")
+        .set(...auth(token))
+        .send({
+          academicYearId: year.body.id,
+          name: `Term ${suffix}`,
+          code: `T${suffix}`,
+          sequence: 1,
+          startDate: "2099-08-01",
+          endDate: "2099-12-15",
+        })
+        .expect(201);
+      const section = await request(app.getHttpServer())
+        .post("/organizations/me/sections")
+        .set(...auth(token))
+        .send({ programId: program.body.id, termId: term.body.id, name: `Section ${suffix}`, code: `S${suffix}` })
+        .expect(201);
+      return { programId: program.body.id, sectionId: section.body.id, termId: term.body.id };
+    }
+
+    it("builds a student with a guardian and enrollment for org A, scoped to it", async () => {
+      const target = await buildEnrollmentTarget(tokenA, "STUA");
+
+      const student = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({ studentCode: "STU-001", firstName: "Ada", lastName: "Lovelace", dateOfBirth: "2015-01-01" })
+        .expect(201);
+      expect(student.body.organizationId).toBe(orgAId);
+
+      const guardian = await request(app.getHttpServer())
+        .post("/organizations/me/guardians")
+        .set(...auth(tokenA))
+        .send({ firstName: "Grace", lastName: "Hopper", phone: "555-0100" })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/students/${student.body.id}/guardians`)
+        .set(...auth(tokenA))
+        .send({ guardianId: guardian.body.id, relationship: "Mother", isPrimaryContact: true })
+        .expect(201);
+
+      const enrollment = await request(app.getHttpServer())
+        .post(`/organizations/me/students/${student.body.id}/enrollments`)
+        .set(...auth(tokenA))
+        .send({ ...target, enrollmentDate: "2099-08-01" })
+        .expect(201);
+      expect(enrollment.body.studentId).toBe(student.body.id);
+
+      const statusChange = await request(app.getHttpServer())
+        .put(`/organizations/me/students/${student.body.id}/status`)
+        .set(...auth(tokenA))
+        .send({ status: "WITHDRAWN", reason: "Relocated", effectiveDate: "2099-09-01" })
+        .expect(200);
+      expect(statusChange.body.status).toBe("WITHDRAWN");
+
+      for (const path of ["students", "guardians"]) {
+        const res = await request(app.getHttpServer())
+          .get(`/organizations/me/${path}`)
+          .set(...auth(tokenB))
+          .expect(200);
+        expect(res.body).toEqual([]);
+      }
+
+      await request(app.getHttpServer())
+        .get(`/organizations/me/students/${student.body.id}/enrollments`)
+        .set(...auth(tokenB))
+        .expect(404);
+    });
+
+    it("rejects enrolling a student under another tenant's program/section/term (404)", async () => {
+      const target = await buildEnrollmentTarget(tokenA, "GUARD");
+
+      const studentB = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenB))
+        .send({ studentCode: "SNEAK-001", firstName: "Sneaky", lastName: "Student", dateOfBirth: "2015-01-01" })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/students/${studentB.body.id}/enrollments`)
+        .set(...auth(tokenB))
+        .send({ ...target, enrollmentDate: "2099-08-01" })
+        .expect(404);
+
+      const guardianA = await request(app.getHttpServer())
+        .post("/organizations/me/guardians")
+        .set(...auth(tokenA))
+        .send({ firstName: "Guard", lastName: "Ian", phone: "555-0199" })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/students/${studentB.body.id}/guardians`)
+        .set(...auth(tokenA))
+        .send({ guardianId: guardianA.body.id, relationship: "Guardian" })
         .expect(404);
     });
   });

@@ -6,6 +6,7 @@ import { OrganizationsModule } from "./modules/organizations/organizations.modul
 import { OrgStructureModule } from "./modules/org-structure/org-structure.module";
 import { StaffModule } from "./modules/staff/staff.module";
 import { AcademicsModule } from "./modules/academics/academics.module";
+import { StudentsModule } from "./modules/students/students.module";
 import { QueueModule } from "./queue/queue.module";
 import { HealthController } from "./common/health.controller";
 
@@ -18,6 +19,7 @@ import { HealthController } from "./common/health.controller";
     OrgStructureModule,
     StaffModule,
     AcademicsModule,
+    StudentsModule,
     QueueModule,
   ],
   controllers: [HealthController],

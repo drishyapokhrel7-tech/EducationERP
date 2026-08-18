@@ -27,12 +27,23 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
    * outside this wrapper.
    */
   async withTenant<T>(organizationId: string, fn: (tx: PrismaClient) => Promise<T>): Promise<T> {
-    return this.$transaction(async (tx) => {
-      await tx.$executeRawUnsafe(
-        `select set_config('app.current_organization_id', $1, true)`,
-        organizationId,
-      );
-      return fn(tx as unknown as PrismaClient);
-    });
+    return this.$transaction(
+      async (tx) => {
+        await tx.$executeRawUnsafe(
+          `select set_config('app.current_organization_id', $1, true)`,
+          organizationId,
+        );
+        return fn(tx as unknown as PrismaClient);
+      },
+      // Prisma's default is 5000ms — too tight in practice: a query with
+      // nested includes, or the first query after a Neon connection has
+      // gone idle (serverless cold-start), can push past it on its own,
+      // failing with "Transaction already closed" for reasons that have
+      // nothing to do with a runaway transaction. Reproduced for real via
+      // the demo org's student list (nested guardian include) once the
+      // dev DB connection wasn't warm. 15s is generous without masking an
+      // actually-stuck transaction.
+      { timeout: 15000 },
+    );
   }
 }

@@ -299,3 +299,95 @@ export interface AttachCurriculumSubjectInput {
   subjectId: string;
   isCompulsory?: boolean;
 }
+
+export type StudentStatus = "ACTIVE" | "INACTIVE" | "GRADUATED" | "TRANSFERRED" | "WITHDRAWN";
+
+export interface Guardian {
+  id: string;
+  organizationId: string;
+  firstName: string;
+  lastName: string;
+  phone: string;
+  email: string | null;
+  occupation: string | null;
+}
+
+export interface CreateGuardianInput {
+  firstName: string;
+  lastName: string;
+  phone: string;
+  email?: string;
+  occupation?: string;
+}
+
+export interface StudentGuardian {
+  id: string;
+  studentId: string;
+  guardianId: string;
+  relationship: string;
+  isPrimaryContact: boolean;
+  guardian: Guardian;
+}
+
+export interface AttachGuardianInput {
+  guardianId: string;
+  relationship: string;
+  isPrimaryContact?: boolean;
+}
+
+export interface Student {
+  id: string;
+  organizationId: string;
+  userId: string | null;
+  studentCode: string;
+  firstName: string;
+  lastName: string;
+  dateOfBirth: string;
+  gender: string | null;
+  status: StudentStatus;
+  guardians: StudentGuardian[];
+}
+
+export interface CreateStudentInput {
+  studentCode: string;
+  firstName: string;
+  lastName: string;
+  dateOfBirth: string;
+  gender?: string;
+}
+
+export type EnrollmentStatus = "ACTIVE" | "COMPLETED" | "WITHDRAWN";
+
+export interface StudentEnrollment {
+  id: string;
+  studentId: string;
+  programId: string;
+  sectionId: string;
+  termId: string;
+  enrollmentDate: string;
+  status: EnrollmentStatus;
+  program: Program;
+  section: Section;
+  term: Term;
+}
+
+export interface CreateEnrollmentInput {
+  programId: string;
+  sectionId: string;
+  termId: string;
+  enrollmentDate: string;
+}
+
+export interface StudentStatusHistoryEntry {
+  id: string;
+  studentId: string;
+  status: StudentStatus;
+  reason: string | null;
+  effectiveDate: string;
+}
+
+export interface UpdateStudentStatusInput {
+  status: StudentStatus;
+  reason?: string;
+  effectiveDate: string;
+}

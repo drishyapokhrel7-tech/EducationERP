@@ -242,11 +242,92 @@ credential, not a real person).
   `/dashboard/staff` confirmed no auth-bug regression (correctly empty —
   no staff seeded for this org).
 
+All three slices done, stopped per plan §21 step 17. User replied
+"proceed" again for the next check-in; that offer listed "Course/
+scheduling" as an option, but re-checking the plan while starting this
+slice found that timetable/rooms/periods/teaching-assignments are
+actually **Phase 3** scope ("Teaching, Learning, Timetable &
+Attendance"), not Phase 2 — a mis-scoping in the prior report, corrected
+here rather than carried forward. Phase 2's only genuinely remaining
+work was Student lifecycle, Admissions, and Documents/import-export, so
+proceeded with Student lifecycle.
+
+## Slice 2d — Student lifecycle
+
+Five tables from plan §6 "Student": `Student`, `Guardian`,
+`StudentGuardian` (join, with `relationship` free text and an
+`isPrimaryContact` flag), and `StudentEnrollment` (collapsing the plan's
+separate `student_enrollments`/`student_programs`/`student_sections`
+into one table — which program, section, and term a student is in for a
+given stretch is one coherent fact, not three independently-varying
+ones, same call made for org-hierarchy and staff), and
+`StudentStatusHistory`. Deferred: `student_addresses`/`student_photos`/
+`student_identifiers` (no pressing need, easy to bolt on later) and
+`student_documents` (needs the Documents & Certificates phase).
+`Student.gender` is free text, not an enum, for the same
+no-hard-coded-vocabulary reason as `Program.level`.
+
+Same RLS + FK-vs-RLS parent-guard pattern as every prior slice — every
+`create*`/`attach*`/`updateStatus` in `students.service.ts` that takes a
+parent id (guardianId, programId, sectionId, termId, studentId itself
+for sub-resources) validates it through `withTenant()` first. API +
+`/dashboard/students` web UI. e2e suite now 13/13 (2 new student cases:
+full chain scoping, and a 404 guard test covering *both* a cross-tenant
+enrollment attempt and a cross-tenant guardian-attach attempt in one
+case, unlike prior slices' single-guard tests — worth doing since this
+slice has two independent attach-style endpoints).
+
+Demo seed extended: added the academic-year/term/section chain the
+earlier slices' demo data never actually needed (`2026-2027` / `Term 1`
+/ three sections), plus three synthetic students (fictional names, not
+real people) — one each in Primary, Secondary, and BSc.CSIT — each with
+a guardian, to show the full chain populated rather than empty lists.
+
+### A real, general bug — not test-only this time
+
+`PrismaService.withTenant()` wraps every tenant-scoped query in a Prisma
+interactive transaction with the client's **default 5000ms timeout**.
+That's tight enough that a real read with a nested include (the student
+list's `guardians.guardian` include) tripped it in the browser pass —
+not a hung transaction, just ordinary latency against Neon (this
+project's dev DB is genuinely remote, ap-southeast-1) compounding with
+however much overhead an interactive transaction adds. Symptom: `POST
+.../students` succeeded (201), the immediate follow-up `GET
+.../students` came back `500` with `PrismaClientKnownRequestError:
+Transaction already closed`. This would hit **any** slice's list
+endpoint under the same conditions, not just this one — it surfaced
+here because the student list happens to be the first nested-include
+list query exercised in a browser pass with any real latency variance.
+Fixed by raising `withTenant`'s transaction timeout to 15000ms
+(`prisma.service.ts`). The e2e test-cleanup timeout hit earlier in this
+same slice (splitting one mega-transaction of ~20 sequential deletes
+into one `withTenant` call per table, see the test file) was a
+*different*, test-only instance of the same underlying tightness — both
+fixes are complementary, not redundant.
+
+## Verified (slice 2d)
+
+- `pnpm typecheck` / `lint` / `build` clean across all three packages.
+- `services/api` e2e: 13/13.
+- `pnpm run demo:seed` run twice — idempotent — then verified directly
+  against Postgres: 3 students, each with exactly one guardian and one
+  enrollment, correct program/section per student.
+- Browser pass, logged in as the demo admin: cold load of
+  `/dashboard/students` shows all 3 seeded students with their
+  guardians (no auth-bug regression); creating a 4th student through the
+  UI form initially reproduced the `withTenant` timeout bug above (POST
+  succeeded, the list reverted to showing only 3) — after the fix,
+  re-tested the same create end-to-end and the 4th student appeared
+  correctly. Removed it afterward so the demo org matches the seed
+  script's own data exactly.
+
 ## Next step
 
-All three slices done, stopped per plan §21 step 17. Phase 2 continues
-with Course/scheduling (`courses`, `course_sections`,
-`teaching_assignments`, `class_schedules`, `rooms`, `periods` — the rest
-of plan §6 "Academic", deferred from slice 2c) or Student lifecycle
-(`students`, guardians, enrollment — unblocked, since Programs/Sections,
-Staff, and now Curriculum all exist) next.
+All four slices done, stopped per plan §21 step 17. Phase 2's remaining
+scope is Admissions and Documents/import-export (plan §20) — Student
+lifecycle being in place now unblocks both, since Admissions is
+essentially "the intake workflow that creates a Student +
+StudentEnrollment" and Documents needs Student to attach to. Phase 3
+(Teaching, Learning, Timetable & Attendance — courses, class schedules,
+rooms, periods, teaching assignments) is a separate phase, not a Phase 2
+remainder.
