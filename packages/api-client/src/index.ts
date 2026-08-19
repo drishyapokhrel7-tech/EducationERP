@@ -70,6 +70,15 @@ import type {
   CorrectAttendanceInput,
   StaffAttendance,
   CreateStaffAttendanceInput,
+  Syllabus,
+  SyllabusWithNodes,
+  CreateSyllabusInput,
+  SyllabusNode,
+  CreateSyllabusNodeInput,
+  LearningObjective,
+  CreateLearningObjectiveInput,
+  LessonPlan,
+  CreateLessonPlanInput,
 } from "./types";
 
 export class ApiError extends Error {
@@ -376,6 +385,29 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
     listStaffAttendance: () => request<StaffAttendance[]>("/organizations/me/staff-attendance"),
     markStaffAttendance: (input: CreateStaffAttendanceInput) =>
       request<StaffAttendance>("/organizations/me/staff-attendance", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+
+    listSyllabi: () => request<Syllabus[]>("/organizations/me/syllabi"),
+    createSyllabus: (input: CreateSyllabusInput) =>
+      request<Syllabus>("/organizations/me/syllabi", { method: "POST", body: JSON.stringify(input) }),
+    getSyllabus: (syllabusId: string) =>
+      request<SyllabusWithNodes>(`/organizations/me/syllabi/${syllabusId}`),
+    createSyllabusNode: (syllabusId: string, input: CreateSyllabusNodeInput) =>
+      request<SyllabusNode>(`/organizations/me/syllabi/${syllabusId}/nodes`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    createLearningObjective: (nodeId: string, input: CreateLearningObjectiveInput) =>
+      request<LearningObjective>(`/organizations/me/syllabus-nodes/${nodeId}/objectives`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+
+    listLessonPlans: () => request<LessonPlan[]>("/organizations/me/lesson-plans"),
+    createLessonPlan: (input: CreateLessonPlanInput) =>
+      request<LessonPlan>("/organizations/me/lesson-plans", {
         method: "POST",
         body: JSON.stringify(input),
       }),

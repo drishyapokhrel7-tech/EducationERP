@@ -13,6 +13,7 @@ import {
   LayoutDashboard,
   LogOut,
   Network,
+  NotebookText,
   Users,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -28,6 +29,7 @@ const NAV = [
   { href: "/dashboard/admissions", label: "Admissions", icon: ClipboardList },
   { href: "/dashboard/timetable", label: "Timetable", icon: CalendarClock },
   { href: "/dashboard/attendance", label: "Attendance", icon: CalendarCheck },
+  { href: "/dashboard/syllabus", label: "Syllabus", icon: NotebookText },
 ];
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {

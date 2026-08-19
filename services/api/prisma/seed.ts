@@ -36,7 +36,10 @@ const SYSTEM_ROLES = [
 // Phase 3 slice 3a added room/period/teaching_assignment/class_schedule,
 // slice 3b added attendance (covers sessions/marking/corrections) and
 // staff_attendance (a separate resource — different sub-domain, same
-// reasoning as enrollment vs admission being separate resources).
+// reasoning as enrollment vs admission being separate resources), slice
+// 3c added syllabus (covers the node tree + learning objectives) and
+// lesson_plan (separate resource — planning content is a distinct
+// teacher-facing action from the syllabus structure itself).
 const RESOURCES = [
   "organization",
   "campus",
@@ -66,6 +69,8 @@ const RESOURCES = [
   "class_schedule",
   "attendance",
   "staff_attendance",
+  "syllabus",
+  "lesson_plan",
 ];
 const ACTIONS = Object.values(PermissionAction);
 

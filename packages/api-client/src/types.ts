@@ -608,3 +608,84 @@ export interface CreateStaffAttendanceInput {
   status: StaffAttendanceStatus;
   remarks?: string;
 }
+
+export interface Syllabus {
+  id: string;
+  organizationId: string;
+  curriculumSubjectId: string;
+  termId: string;
+  name: string | null;
+  description: string | null;
+  curriculumSubject: CurriculumSubject & { subject: Subject; curriculum: Curriculum };
+  term: Term;
+}
+
+export interface CreateSyllabusInput {
+  curriculumSubjectId: string;
+  termId: string;
+  name?: string;
+  description?: string;
+}
+
+export type SyllabusNodeLevel = "UNIT" | "CHAPTER" | "TOPIC" | "SUBTOPIC";
+
+export interface SyllabusNode {
+  id: string;
+  organizationId: string;
+  syllabusId: string;
+  parentId: string | null;
+  level: SyllabusNodeLevel;
+  sequence: number;
+  name: string;
+  description: string | null;
+  learningObjectives: LearningObjective[];
+}
+
+export interface SyllabusWithNodes extends Syllabus {
+  nodes: SyllabusNode[];
+}
+
+export interface CreateSyllabusNodeInput {
+  parentId?: string;
+  level: SyllabusNodeLevel;
+  sequence: number;
+  name: string;
+  description?: string;
+}
+
+export interface LearningObjective {
+  id: string;
+  organizationId: string;
+  syllabusNodeId: string;
+  sequence: number;
+  description: string;
+}
+
+export interface CreateLearningObjectiveInput {
+  sequence: number;
+  description: string;
+}
+
+export interface LessonPlan {
+  id: string;
+  organizationId: string;
+  teachingAssignmentId: string;
+  syllabusNodeId: string;
+  title: string;
+  objectives: string;
+  materials: string | null;
+  plannedDate: string | null;
+  notes: string | null;
+  teachingAssignment: TeachingAssignment;
+  syllabusNode: SyllabusNode;
+}
+
+export interface CreateLessonPlanInput {
+  teachingAssignmentId: string;
+  syllabusNodeId: string;
+  title: string;
+  objectives: string;
+  materials?: string;
+  plannedDate?: string;
+  notes?: string;
+}

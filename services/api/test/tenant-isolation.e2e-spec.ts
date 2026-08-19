@@ -73,6 +73,17 @@ describe("Tenant isolation (e2e)", () => {
       // call here is its own short transaction; order still matters
       // (children before the parents they reference).
       const deleteOrder: string[] = [
+        // lessonPlan references teachingAssignment + syllabusNode;
+        // learningObjective references syllabusNode; syllabusNode
+        // references syllabus (self-reference is ON DELETE SET NULL, so
+        // parent/child ordering within syllabusNode itself doesn't
+        // matter); syllabus references curriculumSubject + term — all
+        // four lead the whole list since their parents span from very
+        // early (teachingAssignment) to very late (term/curriculumSubject).
+        "lessonPlan",
+        "learningObjective",
+        "syllabusNode",
+        "syllabus",
         // attendanceException references studentAttendance; studentAttendance
         // references attendanceSession + student; staffAttendance references
         // employee; attendanceSession references classSchedule + section —
@@ -135,7 +146,7 @@ describe("Tenant isolation (e2e)", () => {
       await prisma.organization.deleteMany({ where: { id: { in: [orgAId, orgBId] } } });
     }
     await app.close();
-  });
+  }, 60000);
 
   it("rejects requests with no token", async () => {
     await request(app.getHttpServer()).get("/organizations/me").expect(401);
@@ -1323,6 +1334,245 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(tokenB))
         .expect(200);
       expect(listB.body).toEqual([]);
+    });
+  });
+
+  describe("syllabus (syllabus → unit/chapter/topic/subtopic tree → learning objectives; lesson plans)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    async function buildSyllabusTarget(token: string, suffix: string) {
+      const campus = await request(app.getHttpServer())
+        .post("/organizations/me/campuses")
+        .set(...auth(token))
+        .send({ name: `Syllabus Campus ${suffix}`, code: `SYCAMP${suffix}` })
+        .expect(201);
+      const faculty = await request(app.getHttpServer())
+        .post("/organizations/me/faculties")
+        .set(...auth(token))
+        .send({ campusId: campus.body.id, name: `Syllabus Faculty ${suffix}`, code: `SYFAC${suffix}` })
+        .expect(201);
+      const department = await request(app.getHttpServer())
+        .post("/organizations/me/departments")
+        .set(...auth(token))
+        .send({ facultyId: faculty.body.id, name: `Syllabus Dept ${suffix}`, code: `SYDEP${suffix}` })
+        .expect(201);
+      const program = await request(app.getHttpServer())
+        .post("/organizations/me/programs")
+        .set(...auth(token))
+        .send({ departmentId: department.body.id, name: `Syllabus Program ${suffix}`, code: `SYPROG${suffix}` })
+        .expect(201);
+      const year = await request(app.getHttpServer())
+        .post("/organizations/me/academic-years")
+        .set(...auth(token))
+        .send({ name: `Syllabus Year ${suffix}`, startDate: "2099-08-01", endDate: "2100-06-30" })
+        .expect(201);
+      const term = await request(app.getHttpServer())
+        .post("/organizations/me/terms")
+        .set(...auth(token))
+        .send({
+          academicYearId: year.body.id,
+          name: `Syllabus Term ${suffix}`,
+          code: `SYT${suffix}`,
+          sequence: 1,
+          startDate: "2099-08-01",
+          endDate: "2099-12-15",
+        })
+        .expect(201);
+      const section = await request(app.getHttpServer())
+        .post("/organizations/me/sections")
+        .set(...auth(token))
+        .send({ programId: program.body.id, termId: term.body.id, name: `Syllabus Section ${suffix}`, code: `SS${suffix}` })
+        .expect(201);
+      const subject = await request(app.getHttpServer())
+        .post("/organizations/me/subjects")
+        .set(...auth(token))
+        .send({ name: `Syllabus Subject ${suffix}`, code: `SYSUB${suffix}` })
+        .expect(201);
+      const curriculum = await request(app.getHttpServer())
+        .post("/organizations/me/curricula")
+        .set(...auth(token))
+        .send({ programId: program.body.id, name: `Syllabus Curriculum ${suffix}`, code: `SYCURR${suffix}` })
+        .expect(201);
+      const curriculumSubject = await request(app.getHttpServer())
+        .post(`/organizations/me/curricula/${curriculum.body.id}/subjects`)
+        .set(...auth(token))
+        .send({ subjectId: subject.body.id })
+        .expect(201);
+      const staffType = await request(app.getHttpServer())
+        .post("/organizations/me/staff-types")
+        .set(...auth(token))
+        .send({ name: `Syllabus Staff Type ${suffix}`, code: `SYST${suffix}` })
+        .expect(201);
+      const designation = await request(app.getHttpServer())
+        .post("/organizations/me/designations")
+        .set(...auth(token))
+        .send({ name: `Syllabus Designation ${suffix}`, code: `SYDS${suffix}` })
+        .expect(201);
+      const employee = await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(token))
+        .send({
+          staffTypeId: staffType.body.id,
+          designationId: designation.body.id,
+          employeeCode: `SYEMP-${suffix}`,
+          firstName: "Syllabus",
+          lastName: `Teacher${suffix}`,
+          email: `syteacher-${suffix}-${run}@rls-e2e.test`,
+          dateOfJoining: "2026-01-01",
+        })
+        .expect(201);
+      const assignment = await request(app.getHttpServer())
+        .post("/organizations/me/teaching-assignments")
+        .set(...auth(token))
+        .send({ employeeId: employee.body.id, subjectId: subject.body.id, sectionId: section.body.id, termId: term.body.id })
+        .expect(201);
+
+      return { curriculumSubjectId: curriculumSubject.body.id, termId: term.body.id, teachingAssignmentId: assignment.body.id };
+    }
+
+    it("creates a syllabus, builds a unit→chapter→topic→subtopic tree with objectives, creates a lesson plan, and stays tenant-scoped", async () => {
+      const t = await buildSyllabusTarget(tokenA, "SYA");
+
+      const syllabus = await request(app.getHttpServer())
+        .post("/organizations/me/syllabi")
+        .set(...auth(tokenA))
+        .send({ curriculumSubjectId: t.curriculumSubjectId, termId: t.termId, name: "Test Syllabus" })
+        .expect(201);
+      expect(syllabus.body.organizationId).toBe(orgAId);
+
+      // Duplicate syllabus for the same curriculum-subject+term is rejected.
+      await request(app.getHttpServer())
+        .post("/organizations/me/syllabi")
+        .set(...auth(tokenA))
+        .send({ curriculumSubjectId: t.curriculumSubjectId, termId: t.termId })
+        .expect(409);
+
+      const unit = await request(app.getHttpServer())
+        .post(`/organizations/me/syllabi/${syllabus.body.id}/nodes`)
+        .set(...auth(tokenA))
+        .send({ level: "UNIT", sequence: 1, name: "Unit 1" })
+        .expect(201);
+
+      // A CHAPTER without a parent is rejected — the hierarchy is
+      // required, not optional.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/syllabi/${syllabus.body.id}/nodes`)
+        .set(...auth(tokenA))
+        .send({ level: "CHAPTER", sequence: 1, name: "Chapter without parent" })
+        .expect(400);
+
+      const chapter = await request(app.getHttpServer())
+        .post(`/organizations/me/syllabi/${syllabus.body.id}/nodes`)
+        .set(...auth(tokenA))
+        .send({ level: "CHAPTER", parentId: unit.body.id, sequence: 1, name: "Chapter 1" })
+        .expect(201);
+      const topic = await request(app.getHttpServer())
+        .post(`/organizations/me/syllabi/${syllabus.body.id}/nodes`)
+        .set(...auth(tokenA))
+        .send({ level: "TOPIC", parentId: chapter.body.id, sequence: 1, name: "Topic 1" })
+        .expect(201);
+      const subtopic = await request(app.getHttpServer())
+        .post(`/organizations/me/syllabi/${syllabus.body.id}/nodes`)
+        .set(...auth(tokenA))
+        .send({ level: "SUBTOPIC", parentId: topic.body.id, sequence: 1, name: "Subtopic 1" })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/syllabus-nodes/${subtopic.body.id}/objectives`)
+        .set(...auth(tokenA))
+        .send({ sequence: 1, description: "Understand the concept" })
+        .expect(201);
+
+      const fetched = await request(app.getHttpServer())
+        .get(`/organizations/me/syllabi/${syllabus.body.id}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(fetched.body.nodes).toHaveLength(4);
+      const fetchedSubtopic = fetched.body.nodes.find((n: { id: string }) => n.id === subtopic.body.id);
+      expect(fetchedSubtopic.learningObjectives).toHaveLength(1);
+
+      const lessonPlan = await request(app.getHttpServer())
+        .post("/organizations/me/lesson-plans")
+        .set(...auth(tokenA))
+        .send({
+          teachingAssignmentId: t.teachingAssignmentId,
+          syllabusNodeId: subtopic.body.id,
+          title: "Intro lesson",
+          objectives: "Cover subtopic 1",
+        })
+        .expect(201);
+      expect(lessonPlan.body.syllabusNodeId).toBe(subtopic.body.id);
+
+      for (const path of ["syllabi", "lesson-plans"]) {
+        const res = await request(app.getHttpServer())
+          .get(`/organizations/me/${path}`)
+          .set(...auth(tokenB))
+          .expect(200);
+        expect(res.body).toEqual([]);
+      }
+
+      await request(app.getHttpServer())
+        .get(`/organizations/me/syllabi/${syllabus.body.id}`)
+        .set(...auth(tokenB))
+        .expect(404);
+    });
+
+    it("rejects a node whose parent is the wrong level (400)", async () => {
+      const t = await buildSyllabusTarget(tokenA, "SYLEVEL");
+      const syllabus = await request(app.getHttpServer())
+        .post("/organizations/me/syllabi")
+        .set(...auth(tokenA))
+        .send({ curriculumSubjectId: t.curriculumSubjectId, termId: t.termId })
+        .expect(201);
+      const unit = await request(app.getHttpServer())
+        .post(`/organizations/me/syllabi/${syllabus.body.id}/nodes`)
+        .set(...auth(tokenA))
+        .send({ level: "UNIT", sequence: 1, name: "Unit 1" })
+        .expect(201);
+
+      // TOPIC directly under UNIT (skipping CHAPTER) is rejected.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/syllabi/${syllabus.body.id}/nodes`)
+        .set(...auth(tokenA))
+        .send({ level: "TOPIC", parentId: unit.body.id, sequence: 1, name: "Topic skipping chapter" })
+        .expect(400);
+    });
+
+    it("rejects creating a syllabus, node or lesson plan under another tenant's parents (404)", async () => {
+      const t = await buildSyllabusTarget(tokenA, "SYGUARD");
+      const syllabusA = await request(app.getHttpServer())
+        .post("/organizations/me/syllabi")
+        .set(...auth(tokenA))
+        .send({ curriculumSubjectId: t.curriculumSubjectId, termId: t.termId })
+        .expect(201);
+      const unitA = await request(app.getHttpServer())
+        .post(`/organizations/me/syllabi/${syllabusA.body.id}/nodes`)
+        .set(...auth(tokenA))
+        .send({ level: "UNIT", sequence: 1, name: "Unit 1" })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post("/organizations/me/syllabi")
+        .set(...auth(tokenB))
+        .send({ curriculumSubjectId: t.curriculumSubjectId, termId: t.termId })
+        .expect(404);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/syllabi/${syllabusA.body.id}/nodes`)
+        .set(...auth(tokenB))
+        .send({ level: "UNIT", sequence: 2, name: "Sneaky unit" })
+        .expect(404);
+
+      await request(app.getHttpServer())
+        .post("/organizations/me/lesson-plans")
+        .set(...auth(tokenB))
+        .send({
+          teachingAssignmentId: t.teachingAssignmentId,
+          syllabusNodeId: unitA.body.id,
+          title: "Sneaky plan",
+          objectives: "N/A",
+        })
+        .expect(404);
     });
   });
 });

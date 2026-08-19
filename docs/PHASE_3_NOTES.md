@@ -228,11 +228,96 @@ the same page (single-employee mark, upserts per employee+date).
   via `curl` after another click-reliability failure). All test data
   removed afterward — none was planned as demo data for this slice.
 
+## Slice 3c — Syllabus & lesson plans
+
+## What shipped
+
+`Syllabus` anchors to one `CurriculumSubject` + `Term` (unique pair) —
+precise enough to mean "this subject, as taught in this curriculum, for
+this term," which matters because the same Subject can appear in
+multiple curricula (e.g. Mathematics in both the Secondary curriculum
+and several +2 options) with genuinely different syllabi.
+`syllabus_versions` is deliberately not modeled — no revision-history
+requirement has been specified yet, so `Syllabus` is directly editable
+like `Program`/`Subject`, the same "defer until asked" reasoning applied
+throughout every prior slice's unspecified scope.
+
+`unit_id chapter_id topic_id subtopic_id` (four separate tables per the
+plan's literal listing) collapse into one self-referencing tree,
+`SyllabusNode`, with a `level` enum (`UNIT`/`CHAPTER`/`TOPIC`/`SUBTOPIC`)
+and a `parentId` — same collapsing reasoning as `StudentEnrollment` and
+`ClassSchedule` in earlier slices: all four are the same shape (ordered,
+named, nested under a parent). The service enforces the level ordering
+itself (a `CHAPTER` must parent under a `UNIT`, a `TOPIC` under a
+`CHAPTER`, etc., and a `UNIT` can't have a parent at all) — a 400 with a
+specific message names which level was expected. This is a real,
+worthwhile validation despite plan §1's "don't hard-code institution-
+specific structures" — the four levels and their nesting order are a
+property of the workflow itself (plan §8 names exactly these four), not
+an institution-specific taxonomy layered on top.
+
+`LearningObjective` attaches to any `SyllabusNode` (not hard-coded to
+only the deepest `SUBTOPIC` level, since not every subject needs the
+full four-level depth — plan §1 again). `LessonPlan` ties a
+`TeachingAssignment` (which already encodes teacher+subject+section+
+term) to a `SyllabusNode` — deliberately *not* to a specific
+`ClassSchedule` occurrence or calendar date, since a lesson plan is
+prepared once and can be reused/referenced across multiple sessions;
+binding a lesson plan to one actual dated occurrence is 3d's job (class
+sessions / "My Classes Today"), not this slice's.
+
+`/dashboard/syllabus` UI: pick a curriculum-subject + term to open (or
+create) its syllabus, build the tree with a level+parent+sequence form
+(the parent dropdown is filtered to only the valid required level, so
+picking an invalid parent isn't even offered in the UI, though the
+server still enforces it independently — UI convenience is not a
+substitute for the backend check, same principle as every prior slice's
+disabled-until-valid submit buttons), add learning objectives per node
+via an inline reveal (same interaction pattern as attendance's
+per-student "Correct" action), and create lesson plans referencing any
+node in the currently-open syllabus.
+
+## Verified (slice 3c)
+
+- `pnpm typecheck` / `lint` / `build` clean across all three packages.
+- `services/api` e2e: 28/28, including three new syllabus cases — the
+  full syllabus→unit→chapter→topic→subtopic→objective→lesson-plan chain
+  scoped correctly to org A (plus a duplicate-syllabus 409), a node
+  whose parent is the wrong level rejected with 400, and the standard
+  404 cross-tenant guards for syllabus/node/lesson-plan creation. Also
+  bumped the e2e suite's `afterAll` cleanup hook from Jest's default
+  30000ms to 60000ms — cleaning 34 tables (four more than slice 3b) is
+  now consistently past the default under this session's Neon latency;
+  same class of fix as the global `testTimeout` bump from slice 2f, just
+  scoped to the one hook that actually needs it.
+- Full browser pass, logged in as the demo admin: created a syllabus for
+  Secondary Curriculum · Mathematics / Term 1, built the full four-level
+  tree (Algebra Basics → Linear Equations → Solving for x → Isolating
+  variables) with a learning objective, and created a lesson plan
+  referencing the subtopic — all rendered correctly, including the
+  parent-level-filtered dropdown and the objective bullet nested under
+  its node. One transient `P2028` ("unable to start a transaction")
+  surfaced creating the first node — checked for the slice 3a/3b class
+  of duplicate-dev-server problem first (found none: exactly one
+  `nest start --watch` process, four normally-pooled Neon connections),
+  concluded it was a one-off Neon blip rather than the systemic issue,
+  and confirmed by simply retrying the same request via `curl`, which
+  succeeded immediately. The Browser pane's click reliability and JWT
+  expiry (long session, 900s TTL) both recurred again this slice too —
+  same worked-around-before pattern: verify via `curl` and/or a fresh
+  tab rather than fighting the same stuck click.
+- All test data (the syllabus, its four nodes, the objective, the lesson
+  plan, and the throwaway teacher/staff-type/designation used to build a
+  teaching assignment) removed afterward — none was planned as demo data
+  for this slice.
+
 ## Next step
 
-Slice 3b done, stopped per plan §21 step 17. Next up per the slice
-breakdown in this file's intro: **3c — Syllabus & lesson plans**
-(unit → chapter → topic → subtopic → learning objective hierarchy),
-which 3d (class sessions / "My Classes Today") needs for its "select
-topic" step. Not yet approved by the user — wait for explicit go-ahead
+Slice 3c done, stopped per plan §21 step 17. Next up per the slice
+breakdown in this file's intro: **3d — Class sessions & the "My Classes
+Today" / class-completion workflow**, which ties 3a (timetable) + 3b
+(attendance) + 3c (syllabus/lesson plans) together: open today's
+scheduled class → confirm attendance → select the actual topic taught
+(from the syllabus tree) → record progress/notes/materials → mark
+complete. Not yet approved by the user — wait for explicit go-ahead
 before starting.

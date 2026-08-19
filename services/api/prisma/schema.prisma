@@ -56,6 +56,10 @@ model Organization {
   studentAttendances    StudentAttendance[]
   staffAttendances      StaffAttendance[]
   attendanceExceptions  AttendanceException[]
+  syllabi               Syllabus[]
+  syllabusNodes         SyllabusNode[]
+  learningObjectives    LearningObjective[]
+  lessonPlans           LessonPlan[]
 
   @@map("organizations")
 }
@@ -208,6 +212,7 @@ model CurriculumSubject {
   organization Organization @relation(fields: [organizationId], references: [id])
   curriculum   Curriculum   @relation(fields: [curriculumId], references: [id])
   subject      Subject      @relation(fields: [subjectId], references: [id])
+  syllabi      Syllabus[]
 
   @@unique([curriculumId, subjectId])
   @@index([organizationId])
@@ -250,6 +255,7 @@ model Term {
   studentEnrollments StudentEnrollment[]
   teachingAssignments TeachingAssignment[]
   classSchedules      ClassSchedule[]
+  syllabi             Syllabus[]
 
   @@unique([academicYearId, code])
   @@index([organizationId])
@@ -871,6 +877,7 @@ model TeachingAssignment {
   section        Section         @relation(fields: [sectionId], references: [id])
   term           Term            @relation(fields: [termId], references: [id])
   classSchedules ClassSchedule[]
+  lessonPlans    LessonPlan[]
 
   // One teacher per subject+section+term — re-assigning means changing
   // this row, not stacking a second one alongside it.
@@ -1015,4 +1022,120 @@ model StaffAttendance {
   @@unique([employeeId, date])
   @@index([organizationId])
   @@map("staff_attendance")
+}
+
+// ── Syllabus & Lesson Plans (plan §6 "Teaching & Learning" — Phase 3
+// slice 3c) ──────────────────────────────────────────────────────────────
+// syllabus_versions is deliberately not modeled — no revision-history
+// requirement has been specified yet (same "defer until asked" reasoning
+// every prior slice has applied to unspecified scope); Syllabus is
+// directly editable, the same way Program/Subject are.
+//
+// unit/chapter/topic/subtopic collapse into one self-referencing tree
+// (SyllabusNode + a level marker) instead of four near-identical tables —
+// same reasoning as StudentEnrollment's and ClassSchedule's earlier
+// collapses: all four are the same shape (ordered, named, nested under a
+// parent). The four-level enum itself is a property of this workflow
+// (plan §8 names exactly these four levels), not an institution-specific
+// taxonomy plan §1 forbids hard-coding, so an enum is appropriate here
+// unlike e.g. Room.roomType.
+
+model Syllabus {
+  id                  String   @id @default(uuid())
+  organizationId      String
+  curriculumSubjectId String
+  termId              String
+  name                String?
+  description         String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  organization      Organization      @relation(fields: [organizationId], references: [id])
+  curriculumSubject CurriculumSubject @relation(fields: [curriculumSubjectId], references: [id])
+  term              Term              @relation(fields: [termId], references: [id])
+  nodes             SyllabusNode[]
+
+  // One syllabus per curriculum-subject+term — revising means editing
+  // this row's nodes, not creating a second syllabus alongside it.
+  @@unique([curriculumSubjectId, termId])
+  @@index([organizationId])
+  @@map("syllabi")
+}
+
+enum SyllabusNodeLevel {
+  UNIT
+  CHAPTER
+  TOPIC
+  SUBTOPIC
+}
+
+model SyllabusNode {
+  id             String            @id @default(uuid())
+  organizationId String
+  syllabusId     String
+  parentId       String?
+  level          SyllabusNodeLevel
+  // Ordering among siblings under the same parent (or top-level within
+  // the syllabus for UNIT nodes) — display only.
+  sequence       Int
+  name           String
+  description    String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  organization       Organization        @relation(fields: [organizationId], references: [id])
+  syllabus            Syllabus           @relation(fields: [syllabusId], references: [id])
+  parent              SyllabusNode?      @relation("SyllabusNodeChildren", fields: [parentId], references: [id])
+  children            SyllabusNode[]     @relation("SyllabusNodeChildren")
+  learningObjectives  LearningObjective[]
+  lessonPlans         LessonPlan[]
+
+  @@index([organizationId])
+  @@index([syllabusId])
+  @@index([parentId])
+  @@map("syllabus_nodes")
+}
+
+model LearningObjective {
+  id             String   @id @default(uuid())
+  organizationId String
+  syllabusNodeId String
+  sequence       Int
+  description    String
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  node         SyllabusNode @relation(fields: [syllabusNodeId], references: [id])
+
+  @@index([organizationId])
+  @@index([syllabusNodeId])
+  @@map("learning_objectives")
+}
+
+// Tied to a TeachingAssignment (teacher+subject+section+term) and a
+// SyllabusNode (what's being taught), not to a specific ClassSchedule
+// occurrence or calendar date — a lesson plan is content a teacher
+// prepares once and may reuse across sessions; binding it to one actual
+// dated occurrence is 3d's job (class sessions / "My Classes Today"),
+// not this slice's.
+model LessonPlan {
+  id                   String    @id @default(uuid())
+  organizationId       String
+  teachingAssignmentId String
+  syllabusNodeId       String
+  title                String
+  objectives           String
+  materials            String?
+  plannedDate          DateTime?
+  notes                String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  organization       Organization       @relation(fields: [organizationId], references: [id])
+  teachingAssignment TeachingAssignment @relation(fields: [teachingAssignmentId], references: [id])
+  syllabusNode       SyllabusNode       @relation(fields: [syllabusNodeId], references: [id])
+
+  @@index([organizationId])
+  @@index([teachingAssignmentId])
+  @@map("lesson_plans")
 }
