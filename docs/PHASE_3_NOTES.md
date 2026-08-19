@@ -484,13 +484,113 @@ scored attempts) pages, RBAC-guarded API endpoints. e2e suite now 34/34.
   the server-computed score (50%) rather than any client-side
   calculation. All test data removed afterward.
 
-## Next step
+## Slice 3f — Teacher/Student/Parent Learning Dashboards
 
-Slice 3e done, stopped per plan §21 step 17. Next up per the slice
-breakdown in this file's intro: **3f — Teacher/student/parent learning
-dashboards**, the last slice of Phase 3 — aggregate views over
-everything 3a–3e built (timetable, attendance, syllabus progress, class
-sessions, assignments, knowledge checks). Likely admin-facing rather
-than per-role authenticated portals, same reasoning as "My Classes
-Today" in 3d, since no teacher/student/parent login exists yet. Not yet
-approved by the user — wait for explicit go-ahead before starting.
+## What shipped
+
+Three read-only aggregation endpoints under `organizations/me/dashboards`
+(`teacher/:employeeId`, `student/:studentId`, `parent/:guardianId`), all
+gated by a single `dashboard:view` permission rather than the
+multi-resource CRUD split every prior slice used — there is nothing to
+create, update or delete here, just views composed from data 3a–3e
+already built (timetable, attendance, syllabus progress, class
+sessions, assignments, knowledge checks). No new Prisma models.
+
+Same "no teacher/student/parent login yet" scoping decision as "My
+Classes Today" in 3d: this is an **admin-facing** look at what each
+role's own portal would show once that portal exists, not an
+authenticated self-service view — admin picks a teacher/student/
+guardian from a dropdown on `/dashboard/learning-dashboards` and sees
+that person's aggregated data. The `rubrics`/`syllabus_progress`-as-a-
+table deferrals from 3c/3d are reused unchanged here: syllabus progress
+is still computed on read (per `SyllabusNode`, "has a `COMPLETED`
+`ClassSession` with this as `actualSyllabusNodeId`?"), not stored.
+
+The parent dashboard's authorization is structural, not just a filter:
+`children` is built strictly from `StudentGuardian` links for the
+requested `guardianId`, so a guardian can never see a student they
+aren't actually linked to, however the query is shaped — matches plan
+§8's "Parent views must expose only authorized child information."
+
+Every `create*`-style nested-transaction trap from earlier slices
+applies here too: `parentDashboard` calls a shared
+`buildStudentDashboard(tx, ...)` helper once per linked child, and
+`studentDashboard`/`parentDashboard` both call it from inside their own
+`withTenant` transaction — `buildStudentDashboard` takes the already-
+open `tx` as a parameter rather than opening a second nested
+transaction, the same pattern established for every service that reuses
+another method's tx-scoped logic.
+
+## Bugs found and fixed
+
+- **Type-lie bug class, caught proactively this time**: initial
+  API-client types for the three dashboards reused broad shared
+  interfaces (`ClassSchedule`, `TeachingAssignment`, `Assignment`,
+  `KnowledgeCheck`) that require deeper nested relations than these
+  queries' `include` clauses actually fetch — the same "service returns
+  a partial shape, client type asserts more than the payload contains"
+  bug caught in slice 3d. Fixed by defining precise, narrower types
+  (`DashboardTeachingAssignment`, `DashboardClassSchedule`,
+  `StudentTimetableEntry`, `DashboardClassSession`, `AssignmentSummary`,
+  `DashboardAssignmentSubmission`, `KnowledgeCheckSummary`,
+  `DashboardKnowledgeCheckAttempt`) that match each query's `include`
+  exactly, rather than widening the query or force-fitting a broader
+  type.
+- **Real transient 500 during the browser pass**: selecting a guardian
+  produced a genuine `P2028 Unable to start a transaction in the given
+  time` from the `withTenant` 15000ms timeout. Flagged as a possible
+  *structural* risk rather than dismissed as ambient Neon noise, since
+  `parentDashboard` runs `buildStudentDashboard`'s ~8–10 sequential
+  queries once per linked child, all inside one transaction — cost that
+  scales with a guardian's child count. Confirmed via a direct timed
+  curl retry immediately after: `HTTP 200` in 5.7s for one child, valid
+  data — logically correct, but close enough to the 15s ceiling to
+  treat as load-bearing rather than a one-off. Fixed by parallelizing
+  the independent queries inside `buildStudentDashboard` (weekly
+  timetable, syllabus progress, attendance, assignment submissions,
+  knowledge-check attempts — none depend on each other once
+  `activeEnrollment` is resolved) and inside `teacherDashboard`
+  (class schedules, assignments, staff attendance) via `Promise.all`
+  instead of sequential `await`s, cutting wall-clock time by overlapping
+  round-trips rather than just hoping the timeout doesn't recur.
+  Re-verified after the fix: e2e suite passed 35/35, and the browser
+  pass re-confirmed the Parent dashboard renders correctly.
+
+New `/dashboard/learning-dashboards` page (three `Card` sections, one
+per role, each with a picker and a reusable `StudentSummary` display
+used directly for the student view and once per child for the parent
+view). e2e suite now 35/35.
+
+## Verified (slice 3f)
+
+- `pnpm typecheck` / `lint` / `build` clean across all three packages.
+- `services/api` e2e: 35/35, including one comprehensive new case
+  building a full realistic chain across every Phase 3 domain and
+  asserting all three dashboards aggregate correctly (exact counts/
+  statuses spot-checked), a second unrelated student does not leak into
+  a guardian's `children`, and the standard cross-tenant 404 guards for
+  all three endpoints.
+- `test/jest-e2e.json`'s global `testTimeout` raised 30000 → 60000 —
+  not a workaround for the P2028 above (that was fixed at the query
+  level, not by raising a timeout), but a separate, genuine scaling fix:
+  two different tests independently hit the 30000ms default across two
+  consecutive runs under normal (not degraded) conditions, with the new
+  dashboards test being the structurally heaviest chain in the whole
+  file. Same reasoning already applied in 2f's global bump and 3c's
+  `afterAll` hook bump — Phase 3's deeper multi-domain builds have
+  outgrown Phase 2's default.
+- Full browser pass, logged in as the demo admin: verified all three
+  dashboard sections (teacher, student, parent) render correct live
+  data end to end, including the parent section after the P2028 fix.
+  All test data removed afterward.
+
+## Phase 3 complete
+
+Slice 3f done, stopped per plan §21 step 17. This closes out **Phase 3
+— Teaching, Learning, Timetable & Attendance** in full: timetable &
+scheduling (3a), attendance (3b), syllabus & lesson plans (3c), class
+sessions & "My Classes Today" (3d), assignments & knowledge checks
+(3e), and learning dashboards (3f). Per the development plan's phase
+breakdown, **Phase 4 (Examination)** would be the natural next phase —
+not yet approved by the user; wait for explicit go-ahead before
+starting any Phase 4 work.

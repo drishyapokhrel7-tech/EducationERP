@@ -45,7 +45,9 @@ const SYSTEM_ROLES = [
 // the plan's own domain split), slice 3e added assignment (covers
 // submissions/grading) and knowledge_check (covers questions/attempts —
 // separate resource, same reasoning as every prior slice's domain
-// splits).
+// splits), slice 3f added dashboard (a single resource covering the
+// teacher/student/parent aggregation views — read-only, no CRUD, so one
+// resource with :view is enough rather than one per audience).
 const RESOURCES = [
   "organization",
   "campus",
@@ -80,6 +82,7 @@ const RESOURCES = [
   "class_session",
   "assignment",
   "knowledge_check",
+  "dashboard",
 ];
 const ACTIONS = Object.values(PermissionAction);
 

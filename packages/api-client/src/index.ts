@@ -97,6 +97,9 @@ import type {
   CreateQuestionInput,
   KnowledgeCheckAttempt,
   CreateAttemptInput,
+  TeacherDashboard,
+  StudentDashboard,
+  ParentDashboard,
 } from "./types";
 
 export class ApiError extends Error {
@@ -487,6 +490,13 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         method: "POST",
         body: JSON.stringify(input),
       }),
+
+    getTeacherDashboard: (employeeId: string) =>
+      request<TeacherDashboard>(`/organizations/me/dashboards/teacher/${employeeId}`),
+    getStudentDashboard: (studentId: string) =>
+      request<StudentDashboard>(`/organizations/me/dashboards/student/${studentId}`),
+    getParentDashboard: (guardianId: string) =>
+      request<ParentDashboard>(`/organizations/me/dashboards/parent/${guardianId}`),
   };
 }
 

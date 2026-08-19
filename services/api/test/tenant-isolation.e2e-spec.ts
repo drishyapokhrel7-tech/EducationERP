@@ -2073,4 +2073,274 @@ describe("Tenant isolation (e2e)", () => {
         .expect(404);
     });
   });
+
+  describe("learning dashboards (teacher/student/parent aggregation)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+    const DASH_DATE = "2099-09-01";
+
+    async function buildDashboardTarget(token: string, suffix: string) {
+      const campus = await request(app.getHttpServer())
+        .post("/organizations/me/campuses")
+        .set(...auth(token))
+        .send({ name: `Dash Campus ${suffix}`, code: `DACAMP${suffix}` })
+        .expect(201);
+      const faculty = await request(app.getHttpServer())
+        .post("/organizations/me/faculties")
+        .set(...auth(token))
+        .send({ campusId: campus.body.id, name: `Dash Faculty ${suffix}`, code: `DAFAC${suffix}` })
+        .expect(201);
+      const department = await request(app.getHttpServer())
+        .post("/organizations/me/departments")
+        .set(...auth(token))
+        .send({ facultyId: faculty.body.id, name: `Dash Dept ${suffix}`, code: `DADEP${suffix}` })
+        .expect(201);
+      const program = await request(app.getHttpServer())
+        .post("/organizations/me/programs")
+        .set(...auth(token))
+        .send({ departmentId: department.body.id, name: `Dash Program ${suffix}`, code: `DAPROG${suffix}` })
+        .expect(201);
+      const year = await request(app.getHttpServer())
+        .post("/organizations/me/academic-years")
+        .set(...auth(token))
+        .send({ name: `Dash Year ${suffix}`, startDate: "2099-08-01", endDate: "2100-06-30" })
+        .expect(201);
+      const term = await request(app.getHttpServer())
+        .post("/organizations/me/terms")
+        .set(...auth(token))
+        .send({
+          academicYearId: year.body.id,
+          name: `Dash Term ${suffix}`,
+          code: `DAT${suffix}`,
+          sequence: 1,
+          startDate: "2099-08-01",
+          endDate: "2099-12-15",
+        })
+        .expect(201);
+      const section = await request(app.getHttpServer())
+        .post("/organizations/me/sections")
+        .set(...auth(token))
+        .send({ programId: program.body.id, termId: term.body.id, name: `Dash Section ${suffix}`, code: `DAS${suffix}` })
+        .expect(201);
+      const subject = await request(app.getHttpServer())
+        .post("/organizations/me/subjects")
+        .set(...auth(token))
+        .send({ name: `Dash Subject ${suffix}`, code: `DASUB${suffix}` })
+        .expect(201);
+      const curriculum = await request(app.getHttpServer())
+        .post("/organizations/me/curricula")
+        .set(...auth(token))
+        .send({ programId: program.body.id, name: `Dash Curriculum ${suffix}`, code: `DACURR${suffix}` })
+        .expect(201);
+      const curriculumSubject = await request(app.getHttpServer())
+        .post(`/organizations/me/curricula/${curriculum.body.id}/subjects`)
+        .set(...auth(token))
+        .send({ subjectId: subject.body.id })
+        .expect(201);
+      const staffType = await request(app.getHttpServer())
+        .post("/organizations/me/staff-types")
+        .set(...auth(token))
+        .send({ name: `Dash Staff Type ${suffix}`, code: `DAST${suffix}` })
+        .expect(201);
+      const designation = await request(app.getHttpServer())
+        .post("/organizations/me/designations")
+        .set(...auth(token))
+        .send({ name: `Dash Designation ${suffix}`, code: `DADS${suffix}` })
+        .expect(201);
+      const employee = await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(token))
+        .send({
+          staffTypeId: staffType.body.id,
+          designationId: designation.body.id,
+          employeeCode: `DAEMP-${suffix}`,
+          firstName: "Dash",
+          lastName: `Teacher${suffix}`,
+          email: `dateacher-${suffix}-${run}@rls-e2e.test`,
+          dateOfJoining: "2026-01-01",
+        })
+        .expect(201);
+      const teachingAssignment = await request(app.getHttpServer())
+        .post("/organizations/me/teaching-assignments")
+        .set(...auth(token))
+        .send({ employeeId: employee.body.id, subjectId: subject.body.id, sectionId: section.body.id, termId: term.body.id })
+        .expect(201);
+      const room = await request(app.getHttpServer())
+        .post("/organizations/me/rooms")
+        .set(...auth(token))
+        .send({ campusId: campus.body.id, name: `Dash Room ${suffix}`, code: `DARM${suffix}` })
+        .expect(201);
+      const period = await request(app.getHttpServer())
+        .post("/organizations/me/periods")
+        .set(...auth(token))
+        .send({ name: `Dash Period ${suffix}`, code: `DAP${suffix}`, sequence: 1, startTime: "09:00", endTime: "09:45" })
+        .expect(201);
+      const classSchedule = await request(app.getHttpServer())
+        .post("/organizations/me/class-schedules")
+        .set(...auth(token))
+        .send({ teachingAssignmentId: teachingAssignment.body.id, roomId: room.body.id, periodId: period.body.id, dayOfWeek: 1 })
+        .expect(201);
+
+      const student = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(token))
+        .send({ studentCode: `DA-STU-${suffix}`, firstName: "Dash", lastName: `Student${suffix}`, dateOfBirth: "2015-01-01" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/students/${student.body.id}/enrollments`)
+        .set(...auth(token))
+        .send({ programId: program.body.id, sectionId: section.body.id, termId: term.body.id, enrollmentDate: "2099-08-01" })
+        .expect(201);
+
+      const guardian = await request(app.getHttpServer())
+        .post("/organizations/me/guardians")
+        .set(...auth(token))
+        .send({ firstName: "Dash", lastName: `Guardian${suffix}`, phone: "555-0100" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/students/${student.body.id}/guardians`)
+        .set(...auth(token))
+        .send({ guardianId: guardian.body.id, relationship: "Mother", isPrimaryContact: true })
+        .expect(201);
+
+      const syllabus = await request(app.getHttpServer())
+        .post("/organizations/me/syllabi")
+        .set(...auth(token))
+        .send({ curriculumSubjectId: curriculumSubject.body.id, termId: term.body.id })
+        .expect(201);
+      const unit = await request(app.getHttpServer())
+        .post(`/organizations/me/syllabi/${syllabus.body.id}/nodes`)
+        .set(...auth(token))
+        .send({ level: "UNIT", sequence: 1, name: `Dash Unit ${suffix}` })
+        .expect(201);
+
+      const classSession = await request(app.getHttpServer())
+        .post("/organizations/me/class-sessions")
+        .set(...auth(token))
+        .send({ classScheduleId: classSchedule.body.id, date: DASH_DATE })
+        .expect(201);
+      await request(app.getHttpServer())
+        .put(`/organizations/me/class-sessions/${classSession.body.id}/progress`)
+        .set(...auth(token))
+        .send({ actualSyllabusNodeId: unit.body.id })
+        .expect(200);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/class-sessions/${classSession.body.id}/complete`)
+        .set(...auth(token))
+        .expect(201);
+
+      const attendanceSession = await request(app.getHttpServer())
+        .post("/organizations/me/attendance-sessions")
+        .set(...auth(token))
+        .send({ classScheduleId: classSchedule.body.id, date: DASH_DATE })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/attendance-sessions/${attendanceSession.body.id}/mark`)
+        .set(...auth(token))
+        .send({ entries: [{ studentId: student.body.id, status: "PRESENT" }] })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post("/organizations/me/staff-attendance")
+        .set(...auth(token))
+        .send({ employeeId: employee.body.id, date: DASH_DATE, status: "PRESENT" })
+        .expect(201);
+
+      const assignment = await request(app.getHttpServer())
+        .post("/organizations/me/assignments")
+        .set(...auth(token))
+        .send({ teachingAssignmentId: teachingAssignment.body.id, title: `Dash Assignment ${suffix}`, submissionType: "TEXT" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/assignments/${assignment.body.id}/submissions`)
+        .set(...auth(token))
+        .send({ studentId: student.body.id, content: "My work" })
+        .expect(201);
+
+      const check = await request(app.getHttpServer())
+        .post("/organizations/me/knowledge-checks")
+        .set(...auth(token))
+        .send({ teachingAssignmentId: teachingAssignment.body.id, title: `Dash Check ${suffix}` })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/knowledge-checks/${check.body.id}/questions`)
+        .set(...auth(token))
+        .send({ sequence: 1, text: "Q1", options: ["a", "b"], correctOptionIndex: 0 })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/knowledge-checks/${check.body.id}/publish`)
+        .set(...auth(token))
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/knowledge-checks/${check.body.id}/attempts`)
+        .set(...auth(token))
+        .send({ studentId: student.body.id, answers: [0] })
+        .expect(201);
+
+      return {
+        employeeId: employee.body.id,
+        studentId: student.body.id,
+        guardianId: guardian.body.id,
+        subjectName: `Dash Subject ${suffix}`,
+        sectionName: `Dash Section ${suffix}`,
+      };
+    }
+
+    it("aggregates teacher, student and parent dashboards from data built across every prior slice, and only shows a parent their own linked children", async () => {
+      const t = await buildDashboardTarget(tokenA, "DBA");
+
+      // A second, unrelated student — must not leak into the guardian's
+      // dashboard just because it exists in the same org.
+      const otherStudent = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({ studentCode: "DA-STU-OTHER", firstName: "Other", lastName: "Student", dateOfBirth: "2015-01-01" })
+        .expect(201);
+
+      const teacher = await request(app.getHttpServer())
+        .get(`/organizations/me/dashboards/teacher/${t.employeeId}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(teacher.body.teachingAssignments).toHaveLength(1);
+      expect(teacher.body.teachingAssignments[0].subject.name).toBe(t.subjectName);
+      expect(teacher.body.classSchedules).toHaveLength(1);
+      expect(teacher.body.pendingGrading).toHaveLength(1);
+      expect(teacher.body.pendingGrading[0].status).toBe("SUBMITTED");
+      expect(teacher.body.recentClassSessions).toHaveLength(1);
+      expect(teacher.body.recentClassSessions[0].status).toBe("COMPLETED");
+      expect(teacher.body.staffAttendanceSummary).toMatchObject({ present: 1, absent: 0, late: 0, total: 1 });
+
+      const student = await request(app.getHttpServer())
+        .get(`/organizations/me/dashboards/student/${t.studentId}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(student.body.activeEnrollment.section.name).toBe(t.sectionName);
+      expect(student.body.weeklyTimetable).toHaveLength(1);
+      expect(student.body.attendanceSummary).toMatchObject({ present: 1, total: 1 });
+      expect(student.body.assignmentSubmissions).toHaveLength(1);
+      expect(student.body.assignmentSubmissions[0].status).toBe("SUBMITTED");
+      expect(student.body.knowledgeCheckAttempts).toHaveLength(1);
+      expect(student.body.knowledgeCheckAttempts[0].score).toBe(100);
+      expect(student.body.syllabusProgress).toHaveLength(1);
+      expect(student.body.syllabusProgress[0].nodes[0].status).toBe("COMPLETED");
+
+      const parent = await request(app.getHttpServer())
+        .get(`/organizations/me/dashboards/parent/${t.guardianId}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(parent.body.children).toHaveLength(1);
+      expect(parent.body.children[0].student.id).toBe(t.studentId);
+      expect(parent.body.children[0].relationship).toBe("Mother");
+      expect(parent.body.children.map((c: { student: { id: string } }) => c.student.id)).not.toContain(otherStudent.body.id);
+
+      for (const path of [
+        `dashboards/teacher/${t.employeeId}`,
+        `dashboards/student/${t.studentId}`,
+        `dashboards/parent/${t.guardianId}`,
+      ]) {
+        await request(app.getHttpServer())
+          .get(`/organizations/me/${path}`)
+          .set(...auth(tokenB))
+          .expect(404);
+      }
+    });
+  });
 });

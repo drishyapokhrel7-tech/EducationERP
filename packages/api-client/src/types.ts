@@ -855,3 +855,133 @@ export interface CreateAttemptInput {
   studentId: string;
   answers: number[];
 }
+
+export interface SyllabusNodeProgressGroup {
+  subjectName: string;
+  nodes: SyllabusNodeProgress[];
+}
+
+export interface AttendanceSummary {
+  present: number;
+  absent: number;
+  late: number;
+  excused: number;
+  total: number;
+}
+
+export interface StaffAttendanceSummary {
+  present: number;
+  absent: number;
+  late: number;
+  onLeave: number;
+  total: number;
+}
+
+// The dashboard endpoints each query for a specific summary shape, not
+// the full entity graph — these types are deliberately narrower than
+// TeachingAssignment/ClassSchedule/ClassSession elsewhere in this file
+// (e.g. no top-level `teacher` on DashboardClassSchedule, no
+// classSchedule/lessonPlan/materials on DashboardClassSession), so they
+// match what each query's `include` actually returns rather than
+// reusing a broader type and lying about the shape.
+
+export interface DashboardTeachingAssignment {
+  id: string;
+  subjectId: string;
+  sectionId: string;
+  termId: string;
+  subject: Subject;
+  section: Section;
+  term: Term;
+}
+
+export interface DashboardClassSchedule {
+  id: string;
+  dayOfWeek: number;
+  period: Period;
+  room: Room;
+  section: Section;
+  teachingAssignment: { subject: Subject };
+}
+
+export interface StudentTimetableEntry {
+  id: string;
+  dayOfWeek: number;
+  period: Period;
+  room: Room;
+  teachingAssignment: { subject: Subject; employee: Employee };
+}
+
+export interface DashboardClassSession {
+  id: string;
+  date: string;
+  status: ClassSessionStatus;
+  progressNotes: string | null;
+  section: Section;
+  actualSyllabusNode: SyllabusNode | null;
+}
+
+export interface AssignmentSummary {
+  id: string;
+  teachingAssignmentId: string;
+  title: string;
+  submissionType: SubmissionType;
+  dueDate: string | null;
+  allowResubmission: boolean;
+  maxScore: number | null;
+}
+
+export interface DashboardAssignmentSubmission {
+  id: string;
+  assignmentId: string;
+  studentId: string;
+  content: string | null;
+  submittedAt: string;
+  status: SubmissionStatus;
+  score: number | null;
+  feedback: string | null;
+  assignment: AssignmentSummary;
+}
+
+export interface KnowledgeCheckSummary {
+  id: string;
+  teachingAssignmentId: string;
+  syllabusNodeId: string | null;
+  title: string;
+  durationMinutes: number | null;
+  status: KnowledgeCheckStatus;
+}
+
+export interface DashboardKnowledgeCheckAttempt {
+  id: string;
+  knowledgeCheckId: string;
+  studentId: string;
+  answers: number[];
+  score: number;
+  submittedAt: string;
+  knowledgeCheck: KnowledgeCheckSummary;
+}
+
+export interface StudentDashboard {
+  student: Student;
+  activeEnrollment: StudentEnrollment | null;
+  weeklyTimetable: StudentTimetableEntry[];
+  attendanceSummary: AttendanceSummary;
+  assignmentSubmissions: DashboardAssignmentSubmission[];
+  knowledgeCheckAttempts: DashboardKnowledgeCheckAttempt[];
+  syllabusProgress: SyllabusNodeProgressGroup[];
+}
+
+export interface TeacherDashboard {
+  employee: Employee;
+  teachingAssignments: DashboardTeachingAssignment[];
+  classSchedules: DashboardClassSchedule[];
+  pendingGrading: (AssignmentSubmission & { assignmentTitle: string })[];
+  recentClassSessions: DashboardClassSession[];
+  staffAttendanceSummary: StaffAttendanceSummary;
+}
+
+export interface ParentDashboard {
+  guardian: Guardian;
+  children: (StudentDashboard & { relationship: string; isPrimaryContact: boolean })[];
+}

@@ -13,6 +13,7 @@ import {
   ClipboardList,
   GraduationCap,
   LayoutDashboard,
+  LayoutPanelTop,
   ListChecks,
   LogOut,
   Network,
@@ -36,6 +37,7 @@ const NAV = [
   { href: "/dashboard/my-classes-today", label: "My Classes Today", icon: CheckCircle2 },
   { href: "/dashboard/assignments", label: "Assignments", icon: ClipboardCheck },
   { href: "/dashboard/knowledge-checks", label: "Knowledge Checks", icon: ListChecks },
+  { href: "/dashboard/learning-dashboards", label: "Learning Dashboards", icon: LayoutPanelTop },
 ];
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
