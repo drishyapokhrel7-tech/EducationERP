@@ -60,6 +60,8 @@ model Organization {
   syllabusNodes         SyllabusNode[]
   learningObjectives    LearningObjective[]
   lessonPlans           LessonPlan[]
+  classSessions         ClassSession[]
+  classMaterials        ClassMaterial[]
 
   @@map("organizations")
 }
@@ -281,6 +283,7 @@ model Section {
   teachingAssignments TeachingAssignment[]
   classSchedules      ClassSchedule[]
   attendanceSessions  AttendanceSession[]
+  classSessions       ClassSession[]
 
   @@unique([termId, programId, code])
   @@index([organizationId])
@@ -914,6 +917,7 @@ model ClassSchedule {
   room                Room               @relation(fields: [roomId], references: [id])
   period              Period             @relation(fields: [periodId], references: [id])
   attendanceSessions  AttendanceSession[]
+  classSessions       ClassSession[]
 
   @@unique([termId, roomId, dayOfWeek, periodId], map: "class_schedules_room_slot_key")
   @@unique([termId, sectionId, dayOfWeek, periodId], map: "class_schedules_section_slot_key")
@@ -1089,6 +1093,7 @@ model SyllabusNode {
   children            SyllabusNode[]     @relation("SyllabusNodeChildren")
   learningObjectives  LearningObjective[]
   lessonPlans         LessonPlan[]
+  classSessions       ClassSession[]
 
   @@index([organizationId])
   @@index([syllabusId])
@@ -1134,8 +1139,89 @@ model LessonPlan {
   organization       Organization       @relation(fields: [organizationId], references: [id])
   teachingAssignment TeachingAssignment @relation(fields: [teachingAssignmentId], references: [id])
   syllabusNode       SyllabusNode       @relation(fields: [syllabusNodeId], references: [id])
+  classSessions      ClassSession[]
 
   @@index([organizationId])
   @@index([teachingAssignmentId])
   @@map("lesson_plans")
+}
+
+// ── Class Sessions (plan §6 "Teaching & Learning" — Phase 3 slice 3d) ──────
+// Distinct from AttendanceSession (slice 3b): a ClassSession tracks what
+// was actually *taught* (topic, progress, materials, completion), an
+// AttendanceSession tracks who was *there* — the plan lists them as
+// separate tables under separate domains, and the class-completion
+// workflow (plan §8) treats "confirm attendance" and "select actual
+// topic / record progress / mark completed" as separate steps. Both key
+// off the same (classScheduleId, date) pair but are otherwise
+// independent; the API surfaces both when listing a day's classes rather
+// than merging them into one model.
+//
+// syllabus_progress is deliberately not a stored table — per-node
+// progress (was this topic actually covered, and when) is fully derivable
+// by querying ClassSession rows for COMPLETED sessions whose
+// actualSyllabusNodeId matches a node, so a separate denormalized table
+// would just be a second source of truth to keep in sync on every
+// completion. Computed on read instead (plan §17 explicitly allows
+// "materialized views/aggregation ... where appropriate" — an on-demand
+// computed view is the simpler appropriate choice here, not a stored one).
+
+enum ClassSessionStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+}
+
+model ClassSession {
+  id                   String             @id @default(uuid())
+  organizationId       String
+  classScheduleId      String
+  // Denormalized off classSchedule, same reasoning as every prior
+  // slice's session-shaped models (AttendanceSession, ClassSchedule
+  // itself) — needed directly for the unique constraint and for
+  // listing/filtering without a join.
+  sectionId            String
+  date                 DateTime
+  lessonPlanId         String?
+  // What was actually covered — may differ from the lesson plan's
+  // intended node, which is exactly the "planned vs actual" distinction
+  // plan §8 calls out.
+  actualSyllabusNodeId String?
+  progressNotes        String?
+  status               ClassSessionStatus @default(SCHEDULED)
+  completedAt          DateTime?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  organization       Organization   @relation(fields: [organizationId], references: [id])
+  classSchedule      ClassSchedule  @relation(fields: [classScheduleId], references: [id])
+  section             Section       @relation(fields: [sectionId], references: [id])
+  lessonPlan          LessonPlan?   @relation(fields: [lessonPlanId], references: [id])
+  actualSyllabusNode  SyllabusNode? @relation(fields: [actualSyllabusNodeId], references: [id])
+  materials           ClassMaterial[]
+
+  @@unique([classScheduleId, date])
+  @@index([organizationId])
+  @@map("class_sessions")
+}
+
+// No file upload (same reasoning as every prior slice touching
+// documents): the object-storage backend is still an open decision, and
+// a class material here is a reference (title + optional link), not an
+// uploaded file.
+model ClassMaterial {
+  id             String   @id @default(uuid())
+  organizationId String
+  classSessionId String
+  title          String
+  url            String?
+  description    String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  classSession ClassSession @relation(fields: [classSessionId], references: [id])
+
+  @@index([organizationId])
+  @@index([classSessionId])
+  @@map("class_materials")
 }

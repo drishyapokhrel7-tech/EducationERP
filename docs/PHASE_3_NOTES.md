@@ -311,13 +311,100 @@ node in the currently-open syllabus.
   teaching assignment) removed afterward — none was planned as demo data
   for this slice.
 
+## Slice 3d — Class sessions & "My Classes Today"
+
+## What shipped
+
+`ClassSession` is deliberately a separate model from `AttendanceSession`
+(slice 3b), even though both key off the same `(classScheduleId, date)`
+pair — the plan lists `attendance_sessions` and `class_sessions` as
+separate tables under separate domains, and the class-completion
+workflow (plan §8) treats "confirm attendance" and "select actual
+topic / record progress / mark completed" as distinct steps with
+distinct owners in a real school (attendance is often taken by an aide;
+what-was-taught is the teacher's own record). `ClassSession` tracks:
+which `LessonPlan` (if any) it followed, the `actualSyllabusNode` (the
+topic *actually* covered — may differ from what was planned, which is
+exactly the "planned vs actual" distinction plan §8 calls out),
+progress notes, a `status` (`SCHEDULED`/`IN_PROGRESS`/`COMPLETED`), and
+`completedAt`. `ClassMaterial` attaches simple reference materials
+(title + optional URL) to a session — no file upload, same reasoning as
+every prior slice touching documents: the object-storage backend is
+still an open decision.
+
+`syllabus_progress` is deliberately **not** a stored table. A node's
+progress is fully derivable — "is there a `COMPLETED` `ClassSession`
+whose `actualSyllabusNodeId` is this node" — so a separate denormalized
+table would just be a second source of truth to keep in sync on every
+completion. `GET /syllabi/:id/progress` computes it on read instead
+(plan §17 explicitly allows "materialized views/aggregation ... where
+appropriate" — computed-on-read is the appropriate choice here, not a
+stored one, the same class of judgment call as `LessonPlan` reusing
+`Syllabus`/`TeachingAssignment` instead of duplicating fields).
+
+**"My Classes Today" is an admin-facing view for a given date, not a
+teacher-specific authenticated portal** — no student/teacher/parent
+login exists yet (a gap already noted in earlier phases), so
+`GET /my-classes-today?date=` surfaces the same data a teacher would
+see (every `ClassSchedule` slot recurring on that date's weekday, each
+annotated with whether a `ClassSession`/`AttendanceSession` already
+exists) from the one auth context that currently exists. Building the
+actual per-teacher portal is out of scope until teacher-role
+authentication is specified. The completion action itself enforces one
+real business rule: `POST .../complete` 400s if `actualSyllabusNodeId`
+isn't set yet — a class can't be marked done without recording what was
+taught, mirroring the class-completion workflow's own step ordering.
+
+`/dashboard/my-classes-today` UI: date picker (defaults to today), the
+day's scheduled classes with an "Open class" action, and — once
+opened — a syllabus/topic picker (cascading the same way slice 3c's
+lesson-plan form does), a progress-notes field, a materials list/form,
+and a "Mark completed" button that's disabled until a topic is
+recorded.
+
+## Verified (slice 3d)
+
+- `pnpm typecheck` / `lint` / `build` clean across all three packages.
+- `services/api` e2e: 30/30, including two new class-session cases —
+  the full My-Classes-Today → open → duplicate-rejected(409) →
+  complete-before-topic-rejected(400) → record-progress →
+  add-material → complete → syllabus-progress-updates chain, plus the
+  standard cross-tenant 404 guards for session creation and progress
+  recording.
+- Full browser pass, logged in as the demo admin: `/dashboard/my-classes-today`
+  correctly defaulted to today's date and showed a class scheduled for
+  today's actual weekday (built via `curl`, same proven pattern as
+  prior slices — this environment's Browser-pane click reliability has
+  been consistently flaky all session and `curl` setup + browser
+  verification of the new UI stays the reliable split). Opened the
+  class, selected the syllabus and topic (dropdown correctly populated,
+  same cascading pattern as slice 3c), recorded progress notes, added a
+  material with a working link, and marked the class completed — the
+  status updated live in both the session detail card and the
+  scheduled-classes list ("SCHEDULED" → "IN_PROGRESS" → "COMPLETED"),
+  the "Mark completed" button correctly disabled itself afterward, and
+  `GET /syllabi/:id/progress` confirmed the node flipped to `COMPLETED`
+  with a `completedAt` timestamp — verified directly against the API,
+  not just visually. All test data removed afterward.
+- This session hit a genuine `P1001` (database completely unreachable,
+  not just slow) applying the first migration, and separately a working
+  directory reset mid-session (an environment restart — the session's
+  background-task tracking tools also disconnected around the same
+  time) that broke a `prisma migrate dev` call with a confusing
+  "schema not found" error. Both were diagnosed correctly before
+  acting: the `P1001` cleared on a plain retry (no schema/connection
+  string change needed), and the "schema not found" was resolved by
+  `cd`-ing back into `services/api` rather than touching Prisma
+  config — worth remembering that a sudden path-resolution error after
+  several successful commands in the same session usually means the
+  cwd silently reset, not that something is wrong with the command
+  itself.
+
 ## Next step
 
-Slice 3c done, stopped per plan §21 step 17. Next up per the slice
-breakdown in this file's intro: **3d — Class sessions & the "My Classes
-Today" / class-completion workflow**, which ties 3a (timetable) + 3b
-(attendance) + 3c (syllabus/lesson plans) together: open today's
-scheduled class → confirm attendance → select the actual topic taught
-(from the syllabus tree) → record progress/notes/materials → mark
-complete. Not yet approved by the user — wait for explicit go-ahead
-before starting.
+Slice 3d done, stopped per plan §21 step 17. Next up per the slice
+breakdown in this file's intro: **3e — Knowledge checks & assignments**
+(submissions, rubrics, grading) — the two remaining steps of the
+class-completion workflow ("create/select knowledge check", "assign
+homework") that this slice deliberately deferred. Not yet approved by
+the user — wait for explicit go-ahead before starting.

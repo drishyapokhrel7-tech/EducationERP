@@ -11,6 +11,7 @@ import { AdmissionsModule } from "./modules/admissions/admissions.module";
 import { TimetableModule } from "./modules/timetable/timetable.module";
 import { AttendanceModule } from "./modules/attendance/attendance.module";
 import { SyllabusModule } from "./modules/syllabus/syllabus.module";
+import { ClassSessionsModule } from "./modules/class-sessions/class-sessions.module";
 import { QueueModule } from "./queue/queue.module";
 import { HealthController } from "./common/health.controller";
 
@@ -28,6 +29,7 @@ import { HealthController } from "./common/health.controller";
     TimetableModule,
     AttendanceModule,
     SyllabusModule,
+    ClassSessionsModule,
     QueueModule,
   ],
   controllers: [HealthController],

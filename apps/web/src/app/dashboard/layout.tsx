@@ -8,6 +8,7 @@ import {
   Building2,
   CalendarCheck,
   CalendarClock,
+  CheckCircle2,
   ClipboardList,
   GraduationCap,
   LayoutDashboard,
@@ -30,6 +31,7 @@ const NAV = [
   { href: "/dashboard/timetable", label: "Timetable", icon: CalendarClock },
   { href: "/dashboard/attendance", label: "Attendance", icon: CalendarCheck },
   { href: "/dashboard/syllabus", label: "Syllabus", icon: NotebookText },
+  { href: "/dashboard/my-classes-today", label: "My Classes Today", icon: CheckCircle2 },
 ];
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {

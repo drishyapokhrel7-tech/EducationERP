@@ -689,3 +689,63 @@ export interface CreateLessonPlanInput {
   plannedDate?: string;
   notes?: string;
 }
+
+export type ClassSessionStatus = "SCHEDULED" | "IN_PROGRESS" | "COMPLETED";
+
+export interface ClassMaterial {
+  id: string;
+  organizationId: string;
+  classSessionId: string;
+  title: string;
+  url: string | null;
+  description: string | null;
+}
+
+export interface CreateClassMaterialInput {
+  title: string;
+  url?: string;
+  description?: string;
+}
+
+export interface ClassSession {
+  id: string;
+  organizationId: string;
+  classScheduleId: string;
+  sectionId: string;
+  date: string;
+  lessonPlanId: string | null;
+  actualSyllabusNodeId: string | null;
+  progressNotes: string | null;
+  status: ClassSessionStatus;
+  completedAt: string | null;
+  classSchedule: ClassSchedule;
+  section: Section;
+  lessonPlan: LessonPlan | null;
+  actualSyllabusNode: SyllabusNode | null;
+  materials: ClassMaterial[];
+}
+
+export interface CreateClassSessionInput {
+  classScheduleId: string;
+  date: string;
+  lessonPlanId?: string;
+}
+
+export interface RecordProgressInput {
+  actualSyllabusNodeId?: string;
+  progressNotes?: string;
+}
+
+export interface MyClassesTodayEntry {
+  classSchedule: ClassSchedule;
+  classSession: ClassSession | null;
+  attendanceMarked: number | null;
+}
+
+export interface SyllabusNodeProgress {
+  nodeId: string;
+  name: string;
+  level: SyllabusNodeLevel;
+  status: "COMPLETED" | "NOT_STARTED";
+  completedAt: string | null;
+}

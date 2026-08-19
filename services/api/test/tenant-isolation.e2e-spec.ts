@@ -73,6 +73,12 @@ describe("Tenant isolation (e2e)", () => {
       // call here is its own short transaction; order still matters
       // (children before the parents they reference).
       const deleteOrder: string[] = [
+        // classMaterial references classSession; classSession references
+        // classSchedule/section/lessonPlan/syllabusNode — both lead the
+        // whole list since classSession must precede lessonPlan, which
+        // is itself already required to lead everything below.
+        "classMaterial",
+        "classSession",
         // lessonPlan references teachingAssignment + syllabusNode;
         // learningObjective references syllabusNode; syllabusNode
         // references syllabus (self-reference is ON DELETE SET NULL, so
@@ -1572,6 +1578,233 @@ describe("Tenant isolation (e2e)", () => {
           title: "Sneaky plan",
           objectives: "N/A",
         })
+        .expect(404);
+    });
+  });
+
+  describe("class sessions (My Classes Today → record progress → materials → complete; syllabus progress)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    // Matches ClassSchedule.dayOfWeek's own convention (1=Monday..7=Sunday,
+    // ISO 8601) so a ClassSchedule built for this date's weekday actually
+    // shows up in a My-Classes-Today query for this date.
+    const TEST_DATE = "2099-08-10";
+    const TEST_DAY_OF_WEEK = ((new Date(TEST_DATE).getUTCDay() + 6) % 7) + 1;
+
+    async function buildClassSessionTarget(token: string, suffix: string) {
+      const campus = await request(app.getHttpServer())
+        .post("/organizations/me/campuses")
+        .set(...auth(token))
+        .send({ name: `ClassSession Campus ${suffix}`, code: `CSCAMP${suffix}` })
+        .expect(201);
+      const faculty = await request(app.getHttpServer())
+        .post("/organizations/me/faculties")
+        .set(...auth(token))
+        .send({ campusId: campus.body.id, name: `ClassSession Faculty ${suffix}`, code: `CSFAC${suffix}` })
+        .expect(201);
+      const department = await request(app.getHttpServer())
+        .post("/organizations/me/departments")
+        .set(...auth(token))
+        .send({ facultyId: faculty.body.id, name: `ClassSession Dept ${suffix}`, code: `CSDEP${suffix}` })
+        .expect(201);
+      const program = await request(app.getHttpServer())
+        .post("/organizations/me/programs")
+        .set(...auth(token))
+        .send({ departmentId: department.body.id, name: `ClassSession Program ${suffix}`, code: `CSPROG${suffix}` })
+        .expect(201);
+      const year = await request(app.getHttpServer())
+        .post("/organizations/me/academic-years")
+        .set(...auth(token))
+        .send({ name: `ClassSession Year ${suffix}`, startDate: "2099-08-01", endDate: "2100-06-30" })
+        .expect(201);
+      const term = await request(app.getHttpServer())
+        .post("/organizations/me/terms")
+        .set(...auth(token))
+        .send({
+          academicYearId: year.body.id,
+          name: `ClassSession Term ${suffix}`,
+          code: `CST${suffix}`,
+          sequence: 1,
+          startDate: "2099-08-01",
+          endDate: "2099-12-15",
+        })
+        .expect(201);
+      const section = await request(app.getHttpServer())
+        .post("/organizations/me/sections")
+        .set(...auth(token))
+        .send({ programId: program.body.id, termId: term.body.id, name: `ClassSession Section ${suffix}`, code: `CSS${suffix}` })
+        .expect(201);
+      const subject = await request(app.getHttpServer())
+        .post("/organizations/me/subjects")
+        .set(...auth(token))
+        .send({ name: `ClassSession Subject ${suffix}`, code: `CSSUB${suffix}` })
+        .expect(201);
+      const curriculum = await request(app.getHttpServer())
+        .post("/organizations/me/curricula")
+        .set(...auth(token))
+        .send({ programId: program.body.id, name: `ClassSession Curriculum ${suffix}`, code: `CSCURR${suffix}` })
+        .expect(201);
+      const curriculumSubject = await request(app.getHttpServer())
+        .post(`/organizations/me/curricula/${curriculum.body.id}/subjects`)
+        .set(...auth(token))
+        .send({ subjectId: subject.body.id })
+        .expect(201);
+      const syllabus = await request(app.getHttpServer())
+        .post("/organizations/me/syllabi")
+        .set(...auth(token))
+        .send({ curriculumSubjectId: curriculumSubject.body.id, termId: term.body.id })
+        .expect(201);
+      const unit = await request(app.getHttpServer())
+        .post(`/organizations/me/syllabi/${syllabus.body.id}/nodes`)
+        .set(...auth(token))
+        .send({ level: "UNIT", sequence: 1, name: `Unit ${suffix}` })
+        .expect(201);
+      const staffType = await request(app.getHttpServer())
+        .post("/organizations/me/staff-types")
+        .set(...auth(token))
+        .send({ name: `ClassSession Staff Type ${suffix}`, code: `CSST${suffix}` })
+        .expect(201);
+      const designation = await request(app.getHttpServer())
+        .post("/organizations/me/designations")
+        .set(...auth(token))
+        .send({ name: `ClassSession Designation ${suffix}`, code: `CSDS${suffix}` })
+        .expect(201);
+      const employee = await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(token))
+        .send({
+          staffTypeId: staffType.body.id,
+          designationId: designation.body.id,
+          employeeCode: `CSEMP-${suffix}`,
+          firstName: "ClassSession",
+          lastName: `Teacher${suffix}`,
+          email: `csteacher-${suffix}-${run}@rls-e2e.test`,
+          dateOfJoining: "2026-01-01",
+        })
+        .expect(201);
+      const room = await request(app.getHttpServer())
+        .post("/organizations/me/rooms")
+        .set(...auth(token))
+        .send({ campusId: campus.body.id, name: `ClassSession Room ${suffix}`, code: `CSRM${suffix}` })
+        .expect(201);
+      const period = await request(app.getHttpServer())
+        .post("/organizations/me/periods")
+        .set(...auth(token))
+        .send({ name: `ClassSession Period ${suffix}`, code: `CSP${suffix}`, sequence: 1, startTime: "09:00", endTime: "09:45" })
+        .expect(201);
+      const assignment = await request(app.getHttpServer())
+        .post("/organizations/me/teaching-assignments")
+        .set(...auth(token))
+        .send({ employeeId: employee.body.id, subjectId: subject.body.id, sectionId: section.body.id, termId: term.body.id })
+        .expect(201);
+      const classSchedule = await request(app.getHttpServer())
+        .post("/organizations/me/class-schedules")
+        .set(...auth(token))
+        .send({ teachingAssignmentId: assignment.body.id, roomId: room.body.id, periodId: period.body.id, dayOfWeek: TEST_DAY_OF_WEEK })
+        .expect(201);
+
+      return { classScheduleId: classSchedule.body.id, syllabusId: syllabus.body.id, unitNodeId: unit.body.id };
+    }
+
+    it("shows a scheduled class in My Classes Today, opens a session, records progress, adds a material, completes it, and updates syllabus progress", async () => {
+      const t = await buildClassSessionTarget(tokenA, "CSA");
+
+      const before = await request(app.getHttpServer())
+        .get(`/organizations/me/my-classes-today?date=${TEST_DATE}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      const entry = before.body.find((e: { classSchedule: { id: string } }) => e.classSchedule.id === t.classScheduleId);
+      expect(entry).toBeDefined();
+      expect(entry.classSession).toBeNull();
+
+      const session = await request(app.getHttpServer())
+        .post("/organizations/me/class-sessions")
+        .set(...auth(tokenA))
+        .send({ classScheduleId: t.classScheduleId, date: TEST_DATE })
+        .expect(201);
+      expect(session.body.status).toBe("SCHEDULED");
+
+      // Duplicate session for the same schedule+date is rejected.
+      await request(app.getHttpServer())
+        .post("/organizations/me/class-sessions")
+        .set(...auth(tokenA))
+        .send({ classScheduleId: t.classScheduleId, date: TEST_DATE })
+        .expect(409);
+
+      // Completing before a topic is recorded is rejected.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/class-sessions/${session.body.id}/complete`)
+        .set(...auth(tokenA))
+        .expect(400);
+
+      const progressed = await request(app.getHttpServer())
+        .put(`/organizations/me/class-sessions/${session.body.id}/progress`)
+        .set(...auth(tokenA))
+        .send({ actualSyllabusNodeId: t.unitNodeId, progressNotes: "Covered the intro" })
+        .expect(200);
+      expect(progressed.body.status).toBe("IN_PROGRESS");
+      expect(progressed.body.actualSyllabusNode.id).toBe(t.unitNodeId);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/class-sessions/${session.body.id}/materials`)
+        .set(...auth(tokenA))
+        .send({ title: "Slide deck", url: "https://example.com/slides.pdf" })
+        .expect(201);
+
+      const progressBeforeComplete = await request(app.getHttpServer())
+        .get(`/organizations/me/syllabi/${t.syllabusId}/progress`)
+        .set(...auth(tokenA))
+        .expect(200);
+      const nodeProgressBefore = progressBeforeComplete.body.find((p: { nodeId: string }) => p.nodeId === t.unitNodeId);
+      expect(nodeProgressBefore.status).toBe("NOT_STARTED");
+
+      const completed = await request(app.getHttpServer())
+        .post(`/organizations/me/class-sessions/${session.body.id}/complete`)
+        .set(...auth(tokenA))
+        .expect(201);
+      expect(completed.body.status).toBe("COMPLETED");
+      expect(completed.body.materials).toHaveLength(1);
+
+      const progressAfterComplete = await request(app.getHttpServer())
+        .get(`/organizations/me/syllabi/${t.syllabusId}/progress`)
+        .set(...auth(tokenA))
+        .expect(200);
+      const nodeProgressAfter = progressAfterComplete.body.find((p: { nodeId: string }) => p.nodeId === t.unitNodeId);
+      expect(nodeProgressAfter.status).toBe("COMPLETED");
+
+      const after = await request(app.getHttpServer())
+        .get(`/organizations/me/my-classes-today?date=${TEST_DATE}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      const entryAfter = after.body.find((e: { classSchedule: { id: string } }) => e.classSchedule.id === t.classScheduleId);
+      expect(entryAfter.classSession.status).toBe("COMPLETED");
+
+      const listB = await request(app.getHttpServer())
+        .get(`/organizations/me/my-classes-today?date=${TEST_DATE}`)
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(listB.body.find((e: { classSchedule: { id: string } }) => e.classSchedule.id === t.classScheduleId)).toBeUndefined();
+    });
+
+    it("rejects creating a class session under another tenant's class schedule, and recording progress on another tenant's session (404)", async () => {
+      const t = await buildClassSessionTarget(tokenA, "CSGUARD");
+
+      await request(app.getHttpServer())
+        .post("/organizations/me/class-sessions")
+        .set(...auth(tokenB))
+        .send({ classScheduleId: t.classScheduleId, date: TEST_DATE })
+        .expect(404);
+
+      const sessionA = await request(app.getHttpServer())
+        .post("/organizations/me/class-sessions")
+        .set(...auth(tokenA))
+        .send({ classScheduleId: t.classScheduleId, date: TEST_DATE })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .put(`/organizations/me/class-sessions/${sessionA.body.id}/progress`)
+        .set(...auth(tokenB))
+        .send({ actualSyllabusNodeId: t.unitNodeId })
         .expect(404);
     });
   });

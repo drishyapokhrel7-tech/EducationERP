@@ -39,7 +39,10 @@ const SYSTEM_ROLES = [
 // reasoning as enrollment vs admission being separate resources), slice
 // 3c added syllabus (covers the node tree + learning objectives) and
 // lesson_plan (separate resource — planning content is a distinct
-// teacher-facing action from the syllabus structure itself).
+// teacher-facing action from the syllabus structure itself), slice 3d
+// added class_session (covers sessions, materials, and completion —
+// deliberately separate from both attendance and syllabus, matching
+// the plan's own domain split).
 const RESOURCES = [
   "organization",
   "campus",
@@ -71,6 +74,7 @@ const RESOURCES = [
   "staff_attendance",
   "syllabus",
   "lesson_plan",
+  "class_session",
 ];
 const ACTIONS = Object.values(PermissionAction);
 

@@ -79,6 +79,13 @@ import type {
   CreateLearningObjectiveInput,
   LessonPlan,
   CreateLessonPlanInput,
+  ClassSession,
+  CreateClassSessionInput,
+  RecordProgressInput,
+  ClassMaterial,
+  CreateClassMaterialInput,
+  MyClassesTodayEntry,
+  SyllabusNodeProgress,
 } from "./types";
 
 export class ApiError extends Error {
@@ -411,6 +418,30 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         method: "POST",
         body: JSON.stringify(input),
       }),
+
+    myClassesToday: (date: string) =>
+      request<MyClassesTodayEntry[]>(`/organizations/me/my-classes-today?date=${encodeURIComponent(date)}`),
+    createClassSession: (input: CreateClassSessionInput) =>
+      request<ClassSession>("/organizations/me/class-sessions", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    getClassSession: (sessionId: string) =>
+      request<ClassSession>(`/organizations/me/class-sessions/${sessionId}`),
+    recordProgress: (sessionId: string, input: RecordProgressInput) =>
+      request<ClassSession>(`/organizations/me/class-sessions/${sessionId}/progress`, {
+        method: "PUT",
+        body: JSON.stringify(input),
+      }),
+    addClassMaterial: (sessionId: string, input: CreateClassMaterialInput) =>
+      request<ClassMaterial>(`/organizations/me/class-sessions/${sessionId}/materials`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    completeClassSession: (sessionId: string) =>
+      request<ClassSession>(`/organizations/me/class-sessions/${sessionId}/complete`, { method: "POST" }),
+    getSyllabusProgress: (syllabusId: string) =>
+      request<SyllabusNodeProgress[]>(`/organizations/me/syllabi/${syllabusId}/progress`),
   };
 }
 
