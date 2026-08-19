@@ -62,6 +62,14 @@ import type {
   CreateTeachingAssignmentInput,
   ClassSchedule,
   CreateClassScheduleInput,
+  AttendanceSession,
+  AttendanceSessionWithRoster,
+  CreateAttendanceSessionInput,
+  StudentAttendance,
+  MarkAttendanceInput,
+  CorrectAttendanceInput,
+  StaffAttendance,
+  CreateStaffAttendanceInput,
 } from "./types";
 
 export class ApiError extends Error {
@@ -342,6 +350,32 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
     listClassSchedules: () => request<ClassSchedule[]>("/organizations/me/class-schedules"),
     createClassSchedule: (input: CreateClassScheduleInput) =>
       request<ClassSchedule>("/organizations/me/class-schedules", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+
+    listAttendanceSessions: () => request<AttendanceSession[]>("/organizations/me/attendance-sessions"),
+    createAttendanceSession: (input: CreateAttendanceSessionInput) =>
+      request<AttendanceSessionWithRoster>("/organizations/me/attendance-sessions", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    getAttendanceSession: (sessionId: string) =>
+      request<AttendanceSessionWithRoster>(`/organizations/me/attendance-sessions/${sessionId}`),
+    markAttendance: (sessionId: string, input: MarkAttendanceInput) =>
+      request<StudentAttendance[]>(`/organizations/me/attendance-sessions/${sessionId}/mark`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    correctAttendance: (sessionId: string, studentId: string, input: CorrectAttendanceInput) =>
+      request<StudentAttendance>(
+        `/organizations/me/attendance-sessions/${sessionId}/students/${studentId}`,
+        { method: "PUT", body: JSON.stringify(input) },
+      ),
+
+    listStaffAttendance: () => request<StaffAttendance[]>("/organizations/me/staff-attendance"),
+    markStaffAttendance: (input: CreateStaffAttendanceInput) =>
+      request<StaffAttendance>("/organizations/me/staff-attendance", {
         method: "POST",
         body: JSON.stringify(input),
       }),

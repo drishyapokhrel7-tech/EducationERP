@@ -542,3 +542,69 @@ export interface CreateClassScheduleInput {
   periodId: string;
   dayOfWeek: number;
 }
+
+export type AttendanceStatus = "PRESENT" | "ABSENT" | "LATE" | "EXCUSED";
+
+export interface AttendanceSession {
+  id: string;
+  organizationId: string;
+  classScheduleId: string;
+  sectionId: string;
+  date: string;
+  section: Section;
+  classSchedule: ClassSchedule;
+  studentAttendance: StudentAttendance[];
+}
+
+export interface AttendanceSessionWithRoster extends AttendanceSession {
+  roster: Student[];
+}
+
+export interface StudentAttendance {
+  id: string;
+  organizationId: string;
+  attendanceSessionId: string;
+  studentId: string;
+  status: AttendanceStatus;
+  remarks: string | null;
+  student: Student;
+}
+
+export interface CreateAttendanceSessionInput {
+  classScheduleId: string;
+  date: string;
+}
+
+export interface MarkAttendanceEntryInput {
+  studentId: string;
+  status: AttendanceStatus;
+  remarks?: string;
+}
+
+export interface MarkAttendanceInput {
+  entries: MarkAttendanceEntryInput[];
+}
+
+export interface CorrectAttendanceInput {
+  status: AttendanceStatus;
+  reason: string;
+}
+
+export type StaffAttendanceStatus = "PRESENT" | "ABSENT" | "LATE" | "ON_LEAVE" | "HALF_DAY";
+
+export interface StaffAttendance {
+  id: string;
+  organizationId: string;
+  employeeId: string;
+  date: string;
+  status: StaffAttendanceStatus;
+  remarks: string | null;
+  employee: Employee;
+}
+
+export interface CreateStaffAttendanceInput {
+  employeeId: string;
+  date: string;
+  status: StaffAttendanceStatus;
+  remarks?: string;
+}

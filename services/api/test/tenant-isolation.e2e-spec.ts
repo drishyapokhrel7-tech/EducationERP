@@ -73,10 +73,19 @@ describe("Tenant isolation (e2e)", () => {
       // call here is its own short transaction; order still matters
       // (children before the parents they reference).
       const deleteOrder: string[] = [
+        // attendanceException references studentAttendance; studentAttendance
+        // references attendanceSession + student; staffAttendance references
+        // employee; attendanceSession references classSchedule + section —
+        // all four must go before classSchedule (which itself must go before
+        // teachingAssignment/employee/section/etc.), so they lead the list.
+        "attendanceException",
+        "studentAttendance",
+        "staffAttendance",
+        "attendanceSession",
         // classSchedule references teachingAssignment/room/period/section/
         // teacher(employee)/term, and teachingAssignment references
         // employee/subject/section/term — both must go before every one
-        // of those parent tables, so they lead the whole list.
+        // of those parent tables.
         "classSchedule",
         "teachingAssignment",
         "teacherProfile",
@@ -1051,6 +1060,269 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(tokenA))
         .send({ teachingAssignmentId: assignment2.body.id, roomId: t.roomId, periodId: t.periodId, dayOfWeek: 2 })
         .expect(409);
+    });
+  });
+
+  describe("attendance (session → roster → mark → correction; staff attendance)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    async function buildAttendanceTarget(token: string, suffix: string) {
+      const campus = await request(app.getHttpServer())
+        .post("/organizations/me/campuses")
+        .set(...auth(token))
+        .send({ name: `Attendance Campus ${suffix}`, code: `ATCAMP${suffix}` })
+        .expect(201);
+      const faculty = await request(app.getHttpServer())
+        .post("/organizations/me/faculties")
+        .set(...auth(token))
+        .send({ campusId: campus.body.id, name: `Attendance Faculty ${suffix}`, code: `ATFAC${suffix}` })
+        .expect(201);
+      const department = await request(app.getHttpServer())
+        .post("/organizations/me/departments")
+        .set(...auth(token))
+        .send({ facultyId: faculty.body.id, name: `Attendance Dept ${suffix}`, code: `ATDEP${suffix}` })
+        .expect(201);
+      const program = await request(app.getHttpServer())
+        .post("/organizations/me/programs")
+        .set(...auth(token))
+        .send({ departmentId: department.body.id, name: `Attendance Program ${suffix}`, code: `ATPROG${suffix}` })
+        .expect(201);
+      const year = await request(app.getHttpServer())
+        .post("/organizations/me/academic-years")
+        .set(...auth(token))
+        .send({ name: `Attendance Year ${suffix}`, startDate: "2099-08-01", endDate: "2100-06-30" })
+        .expect(201);
+      const term = await request(app.getHttpServer())
+        .post("/organizations/me/terms")
+        .set(...auth(token))
+        .send({
+          academicYearId: year.body.id,
+          name: `Attendance Term ${suffix}`,
+          code: `ATT${suffix}`,
+          sequence: 1,
+          startDate: "2099-08-01",
+          endDate: "2099-12-15",
+        })
+        .expect(201);
+      const section = await request(app.getHttpServer())
+        .post("/organizations/me/sections")
+        .set(...auth(token))
+        .send({ programId: program.body.id, termId: term.body.id, name: `Attendance Section ${suffix}`, code: `AS${suffix}` })
+        .expect(201);
+      const staffType = await request(app.getHttpServer())
+        .post("/organizations/me/staff-types")
+        .set(...auth(token))
+        .send({ name: `Attendance Staff Type ${suffix}`, code: `AST${suffix}` })
+        .expect(201);
+      const designation = await request(app.getHttpServer())
+        .post("/organizations/me/designations")
+        .set(...auth(token))
+        .send({ name: `Attendance Designation ${suffix}`, code: `ADS${suffix}` })
+        .expect(201);
+      const employee = await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(token))
+        .send({
+          staffTypeId: staffType.body.id,
+          designationId: designation.body.id,
+          employeeCode: `ATEMP-${suffix}`,
+          firstName: "Attendance",
+          lastName: `Teacher${suffix}`,
+          email: `atteacher-${suffix}-${run}@rls-e2e.test`,
+          dateOfJoining: "2026-01-01",
+        })
+        .expect(201);
+      const subject = await request(app.getHttpServer())
+        .post("/organizations/me/subjects")
+        .set(...auth(token))
+        .send({ name: `Attendance Subject ${suffix}`, code: `ATSUB${suffix}` })
+        .expect(201);
+      const room = await request(app.getHttpServer())
+        .post("/organizations/me/rooms")
+        .set(...auth(token))
+        .send({ campusId: campus.body.id, name: `Attendance Room ${suffix}`, code: `ARM${suffix}` })
+        .expect(201);
+      const period = await request(app.getHttpServer())
+        .post("/organizations/me/periods")
+        .set(...auth(token))
+        .send({ name: `Attendance Period ${suffix}`, code: `AP${suffix}`, sequence: 1, startTime: "09:00", endTime: "09:45" })
+        .expect(201);
+      const assignment = await request(app.getHttpServer())
+        .post("/organizations/me/teaching-assignments")
+        .set(...auth(token))
+        .send({ employeeId: employee.body.id, subjectId: subject.body.id, sectionId: section.body.id, termId: term.body.id })
+        .expect(201);
+      const classSchedule = await request(app.getHttpServer())
+        .post("/organizations/me/class-schedules")
+        .set(...auth(token))
+        .send({ teachingAssignmentId: assignment.body.id, roomId: room.body.id, periodId: period.body.id, dayOfWeek: 1 })
+        .expect(201);
+
+      const studentIds: string[] = [];
+      for (const n of [1, 2]) {
+        const student = await request(app.getHttpServer())
+          .post("/organizations/me/students")
+          .set(...auth(token))
+          .send({
+            studentCode: `AT-STU-${suffix}-${n}`,
+            firstName: `Student${n}`,
+            lastName: suffix,
+            dateOfBirth: "2015-01-01",
+          })
+          .expect(201);
+        await request(app.getHttpServer())
+          .post(`/organizations/me/students/${student.body.id}/enrollments`)
+          .set(...auth(token))
+          .send({
+            programId: program.body.id,
+            sectionId: section.body.id,
+            termId: term.body.id,
+            enrollmentDate: "2099-08-01",
+          })
+          .expect(201);
+        studentIds.push(student.body.id);
+      }
+
+      return { classScheduleId: classSchedule.body.id, sectionId: section.body.id, employeeId: employee.body.id, studentIds };
+    }
+
+    it("creates a session with the active-enrollment roster, marks attendance, and stays tenant-scoped", async () => {
+      const t = await buildAttendanceTarget(tokenA, "ATA");
+
+      const session = await request(app.getHttpServer())
+        .post("/organizations/me/attendance-sessions")
+        .set(...auth(tokenA))
+        .send({ classScheduleId: t.classScheduleId, date: "2099-08-10" })
+        .expect(201);
+      expect(session.body.sectionId).toBe(t.sectionId);
+      expect(session.body.roster.map((s: { id: string }) => s.id).sort()).toEqual([...t.studentIds].sort());
+
+      // Duplicate session for the same schedule+date is rejected.
+      await request(app.getHttpServer())
+        .post("/organizations/me/attendance-sessions")
+        .set(...auth(tokenA))
+        .send({ classScheduleId: t.classScheduleId, date: "2099-08-10" })
+        .expect(409);
+
+      const marked = await request(app.getHttpServer())
+        .post(`/organizations/me/attendance-sessions/${session.body.id}/mark`)
+        .set(...auth(tokenA))
+        .send({
+          entries: [
+            { studentId: t.studentIds[0], status: "PRESENT" },
+            { studentId: t.studentIds[1], status: "ABSENT", remarks: "Sick" },
+          ],
+        })
+        .expect(201);
+      expect(marked.body).toHaveLength(2);
+
+      const fetched = await request(app.getHttpServer())
+        .get(`/organizations/me/attendance-sessions/${session.body.id}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      const byStudent = new Map(
+        fetched.body.studentAttendance.map((a: { studentId: string; status: string }) => [a.studentId, a.status]),
+      );
+      expect(byStudent.get(t.studentIds[0])).toBe("PRESENT");
+      expect(byStudent.get(t.studentIds[1])).toBe("ABSENT");
+
+      const listB = await request(app.getHttpServer())
+        .get("/organizations/me/attendance-sessions")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(listB.body).toEqual([]);
+
+      await request(app.getHttpServer())
+        .get(`/organizations/me/attendance-sessions/${session.body.id}`)
+        .set(...auth(tokenB))
+        .expect(404);
+    });
+
+    it("rejects marking attendance for a student not enrolled in the session's section (400)", async () => {
+      const t = await buildAttendanceTarget(tokenA, "ATBAD");
+      const other = await buildAttendanceTarget(tokenA, "ATBADOTHER");
+
+      const session = await request(app.getHttpServer())
+        .post("/organizations/me/attendance-sessions")
+        .set(...auth(tokenA))
+        .send({ classScheduleId: t.classScheduleId, date: "2099-08-11" })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/attendance-sessions/${session.body.id}/mark`)
+        .set(...auth(tokenA))
+        .send({ entries: [{ studentId: other.studentIds[0], status: "PRESENT" }] })
+        .expect(400);
+    });
+
+    it("rejects creating a session under another tenant's class schedule (404)", async () => {
+      const t = await buildAttendanceTarget(tokenA, "ATGUARD");
+
+      await request(app.getHttpServer())
+        .post("/organizations/me/attendance-sessions")
+        .set(...auth(tokenB))
+        .send({ classScheduleId: t.classScheduleId, date: "2099-08-12" })
+        .expect(404);
+    });
+
+    it("supports correcting an already-marked attendance record with an audit trail, and rejects correcting an unmarked student (404)", async () => {
+      const t = await buildAttendanceTarget(tokenA, "ATCORR");
+
+      const session = await request(app.getHttpServer())
+        .post("/organizations/me/attendance-sessions")
+        .set(...auth(tokenA))
+        .send({ classScheduleId: t.classScheduleId, date: "2099-08-13" })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/attendance-sessions/${session.body.id}/mark`)
+        .set(...auth(tokenA))
+        .send({ entries: [{ studentId: t.studentIds[0], status: "ABSENT" }] })
+        .expect(201);
+
+      const corrected = await request(app.getHttpServer())
+        .put(`/organizations/me/attendance-sessions/${session.body.id}/students/${t.studentIds[0]}`)
+        .set(...auth(tokenA))
+        .send({ status: "PRESENT", reason: "Marked absent by mistake" })
+        .expect(200);
+      expect(corrected.body.status).toBe("PRESENT");
+
+      // The second student was never marked — correcting them 404s rather
+      // than silently creating a record (correction != first mark).
+      await request(app.getHttpServer())
+        .put(`/organizations/me/attendance-sessions/${session.body.id}/students/${t.studentIds[1]}`)
+        .set(...auth(tokenA))
+        .send({ status: "PRESENT", reason: "N/A" })
+        .expect(404);
+    });
+
+    it("marks staff attendance per employee+date, upserts on re-mark, and stays tenant-scoped", async () => {
+      const t = await buildAttendanceTarget(tokenA, "ATSTAFF");
+
+      await request(app.getHttpServer())
+        .post("/organizations/me/staff-attendance")
+        .set(...auth(tokenA))
+        .send({ employeeId: t.employeeId, date: "2099-08-14", status: "PRESENT" })
+        .expect(201);
+
+      const upserted = await request(app.getHttpServer())
+        .post("/organizations/me/staff-attendance")
+        .set(...auth(tokenA))
+        .send({ employeeId: t.employeeId, date: "2099-08-14", status: "LATE", remarks: "Traffic" })
+        .expect(201);
+      expect(upserted.body.status).toBe("LATE");
+
+      const listA = await request(app.getHttpServer())
+        .get("/organizations/me/staff-attendance")
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(listA.body.filter((a: { employeeId: string }) => a.employeeId === t.employeeId)).toHaveLength(1);
+
+      const listB = await request(app.getHttpServer())
+        .get("/organizations/me/staff-attendance")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(listB.body).toEqual([]);
     });
   });
 });

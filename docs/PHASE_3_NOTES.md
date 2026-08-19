@@ -121,10 +121,118 @@ backporting to earlier pages if this becomes the standard.
   was planned for this slice, since a "My Classes Today" feature (3d)
   that would actually use realistic schedule data doesn't exist yet.
 
+## Slice 3b — Attendance
+
+## What shipped
+
+Scoped to manual/session-based attendance only: `attendance_devices`,
+`attendance_events` and `entry_exit_records` (plan §6's automated-
+capture side of the Attendance group) are deliberately deferred to
+Phase 6 (CCTV/Biometric), where the capture hardware/pipeline that
+would ever populate them actually gets built — building those tables
+now would just be unused schema, same reasoning slice 3a used to defer
+CCTV-flavored timetable concerns.
+
+Four new tables: `AttendanceSession` (one per class-schedule-slot +
+date, unique on that pair), `StudentAttendance` (per-student mark for a
+session), `AttendanceException` (audit trail — every *correction* after
+the initial mark is recorded here with a reason, same pattern as
+`StudentStatusHistory`/`AdmissionStatusHistory`), and `StaffAttendance`
+(per-employee-per-day, independent of the class/session model — a
+different sub-domain, same reasoning `enrollment` and `admission` were
+kept as separate permission resources despite both touching `Student`).
+
+The roster for a session (which students can legally be marked) is
+never trusted from client input — it's computed server-side from active
+`StudentEnrollment` rows for the session's section, both when a session
+is created/fetched (so the UI can render checkboxes) and when marks are
+submitted (`markAttendance` rejects any `studentId` not in that roster
+with a 400, listing which ones). Marking is a bulk upsert
+(`POST .../attendance-sessions/:id/mark`, one call per class, not one
+per student — matching how attendance is actually taken); *correcting*
+an already-marked student is a **separate** endpoint
+(`PUT .../attendance-sessions/:id/students/:studentId`, mandatory
+`reason`) that writes an `AttendanceException` row before updating the
+status — this distinction (re-mark within the same sitting vs. a
+later audited correction) is deliberate, not accidental duplication.
+
+`/dashboard/attendance` UI: open a class-schedule+date to create/reuse
+a session, mark the roster in bulk, and a per-row "Correct" action that
+reveals a small reason-required inline form calling the correction
+endpoint specifically (see bug below — this was *not* wired up
+correctly on the first pass). Staff attendance is a separate section on
+the same page (single-employee mark, upserts per employee+date).
+
+## Bugs found and fixed via the browser pass
+
+1. **`getSession` was missing `section: true` in its Prisma `include`**
+   (only `listSessions` had it) — the frontend's `AttendanceSessionWithRoster`
+   type declared `section: Section` unconditionally, so the "Mark
+   attendance" card crashed with `Cannot read properties of undefined
+   (reading 'name')` the moment a session was opened. `createSession`'s
+   plain `.create()` call had the same latent gap (no `section` on its
+   return value either, though nothing rendered it directly yet). Fixed
+   both service methods so their response shapes actually match what
+   the shared client type promises — this class of bug (service
+   returns a partial shape, client type asserts more than the runtime
+   payload contains) is easy to miss because TypeScript can't catch a
+   mismatch across an HTTP boundary; only exercising the real render
+   caught it.
+2. **The correction endpoint was completely unreachable from the UI on
+   first build** — "Save attendance" always called the bulk
+   `markAttendance` upsert, even for already-marked students, so
+   `AttendanceException` would have shipped as dead code with no way to
+   ever populate it. Caught by asking "does this page actually exercise
+   every endpoint I built," not by any tool or test (the e2e suite
+   *did* test `correctAttendance` directly, which is exactly why this
+   gap wasn't visible there — the API is correct, only the UI's routing
+   to it was missing). Added a per-row "Correct" action, distinct from
+   the bulk re-mark, that requires a reason and calls the correction
+   endpoint specifically.
+
+## Verified (slice 3b)
+
+- `pnpm typecheck` / `lint` / `build` clean across all three packages.
+- `services/api` e2e: 25/25, including five new attendance cases —
+  session creation returns the correct active-enrollment roster and
+  stays tenant-scoped, marking a non-enrolled student 400s, creating a
+  session under another tenant's class schedule 404s, correcting an
+  already-marked record works (with a 404 for correcting a student who
+  was never marked — correction isn't a first mark), and staff
+  attendance upserts per employee+date and stays tenant-scoped.
+- **Root-caused this session's recurring Neon slowness**: eight
+  duplicate `nest start --watch` processes (plus a stray static
+  `node dist/main.js`) had silently accumulated across the session,
+  each holding its own Prisma connection pool against the same Neon
+  database. This — not raw network latency — is almost certainly what
+  made the permission-seed script and earlier e2e runs so slow
+  throughout this session. Killed all of them and started one clean,
+  properly-tracked instance; the e2e suite's timing (~207s) is now
+  consistent run-to-run. **Lesson, sharper than slice 3a's version:
+  don't just check for one stray process — enumerate every listener on
+  the relevant port(s) and every matching process name, since these
+  accumulate silently across preview_start calls that don't clean up
+  after themselves.**
+- Full browser pass, logged in as the demo admin: created a room,
+  period, teacher, teaching assignment and class schedule (same
+  pattern as slice 3a, done via `curl` against the running dev server
+  rather than the flaky `computer` click tool — see slice 3a's note,
+  the click tool remained unreliable this session too), then in the
+  browser: opened an attendance session for that schedule + a real
+  enrolled student (Aarav Sharma / Grade 3), marked him Absent, saw the
+  session list update to "1 marked" live, used the new Correct action
+  to change it to Present with a reason, confirmed the
+  `AttendanceException` audit row directly against Postgres
+  (`previousStatus: ABSENT, newStatus: PRESENT`), and marked staff
+  attendance for the teacher (verified the upsert-on-remark behavior
+  via `curl` after another click-reliability failure). All test data
+  removed afterward — none was planned as demo data for this slice.
+
 ## Next step
 
-Slice 3a done, stopped per plan §21 step 17. Next up per the slice
-breakdown above: **3b — Attendance**, since the class-completion
-workflow (3d) needs a real "confirm attendance" step to build on, and
-attendance is independently useful before 3d exists. Not yet approved by
-the user — wait for explicit go-ahead before starting.
+Slice 3b done, stopped per plan §21 step 17. Next up per the slice
+breakdown in this file's intro: **3c — Syllabus & lesson plans**
+(unit → chapter → topic → subtopic → learning objective hierarchy),
+which 3d (class sessions / "My Classes Today") needs for its "select
+topic" step. Not yet approved by the user — wait for explicit go-ahead
+before starting.

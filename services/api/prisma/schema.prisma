@@ -52,6 +52,10 @@ model Organization {
   periods               Period[]
   teachingAssignments   TeachingAssignment[]
   classSchedules        ClassSchedule[]
+  attendanceSessions    AttendanceSession[]
+  studentAttendances    StudentAttendance[]
+  staffAttendances      StaffAttendance[]
+  attendanceExceptions  AttendanceException[]
 
   @@map("organizations")
 }
@@ -270,6 +274,7 @@ model Section {
   studentEnrollments StudentEnrollment[]
   teachingAssignments TeachingAssignment[]
   classSchedules      ClassSchedule[]
+  attendanceSessions  AttendanceSession[]
 
   @@unique([termId, programId, code])
   @@index([organizationId])
@@ -528,6 +533,7 @@ model Employee {
   teacherProfile     TeacherProfile?
   teachingAssignments TeachingAssignment[]
   classSchedulesAsTeacher ClassSchedule[]
+  staffAttendances StaffAttendance[]
 
   @@unique([organizationId, employeeCode])
   @@unique([organizationId, email])
@@ -633,6 +639,7 @@ model Student {
   enrollments   StudentEnrollment[]
   statusHistory StudentStatusHistory[]
   admissionApplication AdmissionApplication?
+  attendanceRecords StudentAttendance[]
 
   @@unique([organizationId, studentCode])
   @@index([organizationId])
@@ -899,10 +906,113 @@ model ClassSchedule {
   teacher             Employee           @relation(fields: [teacherId], references: [id])
   room                Room               @relation(fields: [roomId], references: [id])
   period              Period             @relation(fields: [periodId], references: [id])
+  attendanceSessions  AttendanceSession[]
 
   @@unique([termId, roomId, dayOfWeek, periodId], map: "class_schedules_room_slot_key")
   @@unique([termId, sectionId, dayOfWeek, periodId], map: "class_schedules_section_slot_key")
   @@unique([termId, teacherId, dayOfWeek, periodId], map: "class_schedules_teacher_slot_key")
   @@index([organizationId])
   @@map("class_schedules")
+}
+
+// ── Attendance (plan §6 "Attendance" — Phase 3 slice 3b) ────────────────────
+// Scoped to manual/session-based attendance only: attendance_devices,
+// attendance_events and entry_exit_records (the automated-capture side of
+// plan §6's Attendance group) belong with Phase 6 (CCTV/Biometric), where
+// the capture hardware/pipeline that would ever populate them actually
+// gets built — building those tables now would just be unused schema.
+
+model AttendanceSession {
+  id              String   @id @default(uuid())
+  organizationId  String
+  classScheduleId String
+  // Denormalized off classSchedule — same reasoning as ClassSchedule's own
+  // sectionId/teacherId: the roster query and the one-session-per-slot-
+  // per-day uniqueness both need a real column, not a join.
+  sectionId       String
+  date            DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization  Organization        @relation(fields: [organizationId], references: [id])
+  classSchedule ClassSchedule       @relation(fields: [classScheduleId], references: [id])
+  section       Section             @relation(fields: [sectionId], references: [id])
+  studentAttendance StudentAttendance[]
+
+  @@unique([classScheduleId, date])
+  @@index([organizationId])
+  @@map("attendance_sessions")
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+model StudentAttendance {
+  id                  String           @id @default(uuid())
+  organizationId      String
+  attendanceSessionId String
+  studentId           String
+  status              AttendanceStatus
+  remarks             String?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id])
+  session      AttendanceSession @relation(fields: [attendanceSessionId], references: [id])
+  student      Student           @relation(fields: [studentId], references: [id])
+  exceptions   AttendanceException[]
+
+  @@unique([attendanceSessionId, studentId])
+  @@index([organizationId])
+  @@map("student_attendance")
+}
+
+// A correction's audit trail — every status change after the initial mark
+// (made via the bulk mark action, not this model) is recorded here with a
+// reason, same pattern as StudentStatusHistory/AdmissionStatusHistory.
+model AttendanceException {
+  id                  String           @id @default(uuid())
+  organizationId      String
+  studentAttendanceId String
+  previousStatus      AttendanceStatus
+  newStatus           AttendanceStatus
+  reason              String
+  createdAt           DateTime         @default(now())
+
+  organization      Organization      @relation(fields: [organizationId], references: [id])
+  studentAttendance StudentAttendance @relation(fields: [studentAttendanceId], references: [id])
+
+  @@index([organizationId])
+  @@index([studentAttendanceId])
+  @@map("attendance_exceptions")
+}
+
+enum StaffAttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  ON_LEAVE
+  HALF_DAY
+}
+
+model StaffAttendance {
+  id             String                @id @default(uuid())
+  organizationId String
+  employeeId     String
+  date           DateTime
+  status         StaffAttendanceStatus
+  remarks        String?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  employee     Employee     @relation(fields: [employeeId], references: [id])
+
+  @@unique([employeeId, date])
+  @@index([organizationId])
+  @@map("staff_attendance")
 }

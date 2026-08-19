@@ -33,7 +33,10 @@ const SYSTEM_ROLES = [
 // enrollment (guardian covers student_guardians attachment; enrollment
 // covers both creating and status-changing a StudentEnrollment), slice
 // 2e added admission (covers both status updates and the enroll action),
-// Phase 3 slice 3a added room/period/teaching_assignment/class_schedule.
+// Phase 3 slice 3a added room/period/teaching_assignment/class_schedule,
+// slice 3b added attendance (covers sessions/marking/corrections) and
+// staff_attendance (a separate resource — different sub-domain, same
+// reasoning as enrollment vs admission being separate resources).
 const RESOURCES = [
   "organization",
   "campus",
@@ -61,6 +64,8 @@ const RESOURCES = [
   "period",
   "teaching_assignment",
   "class_schedule",
+  "attendance",
+  "staff_attendance",
 ];
 const ACTIONS = Object.values(PermissionAction);
 
