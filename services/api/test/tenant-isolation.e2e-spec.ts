@@ -73,6 +73,17 @@ describe("Tenant isolation (e2e)", () => {
       // call here is its own short transaction; order still matters
       // (children before the parents they reference).
       const deleteOrder: string[] = [
+        // knowledgeCheckAttempt/knowledgeCheckQuestion reference
+        // knowledgeCheck; knowledgeCheck references teachingAssignment +
+        // syllabusNode; assignmentSubmission references assignment;
+        // assignment references teachingAssignment — all five lead the
+        // whole list since teachingAssignment and syllabusNode are both
+        // required elsewhere to be deleted much later.
+        "knowledgeCheckAttempt",
+        "knowledgeCheckQuestion",
+        "knowledgeCheck",
+        "assignmentSubmission",
+        "assignment",
         // classMaterial references classSession; classSession references
         // classSchedule/section/lessonPlan/syllabusNode — both lead the
         // whole list since classSession must precede lessonPlan, which
@@ -1805,6 +1816,260 @@ describe("Tenant isolation (e2e)", () => {
         .put(`/organizations/me/class-sessions/${sessionA.body.id}/progress`)
         .set(...auth(tokenB))
         .send({ actualSyllabusNodeId: t.unitNodeId })
+        .expect(404);
+    });
+  });
+
+  describe("assignments & knowledge checks (submissions/grading; questions/publish/attempts)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    async function buildAssignmentTarget(token: string, suffix: string) {
+      const campus = await request(app.getHttpServer())
+        .post("/organizations/me/campuses")
+        .set(...auth(token))
+        .send({ name: `Assign Campus ${suffix}`, code: `ASCAMP${suffix}` })
+        .expect(201);
+      const faculty = await request(app.getHttpServer())
+        .post("/organizations/me/faculties")
+        .set(...auth(token))
+        .send({ campusId: campus.body.id, name: `Assign Faculty ${suffix}`, code: `ASFAC${suffix}` })
+        .expect(201);
+      const department = await request(app.getHttpServer())
+        .post("/organizations/me/departments")
+        .set(...auth(token))
+        .send({ facultyId: faculty.body.id, name: `Assign Dept ${suffix}`, code: `ASDEP${suffix}` })
+        .expect(201);
+      const program = await request(app.getHttpServer())
+        .post("/organizations/me/programs")
+        .set(...auth(token))
+        .send({ departmentId: department.body.id, name: `Assign Program ${suffix}`, code: `ASPROG${suffix}` })
+        .expect(201);
+      const year = await request(app.getHttpServer())
+        .post("/organizations/me/academic-years")
+        .set(...auth(token))
+        .send({ name: `Assign Year ${suffix}`, startDate: "2099-08-01", endDate: "2100-06-30" })
+        .expect(201);
+      const term = await request(app.getHttpServer())
+        .post("/organizations/me/terms")
+        .set(...auth(token))
+        .send({
+          academicYearId: year.body.id,
+          name: `Assign Term ${suffix}`,
+          code: `AST${suffix}`,
+          sequence: 1,
+          startDate: "2099-08-01",
+          endDate: "2099-12-15",
+        })
+        .expect(201);
+      const section = await request(app.getHttpServer())
+        .post("/organizations/me/sections")
+        .set(...auth(token))
+        .send({ programId: program.body.id, termId: term.body.id, name: `Assign Section ${suffix}`, code: `ASS${suffix}` })
+        .expect(201);
+      const subject = await request(app.getHttpServer())
+        .post("/organizations/me/subjects")
+        .set(...auth(token))
+        .send({ name: `Assign Subject ${suffix}`, code: `ASSUB${suffix}` })
+        .expect(201);
+      const staffType = await request(app.getHttpServer())
+        .post("/organizations/me/staff-types")
+        .set(...auth(token))
+        .send({ name: `Assign Staff Type ${suffix}`, code: `ASST${suffix}` })
+        .expect(201);
+      const designation = await request(app.getHttpServer())
+        .post("/organizations/me/designations")
+        .set(...auth(token))
+        .send({ name: `Assign Designation ${suffix}`, code: `ASDS${suffix}` })
+        .expect(201);
+      const employee = await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(token))
+        .send({
+          staffTypeId: staffType.body.id,
+          designationId: designation.body.id,
+          employeeCode: `ASEMP-${suffix}`,
+          firstName: "Assign",
+          lastName: `Teacher${suffix}`,
+          email: `asteacher-${suffix}-${run}@rls-e2e.test`,
+          dateOfJoining: "2026-01-01",
+        })
+        .expect(201);
+      const assignment = await request(app.getHttpServer())
+        .post("/organizations/me/teaching-assignments")
+        .set(...auth(token))
+        .send({ employeeId: employee.body.id, subjectId: subject.body.id, sectionId: section.body.id, termId: term.body.id })
+        .expect(201);
+      const student = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(token))
+        .send({ studentCode: `AS-STU-${suffix}`, firstName: "Assign", lastName: `Student${suffix}`, dateOfBirth: "2015-01-01" })
+        .expect(201);
+
+      return { teachingAssignmentId: assignment.body.id, studentId: student.body.id };
+    }
+
+    it("creates an assignment, records a submission, rejects resubmission when not allowed, grades it, and stays tenant-scoped", async () => {
+      const t = await buildAssignmentTarget(tokenA, "AWA");
+
+      const assignment = await request(app.getHttpServer())
+        .post("/organizations/me/assignments")
+        .set(...auth(tokenA))
+        .send({ teachingAssignmentId: t.teachingAssignmentId, title: "Essay 1", submissionType: "TEXT" })
+        .expect(201);
+      expect(assignment.body.organizationId).toBe(orgAId);
+
+      const submission = await request(app.getHttpServer())
+        .post(`/organizations/me/assignments/${assignment.body.id}/submissions`)
+        .set(...auth(tokenA))
+        .send({ studentId: t.studentId, content: "My essay text" })
+        .expect(201);
+      expect(submission.body.status).toBe("SUBMITTED");
+
+      // Resubmission is rejected when the assignment doesn't allow it.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/assignments/${assignment.body.id}/submissions`)
+        .set(...auth(tokenA))
+        .send({ studentId: t.studentId, content: "Revised essay" })
+        .expect(409);
+
+      const graded = await request(app.getHttpServer())
+        .put(`/organizations/me/assignments/${assignment.body.id}/submissions/${t.studentId}/grade`)
+        .set(...auth(tokenA))
+        .send({ score: 88, feedback: "Good work" })
+        .expect(200);
+      expect(graded.body.status).toBe("GRADED");
+      expect(graded.body.score).toBe(88);
+
+      const listB = await request(app.getHttpServer())
+        .get("/organizations/me/assignments")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(listB.body).toEqual([]);
+    });
+
+    it("supports resubmission when allowed, resetting the previous grade", async () => {
+      const t = await buildAssignmentTarget(tokenA, "AWR");
+
+      const assignment = await request(app.getHttpServer())
+        .post("/organizations/me/assignments")
+        .set(...auth(tokenA))
+        .send({ teachingAssignmentId: t.teachingAssignmentId, title: "Essay 2", submissionType: "TEXT", allowResubmission: true })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/assignments/${assignment.body.id}/submissions`)
+        .set(...auth(tokenA))
+        .send({ studentId: t.studentId, content: "First draft" })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .put(`/organizations/me/assignments/${assignment.body.id}/submissions/${t.studentId}/grade`)
+        .set(...auth(tokenA))
+        .send({ score: 60 })
+        .expect(200);
+
+      const resubmitted = await request(app.getHttpServer())
+        .post(`/organizations/me/assignments/${assignment.body.id}/submissions`)
+        .set(...auth(tokenA))
+        .send({ studentId: t.studentId, content: "Improved draft" })
+        .expect(201);
+      expect(resubmitted.body.status).toBe("SUBMITTED");
+      expect(resubmitted.body.score).toBeNull();
+    });
+
+    it("builds and publishes a knowledge check, scores an attempt correctly, and enforces one-attempt-per-student", async () => {
+      const t = await buildAssignmentTarget(tokenA, "KCA");
+
+      const check = await request(app.getHttpServer())
+        .post("/organizations/me/knowledge-checks")
+        .set(...auth(tokenA))
+        .send({ teachingAssignmentId: t.teachingAssignmentId, title: "Quick Check", durationMinutes: 5 })
+        .expect(201);
+      expect(check.body.status).toBe("DRAFT");
+
+      // Publishing with no questions is rejected.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/knowledge-checks/${check.body.id}/publish`)
+        .set(...auth(tokenA))
+        .expect(400);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/knowledge-checks/${check.body.id}/questions`)
+        .set(...auth(tokenA))
+        .send({ sequence: 1, text: "2 + 2 = ?", options: ["3", "4", "5"], correctOptionIndex: 1 })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/knowledge-checks/${check.body.id}/questions`)
+        .set(...auth(tokenA))
+        .send({ sequence: 2, text: "3 + 3 = ?", options: ["6", "7"], correctOptionIndex: 0 })
+        .expect(201);
+
+      // Attempting before publish is rejected.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/knowledge-checks/${check.body.id}/attempts`)
+        .set(...auth(tokenA))
+        .send({ studentId: t.studentId, answers: [1, 0] })
+        .expect(400);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/knowledge-checks/${check.body.id}/publish`)
+        .set(...auth(tokenA))
+        .expect(201);
+
+      // Adding a question after publishing is rejected.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/knowledge-checks/${check.body.id}/questions`)
+        .set(...auth(tokenA))
+        .send({ sequence: 3, text: "Too late", options: ["a", "b"], correctOptionIndex: 0 })
+        .expect(400);
+
+      // One correct (index 1), one wrong (index 1, correct is 0) -> 50%.
+      const attempt = await request(app.getHttpServer())
+        .post(`/organizations/me/knowledge-checks/${check.body.id}/attempts`)
+        .set(...auth(tokenA))
+        .send({ studentId: t.studentId, answers: [1, 1] })
+        .expect(201);
+      expect(attempt.body.score).toBe(50);
+
+      // A second attempt by the same student is rejected.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/knowledge-checks/${check.body.id}/attempts`)
+        .set(...auth(tokenA))
+        .send({ studentId: t.studentId, answers: [1, 0] })
+        .expect(409);
+
+      const listB = await request(app.getHttpServer())
+        .get("/organizations/me/knowledge-checks")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(listB.body).toEqual([]);
+    });
+
+    it("rejects creating an assignment/knowledge-check under another tenant's teaching assignment, and submitting/attempting on another tenant's resource (404)", async () => {
+      const t = await buildAssignmentTarget(tokenA, "AWGUARD");
+
+      await request(app.getHttpServer())
+        .post("/organizations/me/assignments")
+        .set(...auth(tokenB))
+        .send({ teachingAssignmentId: t.teachingAssignmentId, title: "Sneaky", submissionType: "TEXT" })
+        .expect(404);
+
+      await request(app.getHttpServer())
+        .post("/organizations/me/knowledge-checks")
+        .set(...auth(tokenB))
+        .send({ teachingAssignmentId: t.teachingAssignmentId, title: "Sneaky Check" })
+        .expect(404);
+
+      const assignmentA = await request(app.getHttpServer())
+        .post("/organizations/me/assignments")
+        .set(...auth(tokenA))
+        .send({ teachingAssignmentId: t.teachingAssignmentId, title: "Guarded", submissionType: "TEXT" })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/assignments/${assignmentA.body.id}/submissions`)
+        .set(...auth(tokenB))
+        .send({ studentId: t.studentId, content: "Sneaky submission" })
         .expect(404);
     });
   });

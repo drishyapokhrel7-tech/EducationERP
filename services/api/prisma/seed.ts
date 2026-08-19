@@ -42,7 +42,10 @@ const SYSTEM_ROLES = [
 // teacher-facing action from the syllabus structure itself), slice 3d
 // added class_session (covers sessions, materials, and completion —
 // deliberately separate from both attendance and syllabus, matching
-// the plan's own domain split).
+// the plan's own domain split), slice 3e added assignment (covers
+// submissions/grading) and knowledge_check (covers questions/attempts —
+// separate resource, same reasoning as every prior slice's domain
+// splits).
 const RESOURCES = [
   "organization",
   "campus",
@@ -75,6 +78,8 @@ const RESOURCES = [
   "syllabus",
   "lesson_plan",
   "class_session",
+  "assignment",
+  "knowledge_check",
 ];
 const ACTIONS = Object.values(PermissionAction);
 

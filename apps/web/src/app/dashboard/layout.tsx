@@ -9,9 +9,11 @@ import {
   CalendarCheck,
   CalendarClock,
   CheckCircle2,
+  ClipboardCheck,
   ClipboardList,
   GraduationCap,
   LayoutDashboard,
+  ListChecks,
   LogOut,
   Network,
   NotebookText,
@@ -32,6 +34,8 @@ const NAV = [
   { href: "/dashboard/attendance", label: "Attendance", icon: CalendarCheck },
   { href: "/dashboard/syllabus", label: "Syllabus", icon: NotebookText },
   { href: "/dashboard/my-classes-today", label: "My Classes Today", icon: CheckCircle2 },
+  { href: "/dashboard/assignments", label: "Assignments", icon: ClipboardCheck },
+  { href: "/dashboard/knowledge-checks", label: "Knowledge Checks", icon: ListChecks },
 ];
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {

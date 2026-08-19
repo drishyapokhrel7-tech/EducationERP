@@ -86,6 +86,17 @@ import type {
   CreateClassMaterialInput,
   MyClassesTodayEntry,
   SyllabusNodeProgress,
+  Assignment,
+  CreateAssignmentInput,
+  AssignmentSubmission,
+  CreateSubmissionInput,
+  GradeSubmissionInput,
+  KnowledgeCheck,
+  CreateKnowledgeCheckInput,
+  KnowledgeCheckQuestion,
+  CreateQuestionInput,
+  KnowledgeCheckAttempt,
+  CreateAttemptInput,
 } from "./types";
 
 export class ApiError extends Error {
@@ -442,6 +453,40 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       request<ClassSession>(`/organizations/me/class-sessions/${sessionId}/complete`, { method: "POST" }),
     getSyllabusProgress: (syllabusId: string) =>
       request<SyllabusNodeProgress[]>(`/organizations/me/syllabi/${syllabusId}/progress`),
+
+    listAssignments: () => request<Assignment[]>("/organizations/me/assignments"),
+    createAssignment: (input: CreateAssignmentInput) =>
+      request<Assignment>("/organizations/me/assignments", { method: "POST", body: JSON.stringify(input) }),
+    getAssignment: (assignmentId: string) =>
+      request<Assignment>(`/organizations/me/assignments/${assignmentId}`),
+    submitAssignment: (assignmentId: string, input: CreateSubmissionInput) =>
+      request<AssignmentSubmission>(`/organizations/me/assignments/${assignmentId}/submissions`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    gradeSubmission: (assignmentId: string, studentId: string, input: GradeSubmissionInput) =>
+      request<AssignmentSubmission>(
+        `/organizations/me/assignments/${assignmentId}/submissions/${studentId}/grade`,
+        { method: "PUT", body: JSON.stringify(input) },
+      ),
+
+    listKnowledgeChecks: () => request<KnowledgeCheck[]>("/organizations/me/knowledge-checks"),
+    createKnowledgeCheck: (input: CreateKnowledgeCheckInput) =>
+      request<KnowledgeCheck>("/organizations/me/knowledge-checks", { method: "POST", body: JSON.stringify(input) }),
+    getKnowledgeCheck: (checkId: string) =>
+      request<KnowledgeCheck>(`/organizations/me/knowledge-checks/${checkId}`),
+    addKnowledgeCheckQuestion: (checkId: string, input: CreateQuestionInput) =>
+      request<KnowledgeCheckQuestion>(`/organizations/me/knowledge-checks/${checkId}/questions`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    publishKnowledgeCheck: (checkId: string) =>
+      request<KnowledgeCheck>(`/organizations/me/knowledge-checks/${checkId}/publish`, { method: "POST" }),
+    attemptKnowledgeCheck: (checkId: string, input: CreateAttemptInput) =>
+      request<KnowledgeCheckAttempt>(`/organizations/me/knowledge-checks/${checkId}/attempts`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
   };
 }
 

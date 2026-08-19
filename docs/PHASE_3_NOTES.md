@@ -400,11 +400,97 @@ recorded.
   cwd silently reset, not that something is wrong with the command
   itself.
 
+## Slice 3e — Assignments & Knowledge Checks
+
+## What shipped
+
+AI generation of either (plan §9's AI Knowledge Check/Assignment
+Generators) is explicitly Phase 5 scope — this slice builds the real
+manual mechanics those generators will later populate, same reasoning
+every AI-adjacent piece of this phase has used.
+
+`Assignment` ties to a `TeachingAssignment` and carries the plan's
+9-way `submissionType` enum (written/objective/project/practical/file/
+image/pdf/link/text), an optional due date, `allowResubmission`, and
+`maxScore`. `rubrics`/`rubric_items` are deliberately **not** modeled —
+no structured-criteria grading requirement has been specified yet, so a
+plain `score` + `feedback` on `AssignmentSubmission` covers "grading and
+feedback" (plan §8) for now, the same "defer until asked" reasoning
+applied to every prior slice's unspecified scope (syllabus_versions in
+3c, syllabus_progress-as-a-table in 3d). `AssignmentSubmission` is one
+row per student per assignment — a resubmission (only when the
+assignment allows it) overwrites the row and **resets its score/
+feedback to null**, since new content invalidates the old grade; without
+`allowResubmission` a second submit attempt is a 409, not a silent
+overwrite.
+
+`KnowledgeCheck` collapses `knowledge_check` "options" into a JSON array
+on `KnowledgeCheckQuestion` itself rather than a separate options table —
+same collapsing reasoning as `SyllabusNode`: each option has no
+independent identity or behavior beyond "one of this question's
+choices." A check starts `DRAFT`; `publish` requires at least one
+question and is a one-way transition (`status: PUBLISHED`), after which
+`addQuestion` is rejected with 400 — matches plan §8's "teacher review
+and publishing required," treating publish as locking the content, not
+just flipping a flag. Attempts are rejected with 400 until published,
+scored server-side (percentage of questions matching
+`correctOptionIndex` — **never trust a client-submitted score**), and
+limited to one attempt per student (409 on a second) — these are short
+in-class checks, not a retake-until-you-pass assessment; resubmission
+rules are an `Assignment` concept, not a `KnowledgeCheck` one.
+
+Neither model has a real student-facing portal yet (no student/parent
+login — a gap already noted in every relevant earlier slice), so
+submissions and attempts are recorded by admin on a student's behalf,
+the same pattern `StudentAttendance` established in slice 3b.
+
+New `/dashboard/assignments` (create, record submissions, grade) and
+`/dashboard/knowledge-checks` (create, build questions with a
+parent-level-style validated correct-option picker, publish, record
+scored attempts) pages, RBAC-guarded API endpoints. e2e suite now 34/34.
+
+## Verified (slice 3e)
+
+- `pnpm typecheck` / `lint` / `build` clean across all three packages.
+- `services/api` e2e: 34/34, including four new cases — full
+  submit→resubmit-rejected(409)→grade chain, resubmission resetting a
+  previous grade when allowed, the full knowledge-check
+  create→publish-with-no-questions-rejected(400)→add
+  questions→attempt-before-publish-rejected(400)→publish→add-question-
+  after-publish-rejected(400)→scored attempt (verified 50% for 1-of-2
+  correct)→duplicate-attempt-rejected(409) chain, and the standard
+  cross-tenant 404 guards.
+- **This session's most severe Neon episode yet, diagnosed correctly
+  before making any change**: a full e2e run took 3110s (52 minutes)
+  with 25 of 34 tests timing out at Jest's default 30000ms — a much
+  worse failure than any prior transient blip. Checked for the
+  slice-3a/3b class of duplicate-dev-server problem first: none found
+  (zero `nest start`/`node dist/main` processes running). Ran a direct
+  timed query against Neon outside the test harness — 943ms cold,
+  189ms warm, completely normal — which ruled out sustained Neon-side
+  degradation as the cause. Retried the exact same suite with nothing
+  else changed: 34/34 passed in 395s, back to normal. **Conclusion:
+  this was a one-off, self-clearing anomaly (not a systemic issue,
+  not this session's code) — the diagnostic discipline that mattered
+  was ruling out the two known causes (stray processes, real Neon
+  outage) with actual evidence before accepting "just retry" as the
+  fix, rather than retrying blind or, worse, changing timeout
+  configuration to paper over what turned out to be nothing.**
+- Full browser pass, logged in as the demo admin: created an
+  assignment, recorded a submission, graded it (92, with feedback) —
+  all rendered live. Built a two-question knowledge check, watched
+  "Publish" stay correctly disabled until questions existed, published
+  it, recorded a mixed-correctness attempt, and confirmed the UI showed
+  the server-computed score (50%) rather than any client-side
+  calculation. All test data removed afterward.
+
 ## Next step
 
-Slice 3d done, stopped per plan §21 step 17. Next up per the slice
-breakdown in this file's intro: **3e — Knowledge checks & assignments**
-(submissions, rubrics, grading) — the two remaining steps of the
-class-completion workflow ("create/select knowledge check", "assign
-homework") that this slice deliberately deferred. Not yet approved by
-the user — wait for explicit go-ahead before starting.
+Slice 3e done, stopped per plan §21 step 17. Next up per the slice
+breakdown in this file's intro: **3f — Teacher/student/parent learning
+dashboards**, the last slice of Phase 3 — aggregate views over
+everything 3a–3e built (timetable, attendance, syllabus progress, class
+sessions, assignments, knowledge checks). Likely admin-facing rather
+than per-role authenticated portals, same reasoning as "My Classes
+Today" in 3d, since no teacher/student/parent login exists yet. Not yet
+approved by the user — wait for explicit go-ahead before starting.

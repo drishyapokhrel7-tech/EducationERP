@@ -62,6 +62,11 @@ model Organization {
   lessonPlans           LessonPlan[]
   classSessions         ClassSession[]
   classMaterials        ClassMaterial[]
+  assignments           Assignment[]
+  assignmentSubmissions AssignmentSubmission[]
+  knowledgeChecks       KnowledgeCheck[]
+  knowledgeCheckQuestions KnowledgeCheckQuestion[]
+  knowledgeCheckAttempts  KnowledgeCheckAttempt[]
 
   @@map("organizations")
 }
@@ -649,6 +654,8 @@ model Student {
   statusHistory StudentStatusHistory[]
   admissionApplication AdmissionApplication?
   attendanceRecords StudentAttendance[]
+  assignmentSubmissions AssignmentSubmission[]
+  knowledgeCheckAttempts KnowledgeCheckAttempt[]
 
   @@unique([organizationId, studentCode])
   @@index([organizationId])
@@ -881,6 +888,8 @@ model TeachingAssignment {
   term           Term            @relation(fields: [termId], references: [id])
   classSchedules ClassSchedule[]
   lessonPlans    LessonPlan[]
+  assignments    Assignment[]
+  knowledgeChecks KnowledgeCheck[]
 
   // One teacher per subject+section+term — re-assigning means changing
   // this row, not stacking a second one alongside it.
@@ -1094,6 +1103,7 @@ model SyllabusNode {
   learningObjectives  LearningObjective[]
   lessonPlans         LessonPlan[]
   classSessions       ClassSession[]
+  knowledgeChecks     KnowledgeCheck[]
 
   @@index([organizationId])
   @@index([syllabusId])
@@ -1224,4 +1234,160 @@ model ClassMaterial {
   @@index([organizationId])
   @@index([classSessionId])
   @@map("class_materials")
+}
+
+// ── Assignments & Knowledge Checks (plan §6 "Teaching & Learning" —
+// Phase 3 slice 3e) ─────────────────────────────────────────────────────
+// AI generation of either (plan §9's AI Knowledge Check/Assignment
+// Generators) is explicitly Phase 5 scope, not this slice — this builds
+// the real manual mechanics those generators will later populate.
+//
+// rubrics/rubric_items are deliberately not modeled — no structured-
+// criteria grading requirement has been specified yet, so a plain
+// score + feedback covers "grading and feedback" (plan §8) for now,
+// same "defer until asked" reasoning applied to every prior slice's
+// unspecified scope (e.g. slice 3c's syllabus_versions).
+//
+// knowledge_check "options" collapse into a JSON array on the question
+// itself instead of a separate rubric_items-shaped child table — same
+// collapsing reasoning as SyllabusNode: each option has no independent
+// identity or behavior beyond "one of this question's choices."
+//
+// Neither Assignment nor KnowledgeCheck exists in a real student-facing
+// portal yet (no student/parent login — a gap already noted in earlier
+// phases), so submissions/attempts are recorded by admin on a student's
+// behalf, the same pattern StudentAttendance already established.
+
+enum SubmissionType {
+  WRITTEN
+  OBJECTIVE
+  PROJECT
+  PRACTICAL
+  FILE
+  IMAGE
+  PDF
+  LINK
+  TEXT
+}
+
+model Assignment {
+  id                   String         @id @default(uuid())
+  organizationId       String
+  teachingAssignmentId String
+  title                String
+  description          String?
+  submissionType       SubmissionType
+  dueDate              DateTime?
+  allowResubmission    Boolean        @default(false)
+  maxScore             Float?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  organization       Organization           @relation(fields: [organizationId], references: [id])
+  teachingAssignment TeachingAssignment     @relation(fields: [teachingAssignmentId], references: [id])
+  submissions        AssignmentSubmission[]
+
+  @@index([organizationId])
+  @@map("assignments")
+}
+
+enum SubmissionStatus {
+  SUBMITTED
+  GRADED
+}
+
+model AssignmentSubmission {
+  id             String           @id @default(uuid())
+  organizationId String
+  assignmentId   String
+  studentId      String
+  // Text or a link — no file upload, same reasoning as ClassMaterial;
+  // FILE/IMAGE/PDF submission types store a reference here, not bytes.
+  content        String?
+  submittedAt    DateTime         @default(now())
+  status         SubmissionStatus @default(SUBMITTED)
+  score          Float?
+  feedback       String?
+  updatedAt      DateTime         @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  assignment   Assignment   @relation(fields: [assignmentId], references: [id])
+  student      Student      @relation(fields: [studentId], references: [id])
+
+  // One row per student per assignment — a resubmission (when the
+  // assignment allows it) overwrites this row rather than stacking a
+  // new one, so "latest submission" never needs a separate query.
+  @@unique([assignmentId, studentId])
+  @@index([organizationId])
+  @@map("assignment_submissions")
+}
+
+enum KnowledgeCheckStatus {
+  DRAFT
+  PUBLISHED
+}
+
+model KnowledgeCheck {
+  id                   String               @id @default(uuid())
+  organizationId       String
+  teachingAssignmentId String
+  syllabusNodeId       String?
+  title                String
+  durationMinutes      Int?
+  status               KnowledgeCheckStatus @default(DRAFT)
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  organization       Organization             @relation(fields: [organizationId], references: [id])
+  teachingAssignment TeachingAssignment       @relation(fields: [teachingAssignmentId], references: [id])
+  syllabusNode       SyllabusNode?            @relation(fields: [syllabusNodeId], references: [id])
+  questions          KnowledgeCheckQuestion[]
+  attempts           KnowledgeCheckAttempt[]
+
+  @@index([organizationId])
+  @@map("knowledge_checks")
+}
+
+model KnowledgeCheckQuestion {
+  id                 String   @id @default(uuid())
+  organizationId     String
+  knowledgeCheckId   String
+  sequence           Int
+  text               String
+  // string[] — the answer choices, in display order.
+  options            Json
+  correctOptionIndex Int
+  createdAt          DateTime @default(now())
+
+  organization   Organization   @relation(fields: [organizationId], references: [id])
+  knowledgeCheck KnowledgeCheck @relation(fields: [knowledgeCheckId], references: [id])
+
+  @@index([organizationId])
+  @@index([knowledgeCheckId])
+  @@map("knowledge_check_questions")
+}
+
+model KnowledgeCheckAttempt {
+  id               String   @id @default(uuid())
+  organizationId   String
+  knowledgeCheckId String
+  studentId        String
+  // number[] — the selected option index per question, in the same
+  // order as KnowledgeCheck.questions.
+  answers          Json
+  // Percentage of questions answered correctly, computed server-side at
+  // submission time — never trust a client-submitted score.
+  score            Float
+  submittedAt      DateTime @default(now())
+
+  organization   Organization   @relation(fields: [organizationId], references: [id])
+  knowledgeCheck KnowledgeCheck @relation(fields: [knowledgeCheckId], references: [id])
+  student        Student        @relation(fields: [studentId], references: [id])
+
+  // One attempt per student — these are short in-class checks, not a
+  // retake-until-you-pass assessment; resubmission rules are an
+  // Assignment concept, not a KnowledgeCheck one.
+  @@unique([knowledgeCheckId, studentId])
+  @@index([organizationId])
+  @@map("knowledge_check_attempts")
 }

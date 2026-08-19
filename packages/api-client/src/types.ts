@@ -749,3 +749,109 @@ export interface SyllabusNodeProgress {
   status: "COMPLETED" | "NOT_STARTED";
   completedAt: string | null;
 }
+
+export type SubmissionType = "WRITTEN" | "OBJECTIVE" | "PROJECT" | "PRACTICAL" | "FILE" | "IMAGE" | "PDF" | "LINK" | "TEXT";
+export type SubmissionStatus = "SUBMITTED" | "GRADED";
+
+export interface AssignmentSubmission {
+  id: string;
+  organizationId: string;
+  assignmentId: string;
+  studentId: string;
+  content: string | null;
+  submittedAt: string;
+  status: SubmissionStatus;
+  score: number | null;
+  feedback: string | null;
+  student: Student;
+}
+
+export interface Assignment {
+  id: string;
+  organizationId: string;
+  teachingAssignmentId: string;
+  title: string;
+  description: string | null;
+  submissionType: SubmissionType;
+  dueDate: string | null;
+  allowResubmission: boolean;
+  maxScore: number | null;
+  teachingAssignment: TeachingAssignment;
+  submissions: AssignmentSubmission[];
+}
+
+export interface CreateAssignmentInput {
+  teachingAssignmentId: string;
+  title: string;
+  description?: string;
+  submissionType: SubmissionType;
+  dueDate?: string;
+  allowResubmission?: boolean;
+  maxScore?: number;
+}
+
+export interface CreateSubmissionInput {
+  studentId: string;
+  content?: string;
+}
+
+export interface GradeSubmissionInput {
+  score: number;
+  feedback?: string;
+}
+
+export type KnowledgeCheckStatus = "DRAFT" | "PUBLISHED";
+
+export interface KnowledgeCheckQuestion {
+  id: string;
+  organizationId: string;
+  knowledgeCheckId: string;
+  sequence: number;
+  text: string;
+  options: string[];
+  correctOptionIndex: number;
+}
+
+export interface KnowledgeCheckAttempt {
+  id: string;
+  organizationId: string;
+  knowledgeCheckId: string;
+  studentId: string;
+  answers: number[];
+  score: number;
+  submittedAt: string;
+  student: Student;
+}
+
+export interface KnowledgeCheck {
+  id: string;
+  organizationId: string;
+  teachingAssignmentId: string;
+  syllabusNodeId: string | null;
+  title: string;
+  durationMinutes: number | null;
+  status: KnowledgeCheckStatus;
+  teachingAssignment: TeachingAssignment;
+  syllabusNode: SyllabusNode | null;
+  questions: KnowledgeCheckQuestion[];
+  attempts: KnowledgeCheckAttempt[];
+}
+
+export interface CreateKnowledgeCheckInput {
+  teachingAssignmentId: string;
+  syllabusNodeId?: string;
+  title: string;
+  durationMinutes?: number;
+}
+
+export interface CreateQuestionInput {
+  sequence: number;
+  text: string;
+  options: string[];
+  correctOptionIndex: number;
+}
+
+export interface CreateAttemptInput {
+  studentId: string;
+  answers: number[];
+}
