@@ -77,6 +77,8 @@ model Organization {
   examRooms                ExamRoom[]
   examAttempts             ExamAttempt[]
   marks                    Marks[]
+  grades                   Grade[]
+  reportCards              ReportCard[]
 
   @@map("organizations")
 }
@@ -670,6 +672,7 @@ model Student {
   assignmentSubmissions  AssignmentSubmission[]
   knowledgeCheckAttempts KnowledgeCheckAttempt[]
   examAttempts           ExamAttempt[]
+  reportCards            ReportCard[]
 
   @@unique([organizationId, studentCode])
   @@index([organizationId])
@@ -1527,6 +1530,7 @@ model Exam {
   term          Term           @relation(fields: [termId], references: [id])
   gradingScheme GradingScheme? @relation(fields: [gradingSchemeId], references: [id])
   examSubjects  ExamSubject[]
+  reportCards   ReportCard[]
 
   @@index([organizationId])
   @@index([termId])
@@ -1616,6 +1620,7 @@ model ExamAttempt {
   examSubject  ExamSubject  @relation(fields: [examSubjectId], references: [id])
   student      Student      @relation(fields: [studentId], references: [id])
   marks        Marks?
+  grade        Grade?
 
   // One attempt per student per exam subject — admin-recorded on the
   // student's behalf, same pattern as AssignmentSubmission/
@@ -1644,4 +1649,52 @@ model Marks {
 
   @@index([organizationId])
   @@map("marks")
+}
+
+model Grade {
+  id             String   @id @default(uuid())
+  organizationId String
+  examAttemptId  String   @unique
+  // Snapshotted at computation time, not recomputed on read — a grade
+  // is meant to be stable even if the grading scheme's bands change
+  // later (e.g. an institution revises cutoffs after report cards have
+  // already been issued).
+  percentage     Float
+  grade          String
+  gpa            Float?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  examAttempt  ExamAttempt  @relation(fields: [examAttemptId], references: [id])
+
+  @@index([organizationId])
+  @@map("grades")
+}
+
+model ReportCard {
+  id                 String   @id @default(uuid())
+  organizationId     String
+  examId             String
+  studentId          String
+  totalObtainedMarks Int
+  totalFullMarks     Int
+  percentage         Float
+  overallGrade       String
+  overallGpa         Float?
+  // The per-subject breakdown isn't duplicated here — it's already
+  // queryable via Grade rows joined through ExamAttempt/ExamSubject for
+  // this exam+student, and storing a second copy would just be a sync
+  // hazard. This row snapshots only the aggregate figures, the part
+  // that's actually a computation over multiple rows at a point in time.
+  generatedAt        DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  exam         Exam         @relation(fields: [examId], references: [id])
+  student      Student      @relation(fields: [studentId], references: [id])
+
+  @@unique([examId, studentId])
+  @@index([organizationId])
+  @@map("report_cards")
 }

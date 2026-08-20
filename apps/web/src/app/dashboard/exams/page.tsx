@@ -61,7 +61,27 @@ function ExamSubjectAttempts({
               <li key={a.id}>
                 {a.student.firstName} {a.student.lastName} — {a.status}
                 {a.marks ? (
-                  ` — ${a.marks.obtainedMarks}/${fullMarks}`
+                  <>
+                    {` — ${a.marks.obtainedMarks}/${fullMarks}`}
+                    {a.grade ? (
+                      ` — ${a.grade.grade} (${a.grade.percentage.toFixed(1)}%)`
+                    ) : (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="ml-2 h-6"
+                        onClick={() =>
+                          submitAction(
+                            () => api.computeGrade(a.id),
+                            () => attempts.mutate(),
+                          )
+                        }
+                      >
+                        Compute grade
+                      </Button>
+                    )}
+                  </>
                 ) : canHaveMarks ? (
                   <form
                     className="mt-1 flex items-end gap-2"
@@ -132,6 +152,70 @@ function ExamSubjectAttempts({
         </Button>
       </form>
     </div>
+  );
+}
+
+function ReportCardSection({ examId, students }: { examId: string; students: Student[] }) {
+  const [studentId, setStudentId] = useState("");
+  const reportCard = useSWR(
+    studentId ? ["report-card", examId, studentId] : null,
+    () => api.getReportCard(examId, studentId),
+    { shouldRetryOnError: false },
+  );
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Report card</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="space-y-2">
+            <Label>Student</Label>
+            <NativeSelect
+              className="w-56"
+              placeholder="Select student"
+              value={studentId}
+              onChange={setStudentId}
+              options={students.map((s) => ({ value: s.id, label: `${s.firstName} ${s.lastName}` }))}
+            />
+          </div>
+          {studentId ? (
+            <Button
+              type="button"
+              onClick={() =>
+                submitAction(
+                  () => api.generateReportCard(examId, studentId),
+                  () => reportCard.mutate(),
+                )
+              }
+            >
+              {reportCard.data ? "Regenerate" : "Generate"} report card
+            </Button>
+          ) : null}
+        </div>
+
+        {studentId && !reportCard.data ? (
+          <p className="text-muted-foreground text-sm">No report card generated yet.</p>
+        ) : reportCard.data ? (
+          <div className="space-y-2 text-sm">
+            <p className="font-medium">
+              Overall: {reportCard.data.totalObtainedMarks}/{reportCard.data.totalFullMarks} (
+              {reportCard.data.percentage.toFixed(1)}%) — {reportCard.data.overallGrade}
+              {reportCard.data.overallGpa !== null ? ` (GPA ${reportCard.data.overallGpa})` : ""}
+            </p>
+            <ul className="text-muted-foreground list-disc pl-5">
+              {reportCard.data.subjects.map((s) => (
+                <li key={s.id}>
+                  {s.examSubject.curriculumSubject.subject.name}: {s.marks.obtainedMarks}/
+                  {s.examSubject.fullMarks} — {s.grade.grade}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -515,6 +599,8 @@ export default function ExamsPage() {
           </CardContent>
         </Card>
       ) : null}
+
+      {activeExamId ? <ReportCardSection examId={activeExamId} students={students.data ?? []} /> : null}
     </div>
   );
 }

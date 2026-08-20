@@ -81,6 +81,8 @@ describe("Tenant isolation (e2e)", () => {
         // mid-list) to examType/gradingScheme/curriculumSubject
         // (deleted later still), and nothing else references any of
         // these four tables.
+        "reportCard",
+        "grade",
         "marks",
         "examAttempt",
         "examRoom",
@@ -2955,6 +2957,283 @@ describe("Tenant isolation (e2e)", () => {
         .post(`/organizations/me/exam-attempts/${attempt.body.id}/marks`)
         .set(...auth(tokenB))
         .send({ obtainedMarks: 50 })
+        .expect(404);
+    });
+  });
+
+  describe("exam grading (grades → report cards)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    async function buildExamGradingTarget(token: string, suffix: string) {
+      const campus = await request(app.getHttpServer())
+        .post("/organizations/me/campuses")
+        .set(...auth(token))
+        .send({ name: `ExGrade Campus ${suffix}`, code: `EGCAMP${suffix}` })
+        .expect(201);
+      const faculty = await request(app.getHttpServer())
+        .post("/organizations/me/faculties")
+        .set(...auth(token))
+        .send({ campusId: campus.body.id, name: `ExGrade Faculty ${suffix}`, code: `EGFAC${suffix}` })
+        .expect(201);
+      const department = await request(app.getHttpServer())
+        .post("/organizations/me/departments")
+        .set(...auth(token))
+        .send({ facultyId: faculty.body.id, name: `ExGrade Dept ${suffix}`, code: `EGDEP${suffix}` })
+        .expect(201);
+      const program = await request(app.getHttpServer())
+        .post("/organizations/me/programs")
+        .set(...auth(token))
+        .send({ departmentId: department.body.id, name: `ExGrade Program ${suffix}`, code: `EGPROG${suffix}` })
+        .expect(201);
+      const subjectA = await request(app.getHttpServer())
+        .post("/organizations/me/subjects")
+        .set(...auth(token))
+        .send({ name: `ExGrade Subject A ${suffix}`, code: `EGSUBA${suffix}` })
+        .expect(201);
+      const subjectB = await request(app.getHttpServer())
+        .post("/organizations/me/subjects")
+        .set(...auth(token))
+        .send({ name: `ExGrade Subject B ${suffix}`, code: `EGSUBB${suffix}` })
+        .expect(201);
+      const curriculum = await request(app.getHttpServer())
+        .post("/organizations/me/curricula")
+        .set(...auth(token))
+        .send({ programId: program.body.id, name: `ExGrade Curriculum ${suffix}`, code: `EGCURR${suffix}` })
+        .expect(201);
+      const curriculumSubjectA = await request(app.getHttpServer())
+        .post(`/organizations/me/curricula/${curriculum.body.id}/subjects`)
+        .set(...auth(token))
+        .send({ subjectId: subjectA.body.id })
+        .expect(201);
+      const curriculumSubjectB = await request(app.getHttpServer())
+        .post(`/organizations/me/curricula/${curriculum.body.id}/subjects`)
+        .set(...auth(token))
+        .send({ subjectId: subjectB.body.id })
+        .expect(201);
+      const year = await request(app.getHttpServer())
+        .post("/organizations/me/academic-years")
+        .set(...auth(token))
+        .send({ name: `ExGrade Year ${suffix}`, startDate: "2099-01-01", endDate: "2099-12-31" })
+        .expect(201);
+      const term = await request(app.getHttpServer())
+        .post("/organizations/me/terms")
+        .set(...auth(token))
+        .send({
+          academicYearId: year.body.id,
+          name: `ExGrade Term ${suffix}`,
+          code: `EGT${suffix}`,
+          sequence: 1,
+          startDate: "2099-01-01",
+          endDate: "2099-06-30",
+        })
+        .expect(201);
+      const examType = await request(app.getHttpServer())
+        .post("/organizations/me/exam-types")
+        .set(...auth(token))
+        .send({ name: `ExGrade Exam Type ${suffix}`, code: `EGET${suffix}` })
+        .expect(201);
+      const gradingScheme = await request(app.getHttpServer())
+        .post("/organizations/me/grading-schemes")
+        .set(...auth(token))
+        .send({
+          name: `ExGrade Scheme ${suffix}`,
+          code: `EGGS${suffix}`,
+          bands: [
+            { minPercentage: 90, maxPercentage: 100, grade: "A+", gpa: 4.0 },
+            { minPercentage: 80, maxPercentage: 89.99, grade: "A", gpa: 3.6 },
+            { minPercentage: 60, maxPercentage: 79.99, grade: "B", gpa: 3.0 },
+            { minPercentage: 40, maxPercentage: 59.99, grade: "C", gpa: 2.0 },
+            { minPercentage: 0, maxPercentage: 39.99, grade: "F", gpa: 0 },
+          ],
+        })
+        .expect(201);
+
+      // An exam with no grading scheme, to exercise the "no scheme
+      // assigned" rejection.
+      const examNoScheme = await request(app.getHttpServer())
+        .post("/organizations/me/exams")
+        .set(...auth(token))
+        .send({ examTypeId: examType.body.id, termId: term.body.id, name: `ExGrade No-Scheme Exam ${suffix}` })
+        .expect(201);
+      const examSubjectNoScheme = await request(app.getHttpServer())
+        .post(`/organizations/me/exams/${examNoScheme.body.id}/subjects`)
+        .set(...auth(token))
+        .send({ curriculumSubjectId: curriculumSubjectA.body.id, fullMarks: 100, passMarks: 40 })
+        .expect(201);
+
+      const exam = await request(app.getHttpServer())
+        .post("/organizations/me/exams")
+        .set(...auth(token))
+        .send({
+          examTypeId: examType.body.id,
+          termId: term.body.id,
+          name: `ExGrade Exam ${suffix}`,
+          gradingSchemeId: gradingScheme.body.id,
+        })
+        .expect(201);
+      const examSubjectA = await request(app.getHttpServer())
+        .post(`/organizations/me/exams/${exam.body.id}/subjects`)
+        .set(...auth(token))
+        .send({ curriculumSubjectId: curriculumSubjectA.body.id, fullMarks: 100, passMarks: 40 })
+        .expect(201);
+      const examSubjectB = await request(app.getHttpServer())
+        .post(`/organizations/me/exams/${exam.body.id}/subjects`)
+        .set(...auth(token))
+        .send({ curriculumSubjectId: curriculumSubjectB.body.id, fullMarks: 100, passMarks: 40 })
+        .expect(201);
+      const student = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(token))
+        .send({ studentCode: `EGSTU-${suffix}`, firstName: "Aarav", lastName: "Sharma", dateOfBirth: "2015-01-01" })
+        .expect(201);
+      const otherStudent = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(token))
+        .send({ studentCode: `EGSTU2-${suffix}`, firstName: "Sita", lastName: "Gurung", dateOfBirth: "2015-01-01" })
+        .expect(201);
+
+      return {
+        examId: exam.body.id as string,
+        examSubjectAId: examSubjectA.body.id as string,
+        examSubjectBId: examSubjectB.body.id as string,
+        examSubjectNoSchemeId: examSubjectNoScheme.body.id as string,
+        studentId: student.body.id as string,
+        otherStudentId: otherStudent.body.id as string,
+      };
+    }
+
+    it("computes grades from a grading scheme's bands, rejects grading before marks/without a scheme, aggregates a report card, and stays tenant-scoped", async () => {
+      const t = await buildExamGradingTarget(tokenA, "EGA");
+
+      // No grading scheme on the exam — rejected even with marks recorded.
+      const attemptNoScheme = await request(app.getHttpServer())
+        .post(`/organizations/me/exam-subjects/${t.examSubjectNoSchemeId}/attempts`)
+        .set(...auth(tokenA))
+        .send({ studentId: t.studentId, status: "PRESENT" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/exam-attempts/${attemptNoScheme.body.id}/marks`)
+        .set(...auth(tokenA))
+        .send({ obtainedMarks: 50 })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/exam-attempts/${attemptNoScheme.body.id}/grade`)
+        .set(...auth(tokenA))
+        .expect(400);
+
+      // Subject A: 82% -> "A" band.
+      const attemptA = await request(app.getHttpServer())
+        .post(`/organizations/me/exam-subjects/${t.examSubjectAId}/attempts`)
+        .set(...auth(tokenA))
+        .send({ studentId: t.studentId, status: "PRESENT" })
+        .expect(201);
+
+      // Grading before marks are recorded is rejected.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/exam-attempts/${attemptA.body.id}/grade`)
+        .set(...auth(tokenA))
+        .expect(400);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/exam-attempts/${attemptA.body.id}/marks`)
+        .set(...auth(tokenA))
+        .send({ obtainedMarks: 82 })
+        .expect(201);
+      const gradeA = await request(app.getHttpServer())
+        .post(`/organizations/me/exam-attempts/${attemptA.body.id}/grade`)
+        .set(...auth(tokenA))
+        .expect(201);
+      expect(gradeA.body.grade).toBe("A");
+      expect(gradeA.body.percentage).toBe(82);
+
+      // Re-computing upserts in place rather than stacking a duplicate.
+      const gradeARecomputed = await request(app.getHttpServer())
+        .post(`/organizations/me/exam-attempts/${attemptA.body.id}/grade`)
+        .set(...auth(tokenA))
+        .expect(201);
+      expect(gradeARecomputed.body.id).toBe(gradeA.body.id);
+
+      // Subject B: 55% -> "C" band.
+      const attemptB = await request(app.getHttpServer())
+        .post(`/organizations/me/exam-subjects/${t.examSubjectBId}/attempts`)
+        .set(...auth(tokenA))
+        .send({ studentId: t.studentId, status: "PRESENT" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/exam-attempts/${attemptB.body.id}/marks`)
+        .set(...auth(tokenA))
+        .send({ obtainedMarks: 55 })
+        .expect(201);
+      const gradeB = await request(app.getHttpServer())
+        .post(`/organizations/me/exam-attempts/${attemptB.body.id}/grade`)
+        .set(...auth(tokenA))
+        .expect(201);
+      expect(gradeB.body.grade).toBe("C");
+
+      // No graded subjects for a student who never attempted this exam.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/exams/${t.examId}/students/${t.otherStudentId}/report-card`)
+        .set(...auth(tokenA))
+        .expect(400);
+
+      // Report card aggregates both subjects: (82 + 55) / 200 = 68.5% -> "B".
+      const reportCard = await request(app.getHttpServer())
+        .post(`/organizations/me/exams/${t.examId}/students/${t.studentId}/report-card`)
+        .set(...auth(tokenA))
+        .expect(201);
+      expect(reportCard.body.totalObtainedMarks).toBe(137);
+      expect(reportCard.body.totalFullMarks).toBe(200);
+      expect(reportCard.body.percentage).toBeCloseTo(68.5);
+      expect(reportCard.body.overallGrade).toBe("B");
+
+      // Regenerating upserts in place.
+      const reportCardRegenerated = await request(app.getHttpServer())
+        .post(`/organizations/me/exams/${t.examId}/students/${t.studentId}/report-card`)
+        .set(...auth(tokenA))
+        .expect(201);
+      expect(reportCardRegenerated.body.id).toBe(reportCard.body.id);
+
+      const fetched = await request(app.getHttpServer())
+        .get(`/organizations/me/exams/${t.examId}/students/${t.studentId}/report-card`)
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(fetched.body.subjects).toHaveLength(2);
+      expect(fetched.body.overallGrade).toBe("B");
+
+      const fetchedB = await request(app.getHttpServer())
+        .get(`/organizations/me/exams/${t.examId}/students/${t.studentId}/report-card`)
+        .set(...auth(tokenB))
+        .expect(404);
+      expect(fetchedB.body).toBeDefined();
+    });
+
+    it("rejects computing a grade under another tenant's exam attempt, and generating/fetching a report card under another tenant's exam (404)", async () => {
+      const t = await buildExamGradingTarget(tokenA, "EGR");
+
+      const attempt = await request(app.getHttpServer())
+        .post(`/organizations/me/exam-subjects/${t.examSubjectAId}/attempts`)
+        .set(...auth(tokenA))
+        .send({ studentId: t.studentId, status: "PRESENT" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/exam-attempts/${attempt.body.id}/marks`)
+        .set(...auth(tokenA))
+        .send({ obtainedMarks: 82 })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/exam-attempts/${attempt.body.id}/grade`)
+        .set(...auth(tokenB))
+        .expect(404);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/exams/${t.examId}/students/${t.studentId}/report-card`)
+        .set(...auth(tokenB))
+        .expect(404);
+
+      await request(app.getHttpServer())
+        .get(`/organizations/me/exams/${t.examId}/students/${t.studentId}/report-card`)
+        .set(...auth(tokenB))
         .expect(404);
     });
   });

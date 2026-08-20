@@ -123,6 +123,9 @@ import type {
   RecordExamAttemptInput,
   MarksRecord,
   RecordMarksInput,
+  GradeRecord,
+  ReportCard,
+  ReportCardRecord,
 } from "./types";
 
 export class ApiError extends Error {
@@ -572,6 +575,15 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         method: "POST",
         body: JSON.stringify(input),
       }),
+
+    computeGrade: (examAttemptId: string) =>
+      request<GradeRecord>(`/organizations/me/exam-attempts/${examAttemptId}/grade`, { method: "POST" }),
+    generateReportCard: (examId: string, studentId: string) =>
+      request<ReportCardRecord>(`/organizations/me/exams/${examId}/students/${studentId}/report-card`, {
+        method: "POST",
+      }),
+    getReportCard: (examId: string, studentId: string) =>
+      request<ReportCard>(`/organizations/me/exams/${examId}/students/${studentId}/report-card`),
   };
 }
 

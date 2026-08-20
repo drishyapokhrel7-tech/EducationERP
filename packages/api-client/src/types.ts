@@ -1214,10 +1214,23 @@ export interface ExamAttemptRecord {
   updatedAt: string;
 }
 
-// listAttempts' fuller shape — includes the student and any marks.
+export interface GradeRecord {
+  id: string;
+  organizationId: string;
+  examAttemptId: string;
+  percentage: number;
+  grade: string;
+  gpa: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// listAttempts' fuller shape — includes the student, any marks, and any
+// computed grade.
 export interface ExamAttempt extends ExamAttemptRecord {
   student: StudentSummary;
   marks: MarksRecord | null;
+  grade: GradeRecord | null;
 }
 
 export interface RecordExamAttemptInput {
@@ -1228,4 +1241,35 @@ export interface RecordExamAttemptInput {
 export interface RecordMarksInput {
   obtainedMarks: number;
   remarks?: string;
+}
+
+export interface ReportCardRecord {
+  id: string;
+  organizationId: string;
+  examId: string;
+  studentId: string;
+  totalObtainedMarks: number;
+  totalFullMarks: number;
+  percentage: number;
+  overallGrade: string;
+  overallGpa: number | null;
+  generatedAt: string;
+  updatedAt: string;
+}
+
+export interface ReportCardSubject {
+  id: string;
+  examSubjectId: string;
+  studentId: string;
+  status: AttendanceStatus;
+  examSubject: { id: string; fullMarks: number; passMarks: number; curriculumSubject: CurriculumSubject };
+  marks: MarksRecord;
+  grade: GradeRecord;
+}
+
+// getReportCard's fuller shape — the aggregate row plus its per-subject
+// breakdown, derived (not stored) from Grade rows joined through
+// ExamAttempt/ExamSubject, per the schema's reasoning.
+export interface ReportCard extends ReportCardRecord {
+  subjects: ReportCardSubject[];
 }

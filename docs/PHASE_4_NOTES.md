@@ -334,13 +334,92 @@ once marks exist. e2e suite now 41/41.
   matching the server-side rejection. All test data removed afterward
   via a cleanup script scoped to the demo org.
 
+## Slice 4d — Grades & Report Cards
+
+## What shipped
+
+Two new tables closing out the currently-scheduled 4a–4d breakdown:
+`Grade` (1:1 with `ExamAttempt` — a snapshotted `percentage`/`grade`/
+`gpa`, matched against the `Exam`'s `GradingScheme.bands` at
+computation time) and `ReportCard` (1:1 per `(examId, studentId)` —
+aggregate `totalObtainedMarks`/`totalFullMarks`/`percentage`/
+`overallGrade`/`overallGpa` across every graded subject a student
+attempted in that exam).
+
+**Both are snapshots, not live-recomputed views** — a deliberate
+departure from the "computed view over materialized table" reasoning
+used elsewhere in this phase (e.g. `syllabus_progress`). A grade is
+meant to stay stable even if the grading scheme's bands are revised
+later (an institution changing cutoffs after report cards have
+already been issued shouldn't retroactively change what a student was
+told they earned) — the same reason a `ReportCard` is a real
+generated-document record, not a query. `computeGrade` and
+`generateReportCard` are both explicit, separate admin actions (not
+triggered automatically by `recordMarks`), matching `KnowledgeCheck`'s
+`publish` step — grading is a deliberate decision, not a side effect.
+
+`ReportCard` does **not** duplicate its per-subject breakdown as
+stored JSON — that's already queryable by joining `Grade` through
+`ExamAttempt`/`ExamSubject` for the given exam+student, and storing a
+second copy would just be a sync hazard. Only the aggregate figures
+(the actual computation over multiple rows) are snapshotted.
+
+New `exam-grading` NestJS module, two new RBAC resources (`grade`,
+`report_card`; 44 → 46 total). Extended `/dashboard/exams`' attempts
+list with a "Compute grade" button (replaced by the grade once
+computed) and added a new "Report card" card: a student picker plus
+generate/regenerate action showing the overall result and per-subject
+breakdown. e2e suite now 43/43.
+
+## Verified (slice 4d)
+
+- `pnpm typecheck` / `lint` / `build` clean across all three packages.
+- `services/api` e2e: 43/43, including two new cases — the full
+  grade-without-scheme-rejected(400) → grade-before-marks-
+  rejected(400) → compute-grade(82% → "A") →
+  recompute-upserts-in-place → compute-second-subject-grade(55% →
+  "C") → report-card-with-no-graded-subjects-rejected(400) →
+  generate-report-card(aggregates to 68.5% → "B") →
+  regenerate-upserts-in-place → fetch-with-subject-breakdown chain,
+  and the standard cross-tenant 404 guards. Both new tests, and the
+  whole 43-test suite, passed cleanly on the very first run.
+- A `P1017: Server has closed the connection` hit the permission seed
+  script mid-run (same transient class recorded throughout this
+  project) — cleared on a plain retry, no code issue.
+- A genuine **mid-slice environment restart** — both dev servers and
+  the browser session's connection to them were gone entirely
+  (`preview_list` returned empty, `ps aux` showed no server
+  processes) partway through this slice. Restarted both from
+  `.claude/launch.json` and continued rather than assuming any prior
+  state survived; a scratch-log path used earlier in the session
+  (`.../scratch_ephemeral/`) had also stopped existing across the
+  restart — switched back to the documented per-session scratchpad
+  path from the system prompt instead of continuing to guess.
+- Full browser pass, logged in as the demo admin: computed grades for
+  two exam subjects (85% → "A", 72% → "B") and confirmed each
+  "Compute grade" button was replaced by the rendered grade;
+  generated a report card and confirmed it correctly aggregated both
+  subjects — 157/200 (78.5%) → "B" (GPA 3) — matching the exact
+  band-boundary math verified in the e2e suite, with the per-subject
+  breakdown listed underneath. Hit one real transient `P2028` 500 on
+  the initial students-list fetch (diagnosed via server logs,
+  confirmed transient, cleared on reload) before this pass, consistent
+  with every other Neon blip this session. All test data removed
+  afterward via a cleanup script scoped to the demo org.
+
 ## Next step
 
-Slice 4c done, stopped per plan §21 step 17. Next up per the slice
-breakdown in this file's intro: **4d — Grades & report cards**
-(`Grade` computed from a `GradingScheme`'s bands + `Marks`,
-`ReportCard` generation) — the last slice of the currently-scheduled
-4a–4d breakdown. Once 4d ships, the next decision is whether to raise
-the deferred online-exam-taking/Secure-Examination-Client work as its
-own explicit scope, per this file's intro. Not yet approved by the
-user — wait for explicit go-ahead before starting.
+Slice 4d done, stopped per plan §21 step 17. **This completes the
+currently-scheduled Phase 4 breakdown (4a–4d)** — exam structure,
+scheduling, attempts/evaluation, and grades/report cards are all
+shipped and admin-usable end to end for a traditional (non-digital)
+exam workflow. The one deliberately deferred piece from this file's
+intro remains open: true student-facing *online* exam-taking
+(real-time attempts, randomization, autosave/resume, integrity review
+signals) and the plan's Electron **Secure Examination Client** — a
+qualitatively different scope (first Electron app, real student
+authentication), not just "the next slice." Whether to raise that as
+its own explicit phase of work, or consider Phase 4 complete as
+currently scoped and move to a different phase, is the next decision
+— not yet approved by the user; wait for explicit direction before
+starting either.

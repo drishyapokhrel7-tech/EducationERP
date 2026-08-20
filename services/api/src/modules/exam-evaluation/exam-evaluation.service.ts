@@ -13,7 +13,7 @@ export class ExamEvaluationService {
     return this.prisma.withTenant(organizationId, (tx) =>
       tx.examAttempt.findMany({
         where: { organizationId, examSubjectId },
-        include: { student: true, marks: true },
+        include: { student: true, marks: true, grade: true },
         orderBy: { createdAt: "asc" },
       }),
     );
