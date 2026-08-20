@@ -1179,3 +1179,53 @@ export interface CreateExamRoomInput {
   roomId: string;
   capacity?: number;
 }
+
+// Plain fields only — listAttempts' student include has no nested
+// relations, unlike the full Student type (which carries guardians).
+export interface StudentSummary {
+  id: string;
+  organizationId: string;
+  studentCode: string;
+  firstName: string;
+  lastName: string;
+  dateOfBirth: string;
+  gender: string | null;
+  status: StudentStatus;
+}
+
+export interface MarksRecord {
+  id: string;
+  organizationId: string;
+  examAttemptId: string;
+  obtainedMarks: number;
+  remarks: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// recordAttempt's create/update response — plain fields only.
+export interface ExamAttemptRecord {
+  id: string;
+  organizationId: string;
+  examSubjectId: string;
+  studentId: string;
+  status: AttendanceStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// listAttempts' fuller shape — includes the student and any marks.
+export interface ExamAttempt extends ExamAttemptRecord {
+  student: StudentSummary;
+  marks: MarksRecord | null;
+}
+
+export interface RecordExamAttemptInput {
+  studentId: string;
+  status: AttendanceStatus;
+}
+
+export interface RecordMarksInput {
+  obtainedMarks: number;
+  remarks?: string;
+}

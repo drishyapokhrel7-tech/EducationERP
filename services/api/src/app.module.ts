@@ -17,6 +17,7 @@ import { KnowledgeChecksModule } from "./modules/knowledge-checks/knowledge-chec
 import { DashboardsModule } from "./modules/dashboards/dashboards.module";
 import { ExamSetupModule } from "./modules/exam-setup/exam-setup.module";
 import { ExamSchedulingModule } from "./modules/exam-scheduling/exam-scheduling.module";
+import { ExamEvaluationModule } from "./modules/exam-evaluation/exam-evaluation.module";
 import { QueueModule } from "./queue/queue.module";
 import { HealthController } from "./common/health.controller";
 
@@ -40,6 +41,7 @@ import { HealthController } from "./common/health.controller";
     DashboardsModule,
     ExamSetupModule,
     ExamSchedulingModule,
+    ExamEvaluationModule,
     QueueModule,
   ],
   controllers: [HealthController],

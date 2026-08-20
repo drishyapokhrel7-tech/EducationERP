@@ -81,6 +81,8 @@ describe("Tenant isolation (e2e)", () => {
         // mid-list) to examType/gradingScheme/curriculumSubject
         // (deleted later still), and nothing else references any of
         // these four tables.
+        "marks",
+        "examAttempt",
         "examRoom",
         "examSchedule",
         "examSubject",
@@ -2772,6 +2774,187 @@ describe("Tenant isolation (e2e)", () => {
       await request(app.getHttpServer())
         .get(`/organizations/me/exams/${exam.body.id}`)
         .set(...auth(tokenB))
+        .expect(404);
+    });
+  });
+
+  describe("exam evaluation (exam attempts → marks)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    async function buildExamEvaluationTarget(token: string, suffix: string) {
+      const campus = await request(app.getHttpServer())
+        .post("/organizations/me/campuses")
+        .set(...auth(token))
+        .send({ name: `ExEval Campus ${suffix}`, code: `EVCAMP${suffix}` })
+        .expect(201);
+      const faculty = await request(app.getHttpServer())
+        .post("/organizations/me/faculties")
+        .set(...auth(token))
+        .send({ campusId: campus.body.id, name: `ExEval Faculty ${suffix}`, code: `EVFAC${suffix}` })
+        .expect(201);
+      const department = await request(app.getHttpServer())
+        .post("/organizations/me/departments")
+        .set(...auth(token))
+        .send({ facultyId: faculty.body.id, name: `ExEval Dept ${suffix}`, code: `EVDEP${suffix}` })
+        .expect(201);
+      const program = await request(app.getHttpServer())
+        .post("/organizations/me/programs")
+        .set(...auth(token))
+        .send({ departmentId: department.body.id, name: `ExEval Program ${suffix}`, code: `EVPROG${suffix}` })
+        .expect(201);
+      const subject = await request(app.getHttpServer())
+        .post("/organizations/me/subjects")
+        .set(...auth(token))
+        .send({ name: `ExEval Subject ${suffix}`, code: `EVSUB${suffix}` })
+        .expect(201);
+      const curriculum = await request(app.getHttpServer())
+        .post("/organizations/me/curricula")
+        .set(...auth(token))
+        .send({ programId: program.body.id, name: `ExEval Curriculum ${suffix}`, code: `EVCURR${suffix}` })
+        .expect(201);
+      const curriculumSubject = await request(app.getHttpServer())
+        .post(`/organizations/me/curricula/${curriculum.body.id}/subjects`)
+        .set(...auth(token))
+        .send({ subjectId: subject.body.id })
+        .expect(201);
+      const year = await request(app.getHttpServer())
+        .post("/organizations/me/academic-years")
+        .set(...auth(token))
+        .send({ name: `ExEval Year ${suffix}`, startDate: "2099-01-01", endDate: "2099-12-31" })
+        .expect(201);
+      const term = await request(app.getHttpServer())
+        .post("/organizations/me/terms")
+        .set(...auth(token))
+        .send({
+          academicYearId: year.body.id,
+          name: `ExEval Term ${suffix}`,
+          code: `EVT${suffix}`,
+          sequence: 1,
+          startDate: "2099-01-01",
+          endDate: "2099-06-30",
+        })
+        .expect(201);
+      const examType = await request(app.getHttpServer())
+        .post("/organizations/me/exam-types")
+        .set(...auth(token))
+        .send({ name: `ExEval Exam Type ${suffix}`, code: `EVET${suffix}` })
+        .expect(201);
+      const exam = await request(app.getHttpServer())
+        .post("/organizations/me/exams")
+        .set(...auth(token))
+        .send({ examTypeId: examType.body.id, termId: term.body.id, name: `ExEval Exam ${suffix}` })
+        .expect(201);
+      const examSubject = await request(app.getHttpServer())
+        .post(`/organizations/me/exams/${exam.body.id}/subjects`)
+        .set(...auth(token))
+        .send({ curriculumSubjectId: curriculumSubject.body.id, fullMarks: 100, passMarks: 40 })
+        .expect(201);
+      const studentA = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(token))
+        .send({ studentCode: `EVSTU-A-${suffix}`, firstName: "Aarav", lastName: "Sharma", dateOfBirth: "2015-01-01" })
+        .expect(201);
+      const studentB = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(token))
+        .send({ studentCode: `EVSTU-B-${suffix}`, firstName: "Sita", lastName: "Gurung", dateOfBirth: "2015-01-01" })
+        .expect(201);
+
+      return { examSubjectId: examSubject.body.id, studentAId: studentA.body.id, studentBId: studentB.body.id };
+    }
+
+    it("records present/absent attempts, scores marks, rejects marks over fullMarks and for an absent student, and stays tenant-scoped", async () => {
+      const t = await buildExamEvaluationTarget(tokenA, "EVA");
+
+      const attemptA = await request(app.getHttpServer())
+        .post(`/organizations/me/exam-subjects/${t.examSubjectId}/attempts`)
+        .set(...auth(tokenA))
+        .send({ studentId: t.studentAId, status: "PRESENT" })
+        .expect(201);
+      expect(attemptA.body.organizationId).toBe(orgAId);
+
+      const attemptB = await request(app.getHttpServer())
+        .post(`/organizations/me/exam-subjects/${t.examSubjectId}/attempts`)
+        .set(...auth(tokenA))
+        .send({ studentId: t.studentBId, status: "ABSENT" })
+        .expect(201);
+
+      // Re-recording an attempt for the same student updates it in place
+      // (a correction-friendly upsert), rather than stacking a duplicate.
+      const attemptACorrected = await request(app.getHttpServer())
+        .post(`/organizations/me/exam-subjects/${t.examSubjectId}/attempts`)
+        .set(...auth(tokenA))
+        .send({ studentId: t.studentAId, status: "LATE" })
+        .expect(201);
+      expect(attemptACorrected.body.id).toBe(attemptA.body.id);
+      expect(attemptACorrected.body.status).toBe("LATE");
+
+      // obtainedMarks exceeding fullMarks (100) is rejected.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/exam-attempts/${attemptA.body.id}/marks`)
+        .set(...auth(tokenA))
+        .send({ obtainedMarks: 120 })
+        .expect(400);
+
+      // Marks cannot be recorded for a student who didn't sit the exam.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/exam-attempts/${attemptB.body.id}/marks`)
+        .set(...auth(tokenA))
+        .send({ obtainedMarks: 50 })
+        .expect(400);
+
+      const marks = await request(app.getHttpServer())
+        .post(`/organizations/me/exam-attempts/${attemptA.body.id}/marks`)
+        .set(...auth(tokenA))
+        .send({ obtainedMarks: 78, remarks: "Good effort" })
+        .expect(201);
+      expect(marks.body.obtainedMarks).toBe(78);
+
+      // Re-recording marks corrects the existing row (upsert), not a
+      // duplicate.
+      const marksCorrected = await request(app.getHttpServer())
+        .post(`/organizations/me/exam-attempts/${attemptA.body.id}/marks`)
+        .set(...auth(tokenA))
+        .send({ obtainedMarks: 82 })
+        .expect(201);
+      expect(marksCorrected.body.id).toBe(marks.body.id);
+      expect(marksCorrected.body.obtainedMarks).toBe(82);
+
+      const list = await request(app.getHttpServer())
+        .get(`/organizations/me/exam-subjects/${t.examSubjectId}/attempts`)
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(list.body).toHaveLength(2);
+      const listedA = list.body.find((a: { id: string }) => a.id === attemptA.body.id);
+      expect(listedA.marks.obtainedMarks).toBe(82);
+      expect(listedA.student.firstName).toBe("Aarav");
+
+      const listB = await request(app.getHttpServer())
+        .get(`/organizations/me/exam-subjects/${t.examSubjectId}/attempts`)
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(listB.body).toEqual([]);
+    });
+
+    it("rejects recording an attempt under another tenant's exam subject, and marks under another tenant's attempt (404)", async () => {
+      const t = await buildExamEvaluationTarget(tokenA, "EVR");
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/exam-subjects/${t.examSubjectId}/attempts`)
+        .set(...auth(tokenB))
+        .send({ studentId: t.studentAId, status: "PRESENT" })
+        .expect(404);
+
+      const attempt = await request(app.getHttpServer())
+        .post(`/organizations/me/exam-subjects/${t.examSubjectId}/attempts`)
+        .set(...auth(tokenA))
+        .send({ studentId: t.studentAId, status: "PRESENT" })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/exam-attempts/${attempt.body.id}/marks`)
+        .set(...auth(tokenB))
+        .send({ obtainedMarks: 50 })
         .expect(404);
     });
   });

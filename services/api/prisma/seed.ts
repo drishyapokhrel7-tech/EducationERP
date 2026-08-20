@@ -91,6 +91,8 @@ const RESOURCES = [
   "exam_subject",
   "exam_schedule",
   "exam_room",
+  "exam_attempt",
+  "marks",
 ];
 const ACTIONS = Object.values(PermissionAction);
 

@@ -259,11 +259,88 @@ more retries.**
   correctly rejected with 409, matching the e2e coverage. All test
   data removed afterward via a cleanup script scoped to the demo org.
 
+## Slice 4c — Attempts & Evaluation
+
+## What shipped
+
+Two new tables: `ExamAttempt` (one row per student per `ExamSubject` —
+`status` reuses the existing `AttendanceStatus` enum from 3b
+(present/absent/late/excused) rather than a new narrower one, since
+the same four values are meaningful for "did this student sit this
+exam" as for daily class attendance) and `Marks` (1:1 with
+`ExamAttempt` — `obtainedMarks` + optional `remarks`).
+
+**`Answer` (per-question digital responses) is deliberately not
+modeled in this slice**, despite being in the plan's flat table list
+(§6). This slice's intro already drew the line: true digital
+question-answering is part of the deferred "online exam-taking"
+scope, not the admin-recorded evaluation this slice covers. Building
+`Answer` now would mean also linking `ExamSubject` to a `QuestionBank`
+and inventing a scoring flow that only makes sense for a genuinely
+digital exam — premature given the real-world case this project's
+demo data has modeled throughout (a traditional paper exam, graded by
+a teacher, with only the final mark entered). `ExamAttempt` + `Marks`
+alone fully cover "evaluation, results" for that case; `Answer` is
+left for whenever the online exam-taking slice is actually approved.
+
+**`ExamAttempt` is not roster-based**, unlike `AttendanceSession` (3b)
+which computes its roster from active enrollments. An `ExamSubject`
+has no direct `sectionId` — it's reached via `CurriculumSubject`,
+which can span multiple sections/programs — so there's no clean FK
+path to compute "which students should attempt this." Rather than
+inventing one, `recordAttempt` follows the same precedent as
+`AssignmentSubmission`/`KnowledgeCheckAttempt`: admin picks the
+specific student explicitly. Both `recordAttempt` and `recordMarks`
+are plain upserts (create-or-update by unique key) rather than a
+separate correction endpoint with an audit trail — the plan doesn't
+call for an audit trail on exam marks specifically, so a
+correction-friendly upsert is proportionate, unlike 3b's
+`AttendanceException` (built because attendance correction explicitly
+needed one).
+
+Marks entry is rejected (400) for `ABSENT`/`EXCUSED` attempts (a
+student who didn't sit the exam has no marks to record) and when
+`obtainedMarks` exceeds the `ExamSubject`'s `fullMarks`.
+
+New `exam-evaluation` NestJS module, two new RBAC resources
+(`exam_attempt`, `marks`; 42 → 44 total). Extended `/dashboard/exams`'
+existing per-exam-subject drill-down with an attempts section: a
+student+status picker to record an attempt, and — for any attempt
+whose status allows it — an inline marks-entry form that disappears
+once marks exist. e2e suite now 41/41.
+
+## Verified (slice 4c)
+
+- `pnpm typecheck` / `lint` / `build` clean across all three packages
+  (one real typecheck failure caught and fixed: `NativeSelect`
+  requires a `placeholder` prop even for the always-populated status
+  selector — added one).
+- `services/api` e2e: 41/41 on the first run, including two new cases
+  — the full record-present-attempt → record-absent-attempt →
+  re-record-as-LATE-upserts-in-place → marks-over-fullMarks-
+  rejected(400) → marks-for-absent-student-rejected(400) →
+  record-marks → re-record-marks-upserts-in-place →
+  list-shows-student-and-marks chain, and the standard cross-tenant
+  404 guards.
+- `pnpm --filter @education-erp/api test:e2e` needed no timeout
+  changes this slice — the suite passed cleanly at the 90000ms ceiling
+  set in 4b, confirming that bump was correctly sized.
+- Full browser pass, logged in as the demo admin: recorded a PRESENT
+  attempt for one student and confirmed the marks-entry form appeared
+  with the correct `/ 100` placeholder (from the exam subject's
+  `fullMarks`); entered marks and confirmed the row updated to
+  "82/100" and the entry form disappeared; recorded a second student
+  as ABSENT and confirmed no marks-entry form rendered for them,
+  matching the server-side rejection. All test data removed afterward
+  via a cleanup script scoped to the demo org.
+
 ## Next step
 
-Slice 4b done, stopped per plan §21 step 17. Next up per the slice
-breakdown in this file's intro: **4c — Attempts & evaluation**
-(`ExamAttempt`, `Answer`, `Marks`), recording and scoring exam
-attempts admin-facing on a student's behalf, same "no student portal
-yet" pattern as attendance (3b) and assignments (3e). Not yet approved
-by the user — wait for explicit go-ahead before starting.
+Slice 4c done, stopped per plan §21 step 17. Next up per the slice
+breakdown in this file's intro: **4d — Grades & report cards**
+(`Grade` computed from a `GradingScheme`'s bands + `Marks`,
+`ReportCard` generation) — the last slice of the currently-scheduled
+4a–4d breakdown. Once 4d ships, the next decision is whether to raise
+the deferred online-exam-taking/Secure-Examination-Client work as its
+own explicit scope, per this file's intro. Not yet approved by the
+user — wait for explicit go-ahead before starting.

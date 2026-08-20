@@ -10,6 +10,9 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
+import type { AttendanceStatus, Student } from "@education-erp/api-client";
+
+const ATTEMPT_STATUSES: AttendanceStatus[] = ["PRESENT", "ABSENT", "LATE", "EXCUSED"];
 
 function errorMessage(err: unknown, fallback: string) {
   const message =
@@ -19,27 +22,133 @@ function errorMessage(err: unknown, fallback: string) {
   return typeof message === "string" ? message : fallback;
 }
 
+async function submitAction(action: () => Promise<unknown>, onSuccess: () => void) {
+  try {
+    await action();
+    onSuccess();
+    toast.success("Saved");
+  } catch (err) {
+    toast.error(errorMessage(err, "Failed — check that required fields are filled in"));
+  }
+}
+
+function ExamSubjectAttempts({
+  examSubjectId,
+  fullMarks,
+  students,
+}: {
+  examSubjectId: string;
+  fullMarks: number;
+  students: Student[];
+}) {
+  const attempts = useSWR(["exam-attempts", examSubjectId], () => api.listExamAttempts(examSubjectId));
+  const [attemptForm, setAttemptForm] = useState<{ studentId: string; status: AttendanceStatus }>({
+    studentId: "",
+    status: "PRESENT",
+  });
+  const [marksForms, setMarksForms] = useState<Record<string, string>>({});
+
+  return (
+    <div className="pl-4">
+      <p className="text-muted-foreground text-xs font-medium">Attempts</p>
+      {!attempts.data || attempts.data.length === 0 ? (
+        <p className="text-muted-foreground text-xs">No attempts recorded yet.</p>
+      ) : (
+        <ul className="text-muted-foreground space-y-1 text-xs">
+          {attempts.data.map((a) => {
+            const canHaveMarks = a.status === "PRESENT" || a.status === "LATE";
+            return (
+              <li key={a.id}>
+                {a.student.firstName} {a.student.lastName} — {a.status}
+                {a.marks ? (
+                  ` — ${a.marks.obtainedMarks}/${fullMarks}`
+                ) : canHaveMarks ? (
+                  <form
+                    className="mt-1 flex items-end gap-2"
+                    onSubmit={(e: FormEvent) => {
+                      e.preventDefault();
+                      const value = marksForms[a.id] ?? "";
+                      submitAction(
+                        () => api.recordMarks(a.id, { obtainedMarks: Number(value) }),
+                        () => {
+                          setMarksForms((f) => ({ ...f, [a.id]: "" }));
+                          attempts.mutate();
+                        },
+                      );
+                    }}
+                  >
+                    <Input
+                      type="number"
+                      className="h-7 w-20"
+                      placeholder={`/ ${fullMarks}`}
+                      value={marksForms[a.id] ?? ""}
+                      onChange={(e) => setMarksForms((f) => ({ ...f, [a.id]: e.target.value }))}
+                    />
+                    <Button type="submit" size="sm" className="h-7" disabled={!(marksForms[a.id] ?? "")}>
+                      Save marks
+                    </Button>
+                  </form>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <form
+        className="mt-2 flex flex-wrap items-end gap-3"
+        onSubmit={(e: FormEvent) => {
+          e.preventDefault();
+          submitAction(
+            () => api.recordExamAttempt(examSubjectId, attemptForm),
+            () => {
+              setAttemptForm({ studentId: "", status: "PRESENT" });
+              attempts.mutate();
+            },
+          );
+        }}
+      >
+        <div className="space-y-2">
+          <Label className="text-xs">Student</Label>
+          <NativeSelect
+            className="w-40"
+            placeholder="Select student"
+            value={attemptForm.studentId}
+            onChange={(v) => setAttemptForm((f) => ({ ...f, studentId: v }))}
+            options={students.map((s) => ({ value: s.id, label: `${s.firstName} ${s.lastName}` }))}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label className="text-xs">Status</Label>
+          <NativeSelect
+            className="w-32"
+            placeholder="Select status"
+            value={attemptForm.status}
+            onChange={(v) => setAttemptForm((f) => ({ ...f, status: v as AttendanceStatus }))}
+            options={ATTEMPT_STATUSES.map((s) => ({ value: s, label: s }))}
+          />
+        </div>
+        <Button type="submit" size="sm" disabled={!attemptForm.studentId}>
+          Record attempt
+        </Button>
+      </form>
+    </div>
+  );
+}
+
 export default function ExamsPage() {
   const examTypes = useSWR("exam-types", () => api.listExamTypes());
   const terms = useSWR("terms", () => api.listTerms());
   const gradingSchemes = useSWR("grading-schemes", () => api.listGradingSchemes());
   const curricula = useSWR("curricula", () => api.listCurricula());
   const rooms = useSWR("rooms", () => api.listRooms());
+  const students = useSWR("students", () => api.listStudents());
   const exams = useSWR("exams", () => api.listExams());
 
   const curriculumSubjectOptions = (curricula.data ?? []).flatMap((c) =>
     c.subjects.map((cs) => ({ value: cs.id, label: `${c.name} · ${cs.subject.name}` })),
   );
 
-  async function submit(action: () => Promise<unknown>, onSuccess: () => void) {
-    try {
-      await action();
-      onSuccess();
-      toast.success("Saved");
-    } catch (err) {
-      toast.error(errorMessage(err, "Failed — check that required fields are filled in"));
-    }
-  }
+  const submit = submitAction;
 
   // --- Exams ---------------------------------------------------------------
   const [examForm, setExamForm] = useState({ examTypeId: "", termId: "", name: "", gradingSchemeId: "" });
@@ -337,6 +446,12 @@ export default function ExamsPage() {
                             </Button>
                           </form>
                         )}
+
+                        <ExamSubjectAttempts
+                          examSubjectId={es.id}
+                          fullMarks={es.fullMarks}
+                          students={students.data ?? []}
+                        />
                       </div>
                     ))}
                   </div>

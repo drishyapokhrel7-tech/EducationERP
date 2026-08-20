@@ -75,6 +75,8 @@ model Organization {
   examSubjects             ExamSubject[]
   examSchedules            ExamSchedule[]
   examRooms                ExamRoom[]
+  examAttempts             ExamAttempt[]
+  marks                    Marks[]
 
   @@map("organizations")
 }
@@ -667,6 +669,7 @@ model Student {
   attendanceRecords      StudentAttendance[]
   assignmentSubmissions  AssignmentSubmission[]
   knowledgeCheckAttempts KnowledgeCheckAttempt[]
+  examAttempts           ExamAttempt[]
 
   @@unique([organizationId, studentCode])
   @@index([organizationId])
@@ -1547,6 +1550,7 @@ model ExamSubject {
   // practical component is two ExamSubject rows (two CurriculumSubject-
   // level marks entries), not one ExamSubject with two schedules.
   examSchedule      ExamSchedule?
+  examAttempts      ExamAttempt[]
 
   @@unique([examId, curriculumSubjectId])
   @@index([organizationId])
@@ -1592,4 +1596,52 @@ model ExamRoom {
   @@index([organizationId])
   @@index([roomId])
   @@map("exam_rooms")
+}
+
+model ExamAttempt {
+  id             String           @id @default(uuid())
+  organizationId String
+  examSubjectId  String
+  studentId      String
+  // Reuses AttendanceStatus (present/absent/late/excused) rather than a
+  // new narrower enum — the same four values are meaningful for "did
+  // this student sit this exam" as for daily class attendance, and
+  // introducing a parallel enum for identical semantics would be a new
+  // abstraction with no behavioral difference.
+  status         AttendanceStatus @default(PRESENT)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  examSubject  ExamSubject  @relation(fields: [examSubjectId], references: [id])
+  student      Student      @relation(fields: [studentId], references: [id])
+  marks        Marks?
+
+  // One attempt per student per exam subject — admin-recorded on the
+  // student's behalf, same pattern as AssignmentSubmission/
+  // KnowledgeCheckAttempt (no student portal exists yet). Deliberately
+  // not roster-based like AttendanceSession: an exam subject has no
+  // direct sectionId to compute a roster from (it's reached via
+  // CurriculumSubject, which can span multiple sections/programs), so
+  // admin picks the specific student explicitly, the same choice
+  // already made for assignments and knowledge checks.
+  @@unique([examSubjectId, studentId])
+  @@index([organizationId])
+  @@map("exam_attempts")
+}
+
+model Marks {
+  id             String   @id @default(uuid())
+  organizationId String
+  examAttemptId  String   @unique
+  obtainedMarks  Int
+  remarks        String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  examAttempt  ExamAttempt  @relation(fields: [examAttemptId], references: [id])
+
+  @@index([organizationId])
+  @@map("marks")
 }

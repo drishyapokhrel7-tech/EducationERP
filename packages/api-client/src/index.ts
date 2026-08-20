@@ -118,6 +118,11 @@ import type {
   CreateExamScheduleInput,
   ExamRoomRecord,
   CreateExamRoomInput,
+  ExamAttempt,
+  ExamAttemptRecord,
+  RecordExamAttemptInput,
+  MarksRecord,
+  RecordMarksInput,
 } from "./types";
 
 export class ApiError extends Error {
@@ -551,6 +556,19 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       }),
     addExamRoom: (examScheduleId: string, input: CreateExamRoomInput) =>
       request<ExamRoomRecord>(`/organizations/me/exam-schedules/${examScheduleId}/rooms`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+
+    listExamAttempts: (examSubjectId: string) =>
+      request<ExamAttempt[]>(`/organizations/me/exam-subjects/${examSubjectId}/attempts`),
+    recordExamAttempt: (examSubjectId: string, input: RecordExamAttemptInput) =>
+      request<ExamAttemptRecord>(`/organizations/me/exam-subjects/${examSubjectId}/attempts`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    recordMarks: (examAttemptId: string, input: RecordMarksInput) =>
+      request<MarksRecord>(`/organizations/me/exam-attempts/${examAttemptId}/marks`, {
         method: "POST",
         body: JSON.stringify(input),
       }),
