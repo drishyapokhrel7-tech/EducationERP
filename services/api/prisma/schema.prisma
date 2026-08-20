@@ -71,6 +71,10 @@ model Organization {
   gradingSchemes           GradingScheme[]
   questionBanks            QuestionBank[]
   questions                Question[]
+  exams                    Exam[]
+  examSubjects             ExamSubject[]
+  examSchedules            ExamSchedule[]
+  examRooms                ExamRoom[]
 
   @@map("organizations")
 }
@@ -225,6 +229,7 @@ model CurriculumSubject {
   subject       Subject        @relation(fields: [subjectId], references: [id])
   syllabi       Syllabus[]
   questionBanks QuestionBank[]
+  examSubjects  ExamSubject[]
 
   @@unique([curriculumId, subjectId])
   @@index([organizationId])
@@ -268,6 +273,7 @@ model Term {
   teachingAssignments TeachingAssignment[]
   classSchedules      ClassSchedule[]
   syllabi             Syllabus[]
+  exams               Exam[]
 
   @@unique([academicYearId, code])
   @@index([organizationId])
@@ -847,6 +853,7 @@ model Room {
   organization   Organization    @relation(fields: [organizationId], references: [id])
   campus         Campus          @relation(fields: [campusId], references: [id])
   classSchedules ClassSchedule[]
+  examRooms      ExamRoom[]
 
   @@unique([campusId, code])
   @@index([organizationId])
@@ -1413,6 +1420,7 @@ model ExamType {
   updatedAt      DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id])
+  exams        Exam[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -1436,6 +1444,7 @@ model GradingScheme {
   updatedAt      DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id])
+  exams        Exam[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -1496,4 +1505,91 @@ model Question {
   @@index([organizationId])
   @@index([questionBankId])
   @@map("questions")
+}
+
+model Exam {
+  id              String   @id @default(uuid())
+  organizationId  String
+  examTypeId      String
+  termId          String
+  name            String
+  // Optional — an exam can exist before its grading scale is decided;
+  // 4d's grade computation requires it, this slice's scheduling doesn't.
+  gradingSchemeId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization  Organization   @relation(fields: [organizationId], references: [id])
+  examType      ExamType       @relation(fields: [examTypeId], references: [id])
+  term          Term           @relation(fields: [termId], references: [id])
+  gradingScheme GradingScheme? @relation(fields: [gradingSchemeId], references: [id])
+  examSubjects  ExamSubject[]
+
+  @@index([organizationId])
+  @@index([termId])
+  @@map("exams")
+}
+
+model ExamSubject {
+  id                  String   @id @default(uuid())
+  organizationId      String
+  examId              String
+  curriculumSubjectId String
+  fullMarks           Int
+  passMarks           Int
+  createdAt           DateTime @default(now())
+
+  organization      Organization      @relation(fields: [organizationId], references: [id])
+  exam              Exam              @relation(fields: [examId], references: [id])
+  curriculumSubject CurriculumSubject @relation(fields: [curriculumSubjectId], references: [id])
+  // At most one schedule per exam subject — a subject is examined once
+  // within a given exam sitting; a subject with a written and a
+  // practical component is two ExamSubject rows (two CurriculumSubject-
+  // level marks entries), not one ExamSubject with two schedules.
+  examSchedule      ExamSchedule?
+
+  @@unique([examId, curriculumSubjectId])
+  @@index([organizationId])
+  @@map("exam_subjects")
+}
+
+model ExamSchedule {
+  id             String   @id @default(uuid())
+  organizationId String
+  examSubjectId  String   @unique
+  date           DateTime
+  // "HH:mm" 24-hour strings — same reasoning as Period's startTime/
+  // endTime, a real Postgres `time` column doesn't map to a native
+  // Prisma scalar without extra tooling.
+  startTime      String
+  endTime        String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  examSubject  ExamSubject  @relation(fields: [examSubjectId], references: [id])
+  examRooms    ExamRoom[]
+
+  @@index([organizationId])
+  @@map("exam_schedules")
+}
+
+model ExamRoom {
+  id             String   @id @default(uuid())
+  organizationId String
+  examScheduleId String
+  roomId         String
+  // A large sitting can split across multiple rooms — capacity tracks
+  // how many seats this room contributes, not a hard cap enforced here.
+  capacity       Int?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  examSchedule ExamSchedule @relation(fields: [examScheduleId], references: [id])
+  room         Room         @relation(fields: [roomId], references: [id])
+
+  @@unique([examScheduleId, roomId])
+  @@index([organizationId])
+  @@index([roomId])
+  @@map("exam_rooms")
 }

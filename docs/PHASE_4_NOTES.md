@@ -144,10 +144,126 @@ form from slice 3e). e2e suite now 37/37.
   drill-down lists both questions with their marks. All test data
   removed afterward via a cleanup script scoped to the demo org.
 
+## Slice 4b — Exams & Scheduling
+
+## What shipped
+
+Four new tables binding 4a's static reference data to a real exam
+sitting: `Exam` (an `ExamType` + `Term`, with an optional
+`GradingScheme` — optional because an exam can exist before its
+grading scale is decided, and 4d's grade computation needs it, not
+this slice's scheduling), `ExamSubject` (which `CurriculumSubject`s
+are examined in this sitting, with `fullMarks`/`passMarks` — unique
+per `(examId, curriculumSubjectId)`, so a subject can't be double-
+entered), `ExamSchedule` (the date/`startTime`/`endTime` for one
+`ExamSubject` — 1:1, since a subject with a written and a practical
+component is modeled as two separate `ExamSubject` rows, not one
+`ExamSubject` with two schedules), and `ExamRoom` (a join between an
+`ExamSchedule` and the existing `Room` model from 3a — deliberately
+reusing `Room` rather than a second room registry, and modeled as a
+many-to-many join, not a single `roomId` column on `ExamSchedule`,
+since a large sitting can legitimately split across multiple rooms).
+
+**The double-booking check for `ExamRoom` is service-level, not a
+database constraint** — the one real departure from 3a's precedent.
+3a's `ClassSchedule` double-booking (room+day+period+term) is an exact
+tuple match, so a flat Postgres `@@unique` index enforces it. Exam
+scheduling uses real calendar dates and `HH:mm` time *ranges*, and
+"do these two time ranges overlap" cannot be expressed as a flat
+unique index — so `addExamRoom` explicitly queries every other
+`ExamRoom` booking for the same room on the same date and checks for
+overlap (`existing.startTime < new.endTime && existing.endTime >
+new.startTime`) before inserting, returning 409 on a genuine conflict.
+Documented inline as a deliberate exception to the "prefer a real DB
+constraint" default, not an oversight.
+
+New `exam-scheduling` NestJS module, four new RBAC resources (`exam`,
+`exam_subject`, `exam_schedule`, `exam_room`; 38 → 42 total, no new
+role needed — "Exam Coordinator" was already in the plan's seeded
+role list since Phase 1). New `/dashboard/exams` UI: an exam list +
+create form, and a drill-down per exam showing each subject with its
+marks, a schedule form (or the schedule once set), and a room-
+assignment form once scheduled. e2e suite now 39/39.
+
+## Bugs found and fixed
+
+- **`class-validator`'s `@ValidateIf` callback parameter is typed
+  `any`**, tripping `@typescript-eslint/no-unsafe-member-access` on
+  `dto.questionType` inside 4a's `create-question.dto.ts` (unrelated
+  to this slice's own code, but caught while running a full lint pass
+  before starting 4b). Fixed by explicitly typing the callback
+  parameter as `CreateQuestionDto`.
+
+## This session's Neon-latency saga, and what came of it
+
+This slice's verification hit the same class of transient Neon issue
+recorded in every prior slice — a `P2028` transaction timeout on the
+first e2e run, cleared on retry — plus a genuine **environment
+restart mid-session** (both dev servers and the entire e2e test run
+were killed without warning; recovered by restarting both via
+`preview_start` from `.claude/launch.json` and re-verifying from
+scratch, not by assuming state carried over).
+
+**A second, more serious issue surfaced only in the manual browser
+pass, after 39/39 e2e passed**: creating an exam type through the UI
+500'd three times in a row, and a direct `curl` to `/auth/login` also
+started failing with `P2024: Timed out fetching a new connection from
+the connection pool (limit: 29)` — a genuinely different failure mode
+from every prior `P2028`/`P1017` blip this session, and one that kept
+recurring across several minutes rather than clearing on retry. Ruled
+out the standing "duplicate process" explanation first (`ps aux`
+showed exactly one clean server process), then confirmed a raw CLI
+query against Neon still worked fine (~2.5s) — meaning the exhaustion
+was specific to the running API process's own connection pool, not
+Neon being globally unreachable. Rather than continuing to retry
+against an already-exhausted pool (which only prolongs the
+contention), restarted the API server via `preview_stop`/
+`preview_start`, which reset its pool from zero — `curl` to
+`/auth/login` and to the exam-type endpoint both succeeded
+immediately afterward. **Lesson, a new category alongside the
+existing "stray duplicate process" and "genuine Neon outage" classes:
+a single long-running process's own Prisma connection pool can get
+into a stuck/exhausted state under sustained latency without any
+duplicate process involved — when a `P2024` connection-pool-timeout
+(not a `P2028` transaction-timeout) recurs across multiple direct
+`curl` attempts against different endpoints (not just one flaky
+request), a clean restart of that one process is the right fix, not
+more retries.**
+
+## Verified (slice 4b)
+
+- `pnpm typecheck` / `lint` / `build` clean across all three packages.
+- `services/api` e2e: 39/39, including two new cases — the full
+  create-exam → add-two-subjects → schedule-each →
+  invalid-marks-rejected(400) → invalid-time-range-rejected(400) →
+  assign-room → duplicate-room-assignment-rejected(409) →
+  overlapping-room-booking-rejected(409) chain, and the standard
+  cross-tenant 404 guards (exam under another tenant's term/exam type;
+  scheduling under another tenant's exam subject).
+- `test/jest-e2e.json`'s global `testTimeout` raised 60000 → 90000,
+  and the `afterAll` cleanup hook's own explicit override raised to
+  match — the same structural reasoning as every prior bump (2f, 3c,
+  3f): the cleanup chain grew by 4 more tables this slice, and the
+  dashboards test (already the heaviest in the suite) came within
+  ~440ms of the old ceiling on a clean run before the bump.
+- Full browser pass, logged in as the demo admin (after recovering
+  from the connection-pool episode above): created an exam type, a
+  two-band grading scheme, and a room via direct API calls where
+  faster than re-driving already-proven 4a UI, then through the actual
+  `/dashboard/exams` UI: created an exam, added a Mathematics subject
+  (full 100/pass 40), scheduled it (9/1 09:00–11:00), assigned Room
+  101 (capacity 30) — each step's rendered output checked against the
+  network response. Added a second Science subject scheduled to
+  overlap the first (10:00–12:00 same day) and confirmed via direct API
+  call that assigning the same room to the overlapping schedule is
+  correctly rejected with 409, matching the e2e coverage. All test
+  data removed afterward via a cleanup script scoped to the demo org.
+
 ## Next step
 
-Slice 4a done, stopped per plan §21 step 17. Next up per the slice
-breakdown in this file's intro: **4b — Exams & scheduling** (`Exam`
-plus subjects/rooms/dates), binding 4a's question banks and grading
-schemes to a real exam sitting for a term. Not yet approved by the
-user — wait for explicit go-ahead before starting.
+Slice 4b done, stopped per plan §21 step 17. Next up per the slice
+breakdown in this file's intro: **4c — Attempts & evaluation**
+(`ExamAttempt`, `Answer`, `Marks`), recording and scoring exam
+attempts admin-facing on a student's behalf, same "no student portal
+yet" pattern as attendance (3b) and assignments (3e). Not yet approved
+by the user — wait for explicit go-ahead before starting.

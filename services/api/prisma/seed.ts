@@ -87,6 +87,10 @@ const RESOURCES = [
   "grading_scheme",
   "question_bank",
   "question",
+  "exam",
+  "exam_subject",
+  "exam_schedule",
+  "exam_room",
 ];
 const ACTIONS = Object.values(PermissionAction);
 

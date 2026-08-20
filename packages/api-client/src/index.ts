@@ -109,6 +109,15 @@ import type {
   CreateQuestionBankInput,
   ExamQuestion,
   CreateExamQuestionInput,
+  ExamSummary,
+  Exam,
+  CreateExamInput,
+  ExamSubjectRecord,
+  CreateExamSubjectInput,
+  ExamScheduleRecord,
+  CreateExamScheduleInput,
+  ExamRoomRecord,
+  CreateExamRoomInput,
 } from "./types";
 
 export class ApiError extends Error {
@@ -522,6 +531,26 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       request<QuestionBank>(`/organizations/me/question-banks/${questionBankId}`),
     addExamQuestion: (questionBankId: string, input: CreateExamQuestionInput) =>
       request<ExamQuestion>(`/organizations/me/question-banks/${questionBankId}/questions`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+
+    listExams: () => request<ExamSummary[]>("/organizations/me/exams"),
+    createExam: (input: CreateExamInput) =>
+      request<ExamSummary>("/organizations/me/exams", { method: "POST", body: JSON.stringify(input) }),
+    getExam: (examId: string) => request<Exam>(`/organizations/me/exams/${examId}`),
+    addExamSubject: (examId: string, input: CreateExamSubjectInput) =>
+      request<ExamSubjectRecord>(`/organizations/me/exams/${examId}/subjects`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    createExamSchedule: (examSubjectId: string, input: CreateExamScheduleInput) =>
+      request<ExamScheduleRecord>(`/organizations/me/exam-subjects/${examSubjectId}/schedule`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    addExamRoom: (examScheduleId: string, input: CreateExamRoomInput) =>
+      request<ExamRoomRecord>(`/organizations/me/exam-schedules/${examScheduleId}/rooms`, {
         method: "POST",
         body: JSON.stringify(input),
       }),

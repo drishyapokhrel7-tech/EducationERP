@@ -1071,3 +1071,111 @@ export interface CreateExamQuestionInput {
   correctOptionIndex?: number;
   modelAnswer?: string;
 }
+
+export interface ExamSummary {
+  id: string;
+  organizationId: string;
+  examTypeId: string;
+  termId: string;
+  name: string;
+  gradingSchemeId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  examType: ExamType;
+  term: Term;
+  gradingScheme: GradingScheme | null;
+}
+
+export interface ExamRoomAssignment {
+  id: string;
+  organizationId: string;
+  examScheduleId: string;
+  roomId: string;
+  capacity: number | null;
+  createdAt: string;
+  room: Room;
+}
+
+export interface ExamScheduleDetail {
+  id: string;
+  organizationId: string;
+  examSubjectId: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  createdAt: string;
+  updatedAt: string;
+  examRooms: ExamRoomAssignment[];
+}
+
+export interface ExamSubjectDetail {
+  id: string;
+  organizationId: string;
+  examId: string;
+  curriculumSubjectId: string;
+  fullMarks: number;
+  passMarks: number;
+  createdAt: string;
+  curriculumSubject: CurriculumSubject;
+  examSchedule: ExamScheduleDetail | null;
+}
+
+export interface Exam extends ExamSummary {
+  examSubjects: ExamSubjectDetail[];
+}
+
+export interface CreateExamInput {
+  examTypeId: string;
+  termId: string;
+  name: string;
+  gradingSchemeId?: string;
+}
+
+// Plain create() responses — no relations loaded, unlike the nested
+// *Detail types above used for getExam's fuller fetch.
+export interface ExamSubjectRecord {
+  id: string;
+  organizationId: string;
+  examId: string;
+  curriculumSubjectId: string;
+  fullMarks: number;
+  passMarks: number;
+  createdAt: string;
+}
+
+export interface CreateExamSubjectInput {
+  curriculumSubjectId: string;
+  fullMarks: number;
+  passMarks: number;
+}
+
+export interface ExamScheduleRecord {
+  id: string;
+  organizationId: string;
+  examSubjectId: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateExamScheduleInput {
+  date: string;
+  startTime: string;
+  endTime: string;
+}
+
+export interface ExamRoomRecord {
+  id: string;
+  organizationId: string;
+  examScheduleId: string;
+  roomId: string;
+  capacity: number | null;
+  createdAt: string;
+}
+
+export interface CreateExamRoomInput {
+  roomId: string;
+  capacity?: number;
+}

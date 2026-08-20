@@ -13,6 +13,7 @@ import {
   ClipboardList,
   FileQuestion,
   GraduationCap,
+  ScrollText,
   LayoutDashboard,
   LayoutPanelTop,
   ListChecks,
@@ -40,6 +41,7 @@ const NAV = [
   { href: "/dashboard/knowledge-checks", label: "Knowledge Checks", icon: ListChecks },
   { href: "/dashboard/learning-dashboards", label: "Learning Dashboards", icon: LayoutPanelTop },
   { href: "/dashboard/exam-setup", label: "Exam Setup", icon: FileQuestion },
+  { href: "/dashboard/exams", label: "Exams", icon: ScrollText },
 ];
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {

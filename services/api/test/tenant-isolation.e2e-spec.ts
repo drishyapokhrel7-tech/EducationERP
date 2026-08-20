@@ -73,6 +73,18 @@ describe("Tenant isolation (e2e)", () => {
       // call here is its own short transaction; order still matters
       // (children before the parents they reference).
       const deleteOrder: string[] = [
+        // examRoom references examSchedule + room; examSchedule
+        // references examSubject; examSubject references exam +
+        // curriculumSubject; exam references examType/term/
+        // gradingScheme — all four lead the whole list since their
+        // parents span from room (deleted late) to term (deleted
+        // mid-list) to examType/gradingScheme/curriculumSubject
+        // (deleted later still), and nothing else references any of
+        // these four tables.
+        "examRoom",
+        "examSchedule",
+        "examSubject",
+        "exam",
         // knowledgeCheckAttempt/knowledgeCheckQuestion reference
         // knowledgeCheck; knowledgeCheck references teachingAssignment +
         // syllabusNode; assignmentSubmission references assignment;
@@ -169,7 +181,7 @@ describe("Tenant isolation (e2e)", () => {
       await prisma.organization.deleteMany({ where: { id: { in: [orgAId, orgBId] } } });
     }
     await app.close();
-  }, 60000);
+  }, 90000);
 
   it("rejects requests with no token", async () => {
     await request(app.getHttpServer()).get("/organizations/me").expect(401);
@@ -2521,6 +2533,244 @@ describe("Tenant isolation (e2e)", () => {
 
       await request(app.getHttpServer())
         .get(`/organizations/me/question-banks/${bank.body.id}`)
+        .set(...auth(tokenB))
+        .expect(404);
+    });
+  });
+
+  describe("exam scheduling (exam → exam subjects → schedule → room assignment)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    async function buildExamSchedulingTarget(token: string, suffix: string) {
+      const campus = await request(app.getHttpServer())
+        .post("/organizations/me/campuses")
+        .set(...auth(token))
+        .send({ name: `ExSched Campus ${suffix}`, code: `ESCAMP${suffix}` })
+        .expect(201);
+      const faculty = await request(app.getHttpServer())
+        .post("/organizations/me/faculties")
+        .set(...auth(token))
+        .send({ campusId: campus.body.id, name: `ExSched Faculty ${suffix}`, code: `ESFAC${suffix}` })
+        .expect(201);
+      const department = await request(app.getHttpServer())
+        .post("/organizations/me/departments")
+        .set(...auth(token))
+        .send({ facultyId: faculty.body.id, name: `ExSched Dept ${suffix}`, code: `ESDEP${suffix}` })
+        .expect(201);
+      const program = await request(app.getHttpServer())
+        .post("/organizations/me/programs")
+        .set(...auth(token))
+        .send({ departmentId: department.body.id, name: `ExSched Program ${suffix}`, code: `ESPROG${suffix}` })
+        .expect(201);
+      const subjectA = await request(app.getHttpServer())
+        .post("/organizations/me/subjects")
+        .set(...auth(token))
+        .send({ name: `ExSched Subject A ${suffix}`, code: `ESSUBA${suffix}` })
+        .expect(201);
+      const subjectB = await request(app.getHttpServer())
+        .post("/organizations/me/subjects")
+        .set(...auth(token))
+        .send({ name: `ExSched Subject B ${suffix}`, code: `ESSUBB${suffix}` })
+        .expect(201);
+      const curriculum = await request(app.getHttpServer())
+        .post("/organizations/me/curricula")
+        .set(...auth(token))
+        .send({ programId: program.body.id, name: `ExSched Curriculum ${suffix}`, code: `ESCURR${suffix}` })
+        .expect(201);
+      const curriculumSubjectA = await request(app.getHttpServer())
+        .post(`/organizations/me/curricula/${curriculum.body.id}/subjects`)
+        .set(...auth(token))
+        .send({ subjectId: subjectA.body.id })
+        .expect(201);
+      const curriculumSubjectB = await request(app.getHttpServer())
+        .post(`/organizations/me/curricula/${curriculum.body.id}/subjects`)
+        .set(...auth(token))
+        .send({ subjectId: subjectB.body.id })
+        .expect(201);
+      const year = await request(app.getHttpServer())
+        .post("/organizations/me/academic-years")
+        .set(...auth(token))
+        .send({ name: `ExSched Year ${suffix}`, startDate: "2099-01-01", endDate: "2099-12-31" })
+        .expect(201);
+      const term = await request(app.getHttpServer())
+        .post("/organizations/me/terms")
+        .set(...auth(token))
+        .send({
+          academicYearId: year.body.id,
+          name: `ExSched Term ${suffix}`,
+          code: `ET${suffix}`,
+          sequence: 1,
+          startDate: "2099-01-01",
+          endDate: "2099-06-30",
+        })
+        .expect(201);
+      const room = await request(app.getHttpServer())
+        .post("/organizations/me/rooms")
+        .set(...auth(token))
+        .send({ campusId: campus.body.id, name: `ExSched Room ${suffix}`, code: `ESRM${suffix}` })
+        .expect(201);
+      const examType = await request(app.getHttpServer())
+        .post("/organizations/me/exam-types")
+        .set(...auth(token))
+        .send({ name: `ExSched Exam Type ${suffix}`, code: `ESET${suffix}` })
+        .expect(201);
+
+      return {
+        termId: term.body.id,
+        examTypeId: examType.body.id,
+        roomId: room.body.id,
+        curriculumSubjectAId: curriculumSubjectA.body.id,
+        curriculumSubjectBId: curriculumSubjectB.body.id,
+      };
+    }
+
+    it("builds an exam with two subjects, schedules and rooms them, rejects invalid marks/times, and stays tenant-scoped", async () => {
+      const t = await buildExamSchedulingTarget(tokenA, "ESA");
+
+      const exam = await request(app.getHttpServer())
+        .post("/organizations/me/exams")
+        .set(...auth(tokenA))
+        .send({ examTypeId: t.examTypeId, termId: t.termId, name: "Terminal Exam" })
+        .expect(201);
+      expect(exam.body.organizationId).toBe(orgAId);
+
+      // passMarks > fullMarks is rejected.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/exams/${exam.body.id}/subjects`)
+        .set(...auth(tokenA))
+        .send({ curriculumSubjectId: t.curriculumSubjectAId, fullMarks: 50, passMarks: 60 })
+        .expect(400);
+
+      const examSubjectA = await request(app.getHttpServer())
+        .post(`/organizations/me/exams/${exam.body.id}/subjects`)
+        .set(...auth(tokenA))
+        .send({ curriculumSubjectId: t.curriculumSubjectAId, fullMarks: 100, passMarks: 40 })
+        .expect(201);
+
+      // The same subject can't be added twice to one exam.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/exams/${exam.body.id}/subjects`)
+        .set(...auth(tokenA))
+        .send({ curriculumSubjectId: t.curriculumSubjectAId, fullMarks: 100, passMarks: 40 })
+        .expect(409);
+
+      const examSubjectB = await request(app.getHttpServer())
+        .post(`/organizations/me/exams/${exam.body.id}/subjects`)
+        .set(...auth(tokenA))
+        .send({ curriculumSubjectId: t.curriculumSubjectBId, fullMarks: 100, passMarks: 40 })
+        .expect(201);
+
+      // startTime >= endTime is rejected.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/exam-subjects/${examSubjectA.body.id}/schedule`)
+        .set(...auth(tokenA))
+        .send({ date: "2099-03-01", startTime: "11:00", endTime: "09:00" })
+        .expect(400);
+
+      const scheduleA = await request(app.getHttpServer())
+        .post(`/organizations/me/exam-subjects/${examSubjectA.body.id}/schedule`)
+        .set(...auth(tokenA))
+        .send({ date: "2099-03-01", startTime: "09:00", endTime: "11:00" })
+        .expect(201);
+
+      // A second schedule for the same exam subject is rejected (1:1).
+      await request(app.getHttpServer())
+        .post(`/organizations/me/exam-subjects/${examSubjectA.body.id}/schedule`)
+        .set(...auth(tokenA))
+        .send({ date: "2099-03-02", startTime: "09:00", endTime: "11:00" })
+        .expect(409);
+
+      const roomAssignment = await request(app.getHttpServer())
+        .post(`/organizations/me/exam-schedules/${scheduleA.body.id}/rooms`)
+        .set(...auth(tokenA))
+        .send({ roomId: t.roomId, capacity: 30 })
+        .expect(201);
+      expect(roomAssignment.body.capacity).toBe(30);
+
+      // The same room can't be assigned twice to the same schedule.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/exam-schedules/${scheduleA.body.id}/rooms`)
+        .set(...auth(tokenA))
+        .send({ roomId: t.roomId })
+        .expect(409);
+
+      // A second exam subject scheduled the same day with an overlapping
+      // time, assigned to the same room, is rejected as a double-booking —
+      // this can't be a flat unique index (it's a real time-range
+      // overlap), so it's the service-level check being exercised here.
+      const scheduleB = await request(app.getHttpServer())
+        .post(`/organizations/me/exam-subjects/${examSubjectB.body.id}/schedule`)
+        .set(...auth(tokenA))
+        .send({ date: "2099-03-01", startTime: "10:00", endTime: "12:00" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/exam-schedules/${scheduleB.body.id}/rooms`)
+        .set(...auth(tokenA))
+        .send({ roomId: t.roomId })
+        .expect(409);
+
+      const fetched = await request(app.getHttpServer())
+        .get(`/organizations/me/exams/${exam.body.id}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(fetched.body.examSubjects).toHaveLength(2);
+      const fetchedA = fetched.body.examSubjects.find((es: { id: string }) => es.id === examSubjectA.body.id);
+      expect(fetchedA.examSchedule.examRooms).toHaveLength(1);
+
+      const listB = await request(app.getHttpServer())
+        .get("/organizations/me/exams")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(listB.body).toEqual([]);
+    });
+
+    it("rejects creating an exam under another tenant's term/exam type, and scheduling under another tenant's exam subject (404)", async () => {
+      const t = await buildExamSchedulingTarget(tokenA, "ESR");
+
+      await request(app.getHttpServer())
+        .post("/organizations/me/exams")
+        .set(...auth(tokenB))
+        .send({ examTypeId: t.examTypeId, termId: t.termId, name: "Cross-tenant exam" })
+        .expect(404);
+
+      const exam = await request(app.getHttpServer())
+        .post("/organizations/me/exams")
+        .set(...auth(tokenA))
+        .send({ examTypeId: t.examTypeId, termId: t.termId, name: "Owned Exam" })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/exams/${exam.body.id}/subjects`)
+        .set(...auth(tokenB))
+        .send({ curriculumSubjectId: t.curriculumSubjectAId, fullMarks: 100, passMarks: 40 })
+        .expect(404);
+
+      const examSubject = await request(app.getHttpServer())
+        .post(`/organizations/me/exams/${exam.body.id}/subjects`)
+        .set(...auth(tokenA))
+        .send({ curriculumSubjectId: t.curriculumSubjectAId, fullMarks: 100, passMarks: 40 })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/exam-subjects/${examSubject.body.id}/schedule`)
+        .set(...auth(tokenB))
+        .send({ date: "2099-03-01", startTime: "09:00", endTime: "11:00" })
+        .expect(404);
+
+      const schedule = await request(app.getHttpServer())
+        .post(`/organizations/me/exam-subjects/${examSubject.body.id}/schedule`)
+        .set(...auth(tokenA))
+        .send({ date: "2099-03-01", startTime: "09:00", endTime: "11:00" })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/exam-schedules/${schedule.body.id}/rooms`)
+        .set(...auth(tokenB))
+        .send({ roomId: t.roomId })
+        .expect(404);
+
+      await request(app.getHttpServer())
+        .get(`/organizations/me/exams/${exam.body.id}`)
         .set(...auth(tokenB))
         .expect(404);
     });
