@@ -24,6 +24,8 @@ import type {
   CreateSectionInput,
   CreateStaffTypeInput,
   CreateStudentInput,
+  CreateStudentLoginInput,
+  CreateStudentLoginResult,
   CreateSubjectInput,
   CreateTermInput,
   Curriculum,
@@ -329,6 +331,11 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         method: "POST",
         body: JSON.stringify(input),
       }),
+    createStudentLogin: (studentId: string, input: CreateStudentLoginInput) =>
+      request<CreateStudentLoginResult>(`/organizations/me/students/${studentId}/create-login`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
 
     listGuardians: () => request<Guardian[]>("/organizations/me/guardians"),
     createGuardian: (input: CreateGuardianInput) =>
@@ -584,6 +591,10 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       }),
     getReportCard: (examId: string, studentId: string) =>
       request<ReportCard>(`/organizations/me/exams/${examId}/students/${studentId}/report-card`),
+
+    // No studentId param — the server derives it from the caller's own
+    // linked Student row. See StudentPortalService.
+    getPortalDashboard: () => request<StudentDashboard>("/organizations/me/portal/dashboard"),
   };
 }
 

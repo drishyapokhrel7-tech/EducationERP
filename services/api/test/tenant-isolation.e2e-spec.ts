@@ -3237,4 +3237,88 @@ describe("Tenant isolation (e2e)", () => {
         .expect(404);
     });
   });
+
+  describe("student portal authentication (create-login → self-service dashboard)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    it("creates a student login, rejects a duplicate, logs in by username, and returns only that student's own dashboard (IDOR guard)", async () => {
+      const studentA = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({ studentCode: `PORTAL-A-${run}`, firstName: "Aarav", lastName: "Sharma", dateOfBirth: "2015-01-01" })
+        .expect(201);
+      const studentB = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({ studentCode: `PORTAL-B-${run}`, firstName: "Sita", lastName: "Gurung", dateOfBirth: "2015-01-01" })
+        .expect(201);
+
+      const loginA = await request(app.getHttpServer())
+        .post(`/organizations/me/students/${studentA.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "StudentPass123" })
+        .expect(201);
+      expect(loginA.body.username).toBe(`${orgASlug}.PORTAL-A-${run}`);
+      expect(loginA.body).not.toHaveProperty("passwordHash");
+
+      // A student can't get a second login.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/students/${studentA.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "AnotherPass123" })
+        .expect(409);
+
+      const loginB = await request(app.getHttpServer())
+        .post(`/organizations/me/students/${studentB.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "StudentPass456" })
+        .expect(201);
+
+      // Logs in with the generated username (not an email) through the
+      // same /auth/login endpoint every other role uses.
+      const sessionA = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: loginA.body.username, password: "StudentPass123" })
+        .expect(201);
+      const sessionB = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: loginB.body.username, password: "StudentPass456" })
+        .expect(201);
+
+      // No studentId param exists on this route — it's derived from the
+      // caller's own linked Student row, so there's nothing to tamper
+      // with. Confirms each student only ever sees their own data.
+      const dashboardA = await request(app.getHttpServer())
+        .get("/organizations/me/portal/dashboard")
+        .set(...auth(sessionA.body.accessToken))
+        .expect(200);
+      expect(dashboardA.body.student.id).toBe(studentA.body.id);
+
+      const dashboardB = await request(app.getHttpServer())
+        .get("/organizations/me/portal/dashboard")
+        .set(...auth(sessionB.body.accessToken))
+        .expect(200);
+      expect(dashboardB.body.student.id).toBe(studentB.body.id);
+
+      // A non-student user (the org admin) has no linked Student row.
+      await request(app.getHttpServer())
+        .get("/organizations/me/portal/dashboard")
+        .set(...auth(tokenA))
+        .expect(404);
+    });
+
+    it("rejects creating a login under another tenant's student (404)", async () => {
+      const student = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({ studentCode: `PORTAL-X-${run}`, firstName: "Rohan", lastName: "Thapa", dateOfBirth: "2015-01-01" })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/students/${student.body.id}/create-login`)
+        .set(...auth(tokenB))
+        .send({ password: "StudentPass123" })
+        .expect(404);
+    });
+  });
 });

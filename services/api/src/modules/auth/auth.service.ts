@@ -87,14 +87,16 @@ export class AuthService {
   }
 
   async login(dto: LoginDto, meta: { ipAddress?: string; userAgent?: string }) {
-    const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    const user = await this.prisma.user.findFirst({
+      where: { OR: [{ email: dto.identifier }, { username: dto.identifier }] },
+    });
     const valid = user ? await argon2.verify(user.passwordHash, dto.password) : false;
 
     await this.prisma.loginEvent.create({
       data: {
         organizationId: user?.organizationId,
         userId: user?.id,
-        email: dto.email,
+        email: dto.identifier,
         success: valid,
         ipAddress: meta.ipAddress,
         userAgent: meta.userAgent,

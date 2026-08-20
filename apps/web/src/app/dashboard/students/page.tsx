@@ -88,6 +88,25 @@ export default function StudentsPage() {
   const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
 
+  // Keyed by studentId, same pattern as the exams page's per-row forms.
+  const [loginPasswordForms, setLoginPasswordForms] = useState<Record<string, string>>({});
+  // The generated username is only ever visible in the create-login
+  // response — shown here once so the admin can copy it, not persisted.
+  const [createdUsernames, setCreatedUsernames] = useState<Record<string, string>>({});
+
+  async function handleCreateLogin(studentId: string) {
+    const password = loginPasswordForms[studentId] ?? "";
+    try {
+      const result = await api.createStudentLogin(studentId, { password });
+      setCreatedUsernames((m) => ({ ...m, [studentId]: result.username }));
+      setLoginPasswordForms((f) => ({ ...f, [studentId]: "" }));
+      students.mutate();
+      toast.success("Login created");
+    } catch {
+      toast.error("Failed to create login — password must be at least 8 characters");
+    }
+  }
+
   async function handleImport() {
     const file = importFileRef.current?.files?.[0];
     if (!file) return;
@@ -191,6 +210,8 @@ export default function StudentsPage() {
         emptyLabel="No students yet."
         items={students.data}
         renderItem={(s: {
+          id: string;
+          userId: string | null;
           firstName: string;
           lastName: string;
           studentCode: string;
@@ -211,6 +232,36 @@ export default function StudentsPage() {
                   .join(", ")}
               </p>
             ) : null}
+            {s.userId ? (
+              <p className="text-muted-foreground mt-1 text-xs">
+                Portal login: {createdUsernames[s.id] ?? "created"}
+              </p>
+            ) : (
+              <form
+                className="mt-2 flex items-end gap-2"
+                onSubmit={(e: FormEvent) => {
+                  e.preventDefault();
+                  handleCreateLogin(s.id);
+                }}
+              >
+                <Input
+                  type="password"
+                  className="h-7 w-40"
+                  placeholder="Set initial password"
+                  value={loginPasswordForms[s.id] ?? ""}
+                  onChange={(e) => setLoginPasswordForms((f) => ({ ...f, [s.id]: e.target.value }))}
+                />
+                <Button
+                  type="submit"
+                  size="sm"
+                  variant="outline"
+                  className="h-7"
+                  disabled={(loginPasswordForms[s.id] ?? "").length < 8}
+                >
+                  Create login
+                </Button>
+              </form>
+            )}
           </div>
         )}
       >

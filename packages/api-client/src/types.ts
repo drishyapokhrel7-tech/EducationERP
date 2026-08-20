@@ -44,7 +44,9 @@ export interface RegisterOrganizationInput {
 }
 
 export interface LoginInput {
-  email: string;
+  // A User.email or a User.username — self-service logins (e.g.
+  // students) use a username, not every login is email-shaped.
+  identifier: string;
   password: string;
 }
 
@@ -354,6 +356,16 @@ export interface CreateStudentInput {
   lastName: string;
   dateOfBirth: string;
   gender?: string;
+}
+
+export interface CreateStudentLoginInput {
+  password: string;
+}
+
+// Never includes the password back — it was supplied by the admin, not
+// generated. `username` is what the admin relays to the student.
+export interface CreateStudentLoginResult extends SafeUser {
+  username: string;
 }
 
 export type EnrollmentStatus = "ACTIVE" | "COMPLETED" | "WITHDRAWN";

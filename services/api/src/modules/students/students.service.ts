@@ -1,11 +1,13 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { parse } from "csv-parse/sync";
+import * as argon2 from "argon2";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateStudentDto } from "./dto/create-student.dto";
 import { CreateGuardianDto } from "./dto/create-guardian.dto";
 import { AttachGuardianDto } from "./dto/attach-guardian.dto";
 import { CreateEnrollmentDto } from "./dto/create-enrollment.dto";
 import { UpdateStudentStatusDto } from "./dto/update-student-status.dto";
+import { CreateStudentLoginDto } from "./dto/create-student-login.dto";
 import { ImportResult, ImportRowError } from "./dto/import-result.dto";
 
 /** Same load-bearing parent-guard pattern as every prior slice's service. */
@@ -142,6 +144,53 @@ export class StudentsService {
           effectiveDate: new Date(dto.effectiveDate),
         },
       });
+    });
+  }
+
+  /**
+   * Admin-set password only — the API never generates or echoes one back
+   * (see CreateStudentLoginDto). `username` is
+   * `{organizationSlug}.{studentCode}`, globally unique the same way
+   * User.email is, since studentCode is only unique within an
+   * organization — this is what lets AuthService.login look up either
+   * column with one identifier field.
+   */
+  async createLogin(organizationId: string, studentId: string, dto: CreateStudentLoginDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const student = await tx.student.findUnique({ where: { id: studentId } });
+      if (!student) throw new NotFoundException("Student not found");
+      if (student.userId) throw new ConflictException("This student already has a login");
+
+      const organization = await tx.organization.findUnique({ where: { id: organizationId } });
+      if (!organization) throw new NotFoundException("Organization not found");
+
+      const studentRole = await tx.role.findFirst({ where: { name: "Student", isSystem: true } });
+      if (!studentRole) throw new Error("System roles are not seeded — run prisma:seed first");
+
+      const username = `${organization.slug}.${student.studentCode}`;
+      const passwordHash = await argon2.hash(dto.password);
+
+      const user = await tx.user.create({
+        data: {
+          organizationId,
+          // User.email stays required+unique (not touched by this
+          // slice — see plan) so a placeholder is needed; `username`
+          // is already globally unique, this just reuses it under a
+          // reserved pseudo-TLD. The student never sees or logs in
+          // with this value — only `username` is relayed to them.
+          email: `${username}@student.local`,
+          username,
+          passwordHash,
+          firstName: student.firstName,
+          lastName: student.lastName,
+          status: "ACTIVE",
+          userRoles: { create: { roleId: studentRole.id } },
+        },
+      });
+      await tx.student.update({ where: { id: studentId }, data: { userId: user.id } });
+
+      const { passwordHash: _passwordHash, ...safeUser } = user;
+      return { ...safeUser, username };
     });
   }
 

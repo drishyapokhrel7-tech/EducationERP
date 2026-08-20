@@ -407,19 +407,124 @@ breakdown. e2e suite now 43/43.
   with every other Neon blip this session. All test data removed
   afterward via a cleanup script scoped to the demo org.
 
+## Raising the deferred scope: Slice 4e — Student Portal Authentication
+
+The user asked to raise the deferred online-exam-taking / Secure
+Examination Client scope. Both of those hard-depend on a real, logged-
+in student identity — this project has had none, at all, since Phase 1
+(every phase from 2d onward flagged the gap and built admin-facing
+instead). So the first buildable piece is student authentication
+itself, planned via `EnterPlanMode` (not just started directly, given
+the size and the number of genuinely open architectural questions the
+plan text never answers) and confirmed with the user on two forks
+before writing any code:
+
+1. **Student login mechanism**: student code + password, not email —
+   admin creates the login and sets the initial password directly (no
+   system-generated/emailed password, since plan §7 explicitly forbids
+   echoing passwords in responses/logs).
+2. **Build sequencing**: the actual online exam-taking engine will be
+   built as a **web feature first**, with the Electron Secure
+   Examination Client added afterward as a hardening/lockdown layer —
+   not from the start. Matches the plan's own acceptance criterion
+   ("web portals work independently in browsers... Electron is only
+   for controlled/offline/hardware needs"). **That work is not part of
+   this slice** — it's the explicit next step, and needs its own
+   separate go-ahead.
+
+## What shipped
+
+`User.username String? @unique` — a parallel login identifier to
+`email`, since `Student.studentCode` is only unique *within* an
+organization, unlike `email`. The generated login's username is
+`{organizationSlug}.{studentCode}` (e.g.
+`everest-academy-college.STU-0001`) — globally unique with one field,
+no separate "select your institution" step. `AuthService.login` now
+looks up `email` OR `username` with one `identifier` field (the
+`LoginDto`'s `email` field — and the api-client's `LoginInput.email` —
+were renamed to `identifier` end to end, since keeping the field named
+`email` while it silently accepted non-email input would leave a
+permanently misleading name in a security-sensitive path).
+
+New endpoint `POST /organizations/me/students/:studentId/create-login`
+(in the existing `students` module) — admin-set password only, never
+generated or echoed back. New `student-portal` module: one route,
+`GET /organizations/me/portal/dashboard`, that resolves the caller's
+own `Student` row from `userId` and delegates straight to the
+already-existing `DashboardsService.studentDashboard()` from slice 3f
+— no duplicated dashboard logic. New `/portal` route tree in
+`apps/web` (a minimal student shell, no admin sidebar), and the login
+page now decodes the fresh JWT's `roles` claim client-side (routing
+convenience only, never an authorization decision) to redirect
+students to `/portal` and everyone else to `/dashboard` as before.
+Extracted the `StudentSummary` component out of `learning-dashboards/
+page.tsx` into a shared `apps/web/src/components/student-summary.tsx`
+so the admin view and the new self-service portal render identically
+from the same code. Admin UI: a "Create login" action per student on
+`/dashboard/students`, showing the generated username once on success.
+
+## Design decisions worth flagging
+
+**Self-service routes are gated differently from every other module in
+this project.** Every existing `@RequirePermissions("resource:action")`
+check answers "can this role act on *any* row of this resource" — that
+doesn't fit "can this specific student see *their own* data and
+nothing else." Granting the Student role the existing `student:view`
+etc. would let a student call the admin students-list endpoint and see
+every student in the org — a real data-leak risk, not a hypothetical
+one. Instead, `StudentPortalController` uses `@UseGuards(JwtAuthGuard)`
+only — no `PermissionsGuard`, no `@RequirePermissions` — and
+`StudentPortalService` derives `studentId` **exclusively** from
+`WHERE userId = jwt.sub`, never from a request parameter. There is
+nothing for a caller to tamper with: IDOR is structurally impossible on
+this route, not just checked for. Any future self-service work (parent
+portal, teacher self-service) should follow this same pattern, not the
+resource-permission model.
+
+**A synthetic placeholder email** (`{username}@student.local`) is
+written to `User.email` at login-creation time — `email` stays
+required+unique (not touched by this slice) so something has to go
+there, and reusing the already-unique `username` under a reserved
+pseudo-TLD is simpler than making `email` nullable across the whole
+codebase for one new login path. The student never sees or logs in
+with this value; only `username` is ever relayed to them.
+
+## Verified (slice 4e)
+
+- `pnpm typecheck` / `lint` / `build` clean across all three packages.
+- `services/api` unit tests: `auth.service.spec.ts` updated for the
+  `email`→`identifier` rename and `findUnique`→`findFirst` lookup
+  change, 4/4 passing.
+- `services/api` e2e: 45/45, including two new cases — the full
+  create-login → duplicate-login-rejected(409) →
+  login-by-username-succeeds → **each of two students' portal
+  dashboards returns only that student's own data (the core IDOR
+  guarantee, asserted both ways)** → a non-student user hitting the
+  portal endpoint gets 404 (no linked Student row) chain, and the
+  cross-tenant 404 guard on `create-login`. All 45 tests, including
+  every pre-existing one, passed cleanly on the first run.
+- Full browser pass: as the demo admin, created a login for Aarav
+  Sharma on `/dashboard/students` (confirmed the response carried no
+  `passwordHash` and the generated username matched
+  `everest-academy-college.STU-0001` exactly); logged out; logged back
+  in with that username + the password just set; confirmed the redirect
+  went to `/portal`, not `/dashboard`; confirmed the rendered dashboard
+  showed Aarav's own real enrollment data (Primary School · Grade 3 ·
+  Term 1), derived entirely server-side from the JWT. Confirmed the
+  existing admin login still works unchanged through the renamed
+  `identifier` field. All test data (the created User/UserRole/Session,
+  and the `student.userId` link) removed afterward via a cleanup script
+  scoped to the demo org — reconfirmed via a fresh admin session that
+  every student shows "Create login" again.
+
 ## Next step
 
-Slice 4d done, stopped per plan §21 step 17. **This completes the
-currently-scheduled Phase 4 breakdown (4a–4d)** — exam structure,
-scheduling, attempts/evaluation, and grades/report cards are all
-shipped and admin-usable end to end for a traditional (non-digital)
-exam workflow. The one deliberately deferred piece from this file's
-intro remains open: true student-facing *online* exam-taking
-(real-time attempts, randomization, autosave/resume, integrity review
-signals) and the plan's Electron **Secure Examination Client** — a
-qualitatively different scope (first Electron app, real student
-authentication), not just "the next slice." Whether to raise that as
-its own explicit phase of work, or consider Phase 4 complete as
-currently scoped and move to a different phase, is the next decision
-— not yet approved by the user; wait for explicit direction before
-starting either.
+Slice 4e done, stopped per plan §21 step 17. Per the confirmed
+sequencing above, next up is the **online exam-taking engine, built as
+a web feature** (question rendering from a QuestionBank, randomization,
+autosave, submission, the `Answer` table deferred since slice 4c) —
+now genuinely unblocked by a real student identity. After that, the
+Electron **Secure Examination Client** wraps it as a hardening/
+lockdown layer. Neither is part of this slice; both need their own
+explicit go-ahead, per this project's established per-slice check-in
+rhythm.

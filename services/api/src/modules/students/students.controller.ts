@@ -18,6 +18,7 @@ import { CreateGuardianDto } from "./dto/create-guardian.dto";
 import { AttachGuardianDto } from "./dto/attach-guardian.dto";
 import { CreateEnrollmentDto } from "./dto/create-enrollment.dto";
 import { UpdateStudentStatusDto } from "./dto/update-student-status.dto";
+import { CreateStudentLoginDto } from "./dto/create-student-login.dto";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
@@ -93,6 +94,16 @@ export class StudentsController {
     @Body() dto: UpdateStudentStatusDto,
   ) {
     return this.students.updateStatus(user.organizationId, studentId, dto);
+  }
+
+  @Post("students/:studentId/create-login")
+  @RequirePermissions("student:manage")
+  createLogin(
+    @CurrentUser() user: JwtPayload,
+    @Param("studentId") studentId: string,
+    @Body() dto: CreateStudentLoginDto,
+  ) {
+    return this.students.createLogin(user.organizationId, studentId, dto);
   }
 
   // No storage config → multer's default (memory only, never written to

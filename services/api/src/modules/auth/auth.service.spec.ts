@@ -9,7 +9,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 describe("AuthService", () => {
   let authService: AuthService;
   let prisma: {
-    user: { findUnique: jest.Mock };
+    user: { findFirst: jest.Mock };
     loginEvent: { create: jest.Mock };
     session: { create: jest.Mock };
     userRole: { findMany: jest.Mock };
@@ -23,7 +23,7 @@ describe("AuthService", () => {
 
   beforeEach(async () => {
     prisma = {
-      user: { findUnique: jest.fn() },
+      user: { findFirst: jest.fn() },
       loginEvent: { create: jest.fn() },
       session: { create: jest.fn() },
       userRole: { findMany: jest.fn().mockResolvedValue([]) },
@@ -58,10 +58,10 @@ describe("AuthService", () => {
   };
 
   it("logs in with correct credentials and never returns the password hash", async () => {
-    prisma.user.findUnique.mockResolvedValue({ ...baseUser, passwordHash });
+    prisma.user.findFirst.mockResolvedValue({ ...baseUser, passwordHash });
 
     const result = await authService.login(
-      { email: baseUser.email, password: rawPassword },
+      { identifier: baseUser.email, password: rawPassword },
       {},
     );
 
@@ -74,10 +74,10 @@ describe("AuthService", () => {
   });
 
   it("rejects an incorrect password and still records the failed attempt", async () => {
-    prisma.user.findUnique.mockResolvedValue({ ...baseUser, passwordHash });
+    prisma.user.findFirst.mockResolvedValue({ ...baseUser, passwordHash });
 
     await expect(
-      authService.login({ email: baseUser.email, password: "wrong-password" }, {}),
+      authService.login({ identifier: baseUser.email, password: "wrong-password" }, {}),
     ).rejects.toThrow(UnauthorizedException);
 
     expect(prisma.loginEvent.create).toHaveBeenCalledWith(
@@ -87,22 +87,22 @@ describe("AuthService", () => {
   });
 
   it("rejects login for a non-ACTIVE user even with the correct password", async () => {
-    prisma.user.findUnique.mockResolvedValue({
+    prisma.user.findFirst.mockResolvedValue({
       ...baseUser,
       passwordHash,
       status: "SUSPENDED",
     });
 
     await expect(
-      authService.login({ email: baseUser.email, password: rawPassword }, {}),
+      authService.login({ identifier: baseUser.email, password: rawPassword }, {}),
     ).rejects.toThrow(UnauthorizedException);
   });
 
-  it("rejects login for an unknown email without leaking whether the account exists", async () => {
-    prisma.user.findUnique.mockResolvedValue(null);
+  it("rejects login for an unknown identifier without leaking whether the account exists", async () => {
+    prisma.user.findFirst.mockResolvedValue(null);
 
     await expect(
-      authService.login({ email: "nobody@school.test", password: rawPassword }, {}),
+      authService.login({ identifier: "nobody@school.test", password: rawPassword }, {}),
     ).rejects.toThrow(UnauthorizedException);
   });
 });
