@@ -15,6 +15,7 @@ import { ClassSessionsModule } from "./modules/class-sessions/class-sessions.mod
 import { AssignmentsModule } from "./modules/assignments/assignments.module";
 import { KnowledgeChecksModule } from "./modules/knowledge-checks/knowledge-checks.module";
 import { DashboardsModule } from "./modules/dashboards/dashboards.module";
+import { ExamSetupModule } from "./modules/exam-setup/exam-setup.module";
 import { QueueModule } from "./queue/queue.module";
 import { HealthController } from "./common/health.controller";
 
@@ -36,6 +37,7 @@ import { HealthController } from "./common/health.controller";
     AssignmentsModule,
     KnowledgeChecksModule,
     DashboardsModule,
+    ExamSetupModule,
     QueueModule,
   ],
   controllers: [HealthController],

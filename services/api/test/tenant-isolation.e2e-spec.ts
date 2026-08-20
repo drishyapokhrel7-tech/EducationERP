@@ -134,6 +134,12 @@ describe("Tenant isolation (e2e)", () => {
         "section",
         "term",
         "academicYear",
+        // question references questionBank; questionBank references
+        // curriculumSubject — both lead curriculumSubject.
+        "question",
+        "questionBank",
+        "gradingScheme",
+        "examType",
         "curriculumSubject",
         "curriculum",
         "subject",
@@ -2341,6 +2347,182 @@ describe("Tenant isolation (e2e)", () => {
           .set(...auth(tokenB))
           .expect(404);
       }
+    });
+  });
+
+  describe("exam setup (exam types, grading schemes, question banks & questions)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    async function buildExamSetupTarget(token: string, suffix: string) {
+      const campus = await request(app.getHttpServer())
+        .post("/organizations/me/campuses")
+        .set(...auth(token))
+        .send({ name: `Exam Campus ${suffix}`, code: `EXCAMP${suffix}` })
+        .expect(201);
+      const faculty = await request(app.getHttpServer())
+        .post("/organizations/me/faculties")
+        .set(...auth(token))
+        .send({ campusId: campus.body.id, name: `Exam Faculty ${suffix}`, code: `EXFAC${suffix}` })
+        .expect(201);
+      const department = await request(app.getHttpServer())
+        .post("/organizations/me/departments")
+        .set(...auth(token))
+        .send({ facultyId: faculty.body.id, name: `Exam Dept ${suffix}`, code: `EXDEP${suffix}` })
+        .expect(201);
+      const program = await request(app.getHttpServer())
+        .post("/organizations/me/programs")
+        .set(...auth(token))
+        .send({ departmentId: department.body.id, name: `Exam Program ${suffix}`, code: `EXPROG${suffix}` })
+        .expect(201);
+      const subject = await request(app.getHttpServer())
+        .post("/organizations/me/subjects")
+        .set(...auth(token))
+        .send({ name: `Exam Subject ${suffix}`, code: `EXSUB${suffix}` })
+        .expect(201);
+      const curriculum = await request(app.getHttpServer())
+        .post("/organizations/me/curricula")
+        .set(...auth(token))
+        .send({ programId: program.body.id, name: `Exam Curriculum ${suffix}`, code: `EXCURR${suffix}` })
+        .expect(201);
+      const curriculumSubject = await request(app.getHttpServer())
+        .post(`/organizations/me/curricula/${curriculum.body.id}/subjects`)
+        .set(...auth(token))
+        .send({ subjectId: subject.body.id })
+        .expect(201);
+
+      return { curriculumSubjectId: curriculumSubject.body.id };
+    }
+
+    it("creates an exam type, a grading scheme, a question bank with objective and subjective questions, and stays tenant-scoped", async () => {
+      const t = await buildExamSetupTarget(tokenA, "EXA");
+
+      const examType = await request(app.getHttpServer())
+        .post("/organizations/me/exam-types")
+        .set(...auth(tokenA))
+        .send({ name: "Terminal Exam", code: `TERM-${run}` })
+        .expect(201);
+      expect(examType.body.organizationId).toBe(orgAId);
+
+      // Duplicate code within the same org is rejected.
+      await request(app.getHttpServer())
+        .post("/organizations/me/exam-types")
+        .set(...auth(tokenA))
+        .send({ name: "Terminal Exam Again", code: `TERM-${run}` })
+        .expect(409);
+
+      const scheme = await request(app.getHttpServer())
+        .post("/organizations/me/grading-schemes")
+        .set(...auth(tokenA))
+        .send({
+          name: "Standard Grading",
+          code: `STD-${run}`,
+          bands: [
+            { minPercentage: 90, maxPercentage: 100, grade: "A+", gpa: 4.0 },
+            { minPercentage: 80, maxPercentage: 89.99, grade: "A", gpa: 3.6 },
+            { minPercentage: 0, maxPercentage: 79.99, grade: "B" },
+          ],
+        })
+        .expect(201);
+      expect(scheme.body.bands).toHaveLength(3);
+
+      // A band with min > max is rejected.
+      await request(app.getHttpServer())
+        .post("/organizations/me/grading-schemes")
+        .set(...auth(tokenA))
+        .send({
+          name: "Bad Scheme",
+          code: `BAD-${run}`,
+          bands: [{ minPercentage: 90, maxPercentage: 10, grade: "X" }],
+        })
+        .expect(400);
+
+      const bank = await request(app.getHttpServer())
+        .post("/organizations/me/question-banks")
+        .set(...auth(tokenA))
+        .send({ curriculumSubjectId: t.curriculumSubjectId, name: "Unit 1 Bank" })
+        .expect(201);
+      expect(bank.body.organizationId).toBe(orgAId);
+
+      const objectiveQuestion = await request(app.getHttpServer())
+        .post(`/organizations/me/question-banks/${bank.body.id}/questions`)
+        .set(...auth(tokenA))
+        .send({
+          sequence: 1,
+          text: "2 + 2 = ?",
+          questionType: "OBJECTIVE",
+          marks: 5,
+          options: ["3", "4", "5"],
+          correctOptionIndex: 1,
+        })
+        .expect(201);
+      expect(objectiveQuestion.body.correctOptionIndex).toBe(1);
+
+      // correctOptionIndex out of range is rejected.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/question-banks/${bank.body.id}/questions`)
+        .set(...auth(tokenA))
+        .send({ sequence: 2, text: "Bad", questionType: "OBJECTIVE", marks: 5, options: ["a"], correctOptionIndex: 5 })
+        .expect(400);
+
+      const subjectiveQuestion = await request(app.getHttpServer())
+        .post(`/organizations/me/question-banks/${bank.body.id}/questions`)
+        .set(...auth(tokenA))
+        .send({
+          sequence: 2,
+          text: "Explain photosynthesis.",
+          questionType: "SUBJECTIVE",
+          marks: 10,
+          modelAnswer: "Plants convert light energy into chemical energy.",
+        })
+        .expect(201);
+      expect(subjectiveQuestion.body.options).toBeNull();
+
+      // A SUBJECTIVE question with options is rejected.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/question-banks/${bank.body.id}/questions`)
+        .set(...auth(tokenA))
+        .send({ sequence: 3, text: "Bad", questionType: "SUBJECTIVE", marks: 5, options: ["a", "b"] })
+        .expect(400);
+
+      const fetched = await request(app.getHttpServer())
+        .get(`/organizations/me/question-banks/${bank.body.id}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(fetched.body.questions).toHaveLength(2);
+      expect(fetched.body.questions.map((q: { sequence: number }) => q.sequence)).toEqual([1, 2]);
+
+      const listB = await request(app.getHttpServer())
+        .get("/organizations/me/question-banks")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(listB.body).toEqual([]);
+    });
+
+    it("rejects creating a question bank under another tenant's curriculum subject, and adding a question under another tenant's bank (404)", async () => {
+      const t = await buildExamSetupTarget(tokenA, "EXR");
+
+      await request(app.getHttpServer())
+        .post("/organizations/me/question-banks")
+        .set(...auth(tokenB))
+        .send({ curriculumSubjectId: t.curriculumSubjectId, name: "Cross-tenant bank" })
+        .expect(404);
+
+      const bank = await request(app.getHttpServer())
+        .post("/organizations/me/question-banks")
+        .set(...auth(tokenA))
+        .send({ curriculumSubjectId: t.curriculumSubjectId, name: "Owned bank" })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/question-banks/${bank.body.id}/questions`)
+        .set(...auth(tokenB))
+        .send({ sequence: 1, text: "Cross-tenant question", questionType: "SUBJECTIVE", marks: 5 })
+        .expect(404);
+
+      await request(app.getHttpServer())
+        .get(`/organizations/me/question-banks/${bank.body.id}`)
+        .set(...auth(tokenB))
+        .expect(404);
     });
   });
 });

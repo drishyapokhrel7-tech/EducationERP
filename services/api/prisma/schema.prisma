@@ -13,71 +13,75 @@ datasource db {
 // modeled only the top two tiers; Phase 2 completes the rest.
 
 model Organization {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   name      String
-  slug      String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  slug      String    @unique
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  campuses  Campus[]
-  users     User[]
-  roles     Role[]
-  auditLogs AuditLog[]
-  loginEvents LoginEvent[]
-  accessPolicies AccessPolicy[]
-  faculties      Faculty[]
-  departments    Department[]
-  programs       Program[]
-  academicYears  AcademicYear[]
-  terms          Term[]
-  sections       Section[]
-  staffTypes     StaffType[]
-  designations   Designation[]
-  employees      Employee[]
-  employmentHistories EmploymentHistory[]
-  qualifications      Qualification[]
-  teacherProfiles     TeacherProfile[]
-  subjects            Subject[]
-  curricula           Curriculum[]
-  curriculumSubjects  CurriculumSubject[]
-  students            Student[]
-  guardians           Guardian[]
-  studentGuardians    StudentGuardian[]
-  studentEnrollments  StudentEnrollment[]
-  studentStatusHistories StudentStatusHistory[]
-  admissionApplications AdmissionApplication[]
+  campuses                 Campus[]
+  users                    User[]
+  roles                    Role[]
+  auditLogs                AuditLog[]
+  loginEvents              LoginEvent[]
+  accessPolicies           AccessPolicy[]
+  faculties                Faculty[]
+  departments              Department[]
+  programs                 Program[]
+  academicYears            AcademicYear[]
+  terms                    Term[]
+  sections                 Section[]
+  staffTypes               StaffType[]
+  designations             Designation[]
+  employees                Employee[]
+  employmentHistories      EmploymentHistory[]
+  qualifications           Qualification[]
+  teacherProfiles          TeacherProfile[]
+  subjects                 Subject[]
+  curricula                Curriculum[]
+  curriculumSubjects       CurriculumSubject[]
+  students                 Student[]
+  guardians                Guardian[]
+  studentGuardians         StudentGuardian[]
+  studentEnrollments       StudentEnrollment[]
+  studentStatusHistories   StudentStatusHistory[]
+  admissionApplications    AdmissionApplication[]
   admissionStatusHistories AdmissionStatusHistory[]
-  rooms                 Room[]
-  periods               Period[]
-  teachingAssignments   TeachingAssignment[]
-  classSchedules        ClassSchedule[]
-  attendanceSessions    AttendanceSession[]
-  studentAttendances    StudentAttendance[]
-  staffAttendances      StaffAttendance[]
-  attendanceExceptions  AttendanceException[]
-  syllabi               Syllabus[]
-  syllabusNodes         SyllabusNode[]
-  learningObjectives    LearningObjective[]
-  lessonPlans           LessonPlan[]
-  classSessions         ClassSession[]
-  classMaterials        ClassMaterial[]
-  assignments           Assignment[]
-  assignmentSubmissions AssignmentSubmission[]
-  knowledgeChecks       KnowledgeCheck[]
-  knowledgeCheckQuestions KnowledgeCheckQuestion[]
-  knowledgeCheckAttempts  KnowledgeCheckAttempt[]
+  rooms                    Room[]
+  periods                  Period[]
+  teachingAssignments      TeachingAssignment[]
+  classSchedules           ClassSchedule[]
+  attendanceSessions       AttendanceSession[]
+  studentAttendances       StudentAttendance[]
+  staffAttendances         StaffAttendance[]
+  attendanceExceptions     AttendanceException[]
+  syllabi                  Syllabus[]
+  syllabusNodes            SyllabusNode[]
+  learningObjectives       LearningObjective[]
+  lessonPlans              LessonPlan[]
+  classSessions            ClassSession[]
+  classMaterials           ClassMaterial[]
+  assignments              Assignment[]
+  assignmentSubmissions    AssignmentSubmission[]
+  knowledgeChecks          KnowledgeCheck[]
+  knowledgeCheckQuestions  KnowledgeCheckQuestion[]
+  knowledgeCheckAttempts   KnowledgeCheckAttempt[]
+  examTypes                ExamType[]
+  gradingSchemes           GradingScheme[]
+  questionBanks            QuestionBank[]
+  questions                Question[]
 
   @@map("organizations")
 }
 
 model Campus {
-  id             String   @id @default(uuid())
+  id             String    @id @default(uuid())
   organizationId String
   name           String
   code           String
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
 
   organization Organization @relation(fields: [organizationId], references: [id])
@@ -91,13 +95,13 @@ model Campus {
 }
 
 model Faculty {
-  id             String   @id @default(uuid())
+  id             String    @id @default(uuid())
   organizationId String
   campusId       String
   name           String
   code           String
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
 
   organization Organization @relation(fields: [organizationId], references: [id])
@@ -110,13 +114,13 @@ model Faculty {
 }
 
 model Department {
-  id             String   @id @default(uuid())
+  id             String    @id @default(uuid())
   organizationId String
   facultyId      String
   name           String
   code           String
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
 
   organization        Organization        @relation(fields: [organizationId], references: [id])
@@ -131,15 +135,15 @@ model Department {
 }
 
 model Program {
-  id             String   @id @default(uuid())
-  organizationId String
-  departmentId   String
-  name           String
-  code           String
+  id                String    @id @default(uuid())
+  organizationId    String
+  departmentId      String
+  name              String
+  code              String
   // Free text, not an enum: institutions span schools (grades) and
   // colleges (degrees) with no fixed vocabulary — plan §1 explicitly
   // forbids hard-coding institution-specific structures like this.
-  level          String?
+  level             String?
   // Optional, generically applicable — not bachelor-specific despite
   // reading that way: a school program could set durationSemesters to
   // represent years just as validly. entranceExam is free text (e.g.
@@ -147,15 +151,15 @@ model Program {
   durationSemesters Int?
   creditHours       Int?
   entranceExam      String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  deletedAt      DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
 
-  organization Organization @relation(fields: [organizationId], references: [id])
-  department   Department   @relation(fields: [departmentId], references: [id])
-  sections     Section[]
-  curricula    Curriculum[]
-  studentEnrollments StudentEnrollment[]
+  organization          Organization           @relation(fields: [organizationId], references: [id])
+  department            Department             @relation(fields: [departmentId], references: [id])
+  sections              Section[]
+  curricula             Curriculum[]
+  studentEnrollments    StudentEnrollment[]
   admissionApplications AdmissionApplication[]
 
   @@unique([departmentId, code])
@@ -182,8 +186,8 @@ model Subject {
   updatedAt      DateTime @updatedAt
 
   organization        Organization         @relation(fields: [organizationId], references: [id])
-  curriculumSubjects   CurriculumSubject[]
-  teachingAssignments  TeachingAssignment[]
+  curriculumSubjects  CurriculumSubject[]
+  teachingAssignments TeachingAssignment[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -216,10 +220,11 @@ model CurriculumSubject {
   isCompulsory   Boolean  @default(true)
   createdAt      DateTime @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id])
-  curriculum   Curriculum   @relation(fields: [curriculumId], references: [id])
-  subject      Subject      @relation(fields: [subjectId], references: [id])
-  syllabi      Syllabus[]
+  organization  Organization   @relation(fields: [organizationId], references: [id])
+  curriculum    Curriculum     @relation(fields: [curriculumId], references: [id])
+  subject       Subject        @relation(fields: [subjectId], references: [id])
+  syllabi       Syllabus[]
+  questionBanks QuestionBank[]
 
   @@unique([curriculumId, subjectId])
   @@index([organizationId])
@@ -256,10 +261,10 @@ model Term {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
-  academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
-  sections     Section[]
-  studentEnrollments StudentEnrollment[]
+  organization        Organization         @relation(fields: [organizationId], references: [id])
+  academicYear        AcademicYear         @relation(fields: [academicYearId], references: [id])
+  sections            Section[]
+  studentEnrollments  StudentEnrollment[]
   teachingAssignments TeachingAssignment[]
   classSchedules      ClassSchedule[]
   syllabi             Syllabus[]
@@ -270,21 +275,21 @@ model Term {
 }
 
 model Section {
-  id             String   @id @default(uuid())
+  id             String    @id @default(uuid())
   organizationId String
   programId      String
   termId         String
   name           String
   code           String
   capacity       Int?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
 
-  organization Organization @relation(fields: [organizationId], references: [id])
-  program      Program      @relation(fields: [programId], references: [id])
-  term         Term         @relation(fields: [termId], references: [id])
-  studentEnrollments StudentEnrollment[]
+  organization        Organization         @relation(fields: [organizationId], references: [id])
+  program             Program              @relation(fields: [programId], references: [id])
+  term                Term                 @relation(fields: [termId], references: [id])
+  studentEnrollments  StudentEnrollment[]
   teachingAssignments TeachingAssignment[]
   classSchedules      ClassSchedule[]
   attendanceSessions  AttendanceSession[]
@@ -365,7 +370,7 @@ enum PermissionAction {
 }
 
 model Permission {
-  id          String            @id @default(uuid())
+  id          String           @id @default(uuid())
   resource    String
   action      PermissionAction
   description String?
@@ -501,7 +506,7 @@ model Designation {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization       Organization        @relation(fields: [organizationId], references: [id])
+  organization        Organization        @relation(fields: [organizationId], references: [id])
   employees           Employee[]
   employmentHistories EmploymentHistory[]
 
@@ -537,17 +542,17 @@ model Employee {
   updatedAt      DateTime       @updatedAt
   deletedAt      DateTime?
 
-  organization      Organization        @relation(fields: [organizationId], references: [id])
-  user               User?               @relation(fields: [userId], references: [id])
-  staffType          StaffType           @relation(fields: [staffTypeId], references: [id])
-  designation        Designation         @relation(fields: [designationId], references: [id])
-  department         Department?         @relation(fields: [departmentId], references: [id])
-  employmentHistory  EmploymentHistory[]
-  qualifications     Qualification[]
-  teacherProfile     TeacherProfile?
-  teachingAssignments TeachingAssignment[]
+  organization            Organization         @relation(fields: [organizationId], references: [id])
+  user                    User?                @relation(fields: [userId], references: [id])
+  staffType               StaffType            @relation(fields: [staffTypeId], references: [id])
+  designation             Designation          @relation(fields: [designationId], references: [id])
+  department              Department?          @relation(fields: [departmentId], references: [id])
+  employmentHistory       EmploymentHistory[]
+  qualifications          Qualification[]
+  teacherProfile          TeacherProfile?
+  teachingAssignments     TeachingAssignment[]
   classSchedulesAsTeacher ClassSchedule[]
-  staffAttendances StaffAttendance[]
+  staffAttendances        StaffAttendance[]
 
   @@unique([organizationId, employeeCode])
   @@unique([organizationId, email])
@@ -647,14 +652,14 @@ model Student {
   updatedAt      DateTime      @updatedAt
   deletedAt      DateTime?
 
-  organization  Organization        @relation(fields: [organizationId], references: [id])
-  user          User?               @relation(fields: [userId], references: [id])
-  guardians     StudentGuardian[]
-  enrollments   StudentEnrollment[]
-  statusHistory StudentStatusHistory[]
-  admissionApplication AdmissionApplication?
-  attendanceRecords StudentAttendance[]
-  assignmentSubmissions AssignmentSubmission[]
+  organization           Organization            @relation(fields: [organizationId], references: [id])
+  user                   User?                   @relation(fields: [userId], references: [id])
+  guardians              StudentGuardian[]
+  enrollments            StudentEnrollment[]
+  statusHistory          StudentStatusHistory[]
+  admissionApplication   AdmissionApplication?
+  attendanceRecords      StudentAttendance[]
+  assignmentSubmissions  AssignmentSubmission[]
   knowledgeCheckAttempts KnowledgeCheckAttempt[]
 
   @@unique([organizationId, studentCode])
@@ -768,31 +773,31 @@ enum AdmissionStatus {
 }
 
 model AdmissionApplication {
-  id                  String          @id @default(uuid())
-  organizationId      String
-  programId           String
-  applicantFirstName  String
-  applicantLastName   String
-  dateOfBirth         DateTime
-  gender              String?
-  guardianName        String?
-  guardianPhone       String?
-  appliedDate         DateTime
-  status              AdmissionStatus @default(SUBMITTED)
+  id                 String          @id @default(uuid())
+  organizationId     String
+  programId          String
+  applicantFirstName String
+  applicantLastName  String
+  dateOfBirth        DateTime
+  gender             String?
+  guardianName       String?
+  guardianPhone      String?
+  appliedDate        DateTime
+  status             AdmissionStatus @default(SUBMITTED)
   // Entrance-exam/interview score — a plain number, not tied to any
   // specific exam's scale (plan §1: don't hard-code institution-specific
   // structures).
-  score               Float?
-  notes                String?
+  score              Float?
+  notes              String?
   // Set only once the enroll action has run; the application row is kept
   // afterward as the historical record of how this student was admitted.
-  enrolledStudentId   String?         @unique
-  createdAt           DateTime        @default(now())
-  updatedAt           DateTime        @updatedAt
+  enrolledStudentId  String?         @unique
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
 
-  organization    Organization           @relation(fields: [organizationId], references: [id])
-  program         Program                @relation(fields: [programId], references: [id])
-  enrolledStudent Student?               @relation(fields: [enrolledStudentId], references: [id])
+  organization    Organization             @relation(fields: [organizationId], references: [id])
+  program         Program                  @relation(fields: [programId], references: [id])
+  enrolledStudent Student?                 @relation(fields: [enrolledStudentId], references: [id])
   statusHistory   AdmissionStatusHistory[]
 
   @@index([organizationId])
@@ -825,7 +830,7 @@ model AdmissionStatusHistory {
 // schedule this establishes.
 
 model Room {
-  id             String   @id @default(uuid())
+  id             String    @id @default(uuid())
   organizationId String
   campusId       String
   name           String
@@ -835,8 +840,8 @@ model Room {
   // taxonomies (classroom/lab/auditorium/workshop) vary by institution
   // type and plan §1 forbids hard-coding this kind of vocabulary.
   roomType       String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
 
   organization   Organization    @relation(fields: [organizationId], references: [id])
@@ -881,14 +886,14 @@ model TeachingAssignment {
   termId         String
   createdAt      DateTime @default(now())
 
-  organization   Organization    @relation(fields: [organizationId], references: [id])
-  employee       Employee        @relation(fields: [employeeId], references: [id])
-  subject        Subject         @relation(fields: [subjectId], references: [id])
-  section        Section         @relation(fields: [sectionId], references: [id])
-  term           Term            @relation(fields: [termId], references: [id])
-  classSchedules ClassSchedule[]
-  lessonPlans    LessonPlan[]
-  assignments    Assignment[]
+  organization    Organization     @relation(fields: [organizationId], references: [id])
+  employee        Employee         @relation(fields: [employeeId], references: [id])
+  subject         Subject          @relation(fields: [subjectId], references: [id])
+  section         Section          @relation(fields: [sectionId], references: [id])
+  term            Term             @relation(fields: [termId], references: [id])
+  classSchedules  ClassSchedule[]
+  lessonPlans     LessonPlan[]
+  assignments     Assignment[]
   knowledgeChecks KnowledgeCheck[]
 
   // One teacher per subject+section+term — re-assigning means changing
@@ -918,15 +923,15 @@ model ClassSchedule {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  organization       Organization       @relation(fields: [organizationId], references: [id])
-  term                Term               @relation(fields: [termId], references: [id])
-  teachingAssignment  TeachingAssignment @relation(fields: [teachingAssignmentId], references: [id])
-  section             Section            @relation(fields: [sectionId], references: [id])
-  teacher             Employee           @relation(fields: [teacherId], references: [id])
-  room                Room               @relation(fields: [roomId], references: [id])
-  period              Period             @relation(fields: [periodId], references: [id])
-  attendanceSessions  AttendanceSession[]
-  classSessions       ClassSession[]
+  organization       Organization        @relation(fields: [organizationId], references: [id])
+  term               Term                @relation(fields: [termId], references: [id])
+  teachingAssignment TeachingAssignment  @relation(fields: [teachingAssignmentId], references: [id])
+  section            Section             @relation(fields: [sectionId], references: [id])
+  teacher            Employee            @relation(fields: [teacherId], references: [id])
+  room               Room                @relation(fields: [roomId], references: [id])
+  period             Period              @relation(fields: [periodId], references: [id])
+  attendanceSessions AttendanceSession[]
+  classSessions      ClassSession[]
 
   @@unique([termId, roomId, dayOfWeek, periodId], map: "class_schedules_room_slot_key")
   @@unique([termId, sectionId, dayOfWeek, periodId], map: "class_schedules_section_slot_key")
@@ -954,9 +959,9 @@ model AttendanceSession {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  organization  Organization        @relation(fields: [organizationId], references: [id])
-  classSchedule ClassSchedule       @relation(fields: [classScheduleId], references: [id])
-  section       Section             @relation(fields: [sectionId], references: [id])
+  organization      Organization        @relation(fields: [organizationId], references: [id])
+  classSchedule     ClassSchedule       @relation(fields: [classScheduleId], references: [id])
+  section           Section             @relation(fields: [sectionId], references: [id])
   studentAttendance StudentAttendance[]
 
   @@unique([classScheduleId, date])
@@ -981,9 +986,9 @@ model StudentAttendance {
   createdAt           DateTime         @default(now())
   updatedAt           DateTime         @updatedAt
 
-  organization Organization      @relation(fields: [organizationId], references: [id])
-  session      AttendanceSession @relation(fields: [attendanceSessionId], references: [id])
-  student      Student           @relation(fields: [studentId], references: [id])
+  organization Organization          @relation(fields: [organizationId], references: [id])
+  session      AttendanceSession     @relation(fields: [attendanceSessionId], references: [id])
+  student      Student               @relation(fields: [studentId], references: [id])
   exceptions   AttendanceException[]
 
   @@unique([attendanceSessionId, studentId])
@@ -1097,13 +1102,13 @@ model SyllabusNode {
   updatedAt      DateTime          @updatedAt
 
   organization       Organization        @relation(fields: [organizationId], references: [id])
-  syllabus            Syllabus           @relation(fields: [syllabusId], references: [id])
-  parent              SyllabusNode?      @relation("SyllabusNodeChildren", fields: [parentId], references: [id])
-  children            SyllabusNode[]     @relation("SyllabusNodeChildren")
-  learningObjectives  LearningObjective[]
-  lessonPlans         LessonPlan[]
-  classSessions       ClassSession[]
-  knowledgeChecks     KnowledgeCheck[]
+  syllabus           Syllabus            @relation(fields: [syllabusId], references: [id])
+  parent             SyllabusNode?       @relation("SyllabusNodeChildren", fields: [parentId], references: [id])
+  children           SyllabusNode[]      @relation("SyllabusNodeChildren")
+  learningObjectives LearningObjective[]
+  lessonPlans        LessonPlan[]
+  classSessions      ClassSession[]
+  knowledgeChecks    KnowledgeCheck[]
 
   @@index([organizationId])
   @@index([syllabusId])
@@ -1203,12 +1208,12 @@ model ClassSession {
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
 
-  organization       Organization   @relation(fields: [organizationId], references: [id])
-  classSchedule      ClassSchedule  @relation(fields: [classScheduleId], references: [id])
-  section             Section       @relation(fields: [sectionId], references: [id])
-  lessonPlan          LessonPlan?   @relation(fields: [lessonPlanId], references: [id])
-  actualSyllabusNode  SyllabusNode? @relation(fields: [actualSyllabusNodeId], references: [id])
-  materials           ClassMaterial[]
+  organization       Organization    @relation(fields: [organizationId], references: [id])
+  classSchedule      ClassSchedule   @relation(fields: [classScheduleId], references: [id])
+  section            Section         @relation(fields: [sectionId], references: [id])
+  lessonPlan         LessonPlan?     @relation(fields: [lessonPlanId], references: [id])
+  actualSyllabusNode SyllabusNode?   @relation(fields: [actualSyllabusNodeId], references: [id])
+  materials          ClassMaterial[]
 
   @@unique([classScheduleId, date])
   @@index([organizationId])
@@ -1390,4 +1395,105 @@ model KnowledgeCheckAttempt {
   @@unique([knowledgeCheckId, studentId])
   @@index([organizationId])
   @@map("knowledge_check_attempts")
+}
+
+// --- Phase 4 slice 4a: exam structure & question banks -------------------
+// Foundation for the rest of Phase 4 (exams/scheduling in 4b, attempts/
+// evaluation in 4c, grades/report cards in 4d) — see docs/PHASE_4_NOTES.md.
+
+model ExamType {
+  id             String   @id @default(uuid())
+  organizationId String
+  // e.g. "Terminal Exam", "Unit Test", "Final Exam" — an institution-
+  // defined category an Exam (4b) will reference, same role StaffType
+  // plays for Employee.
+  name           String
+  code           String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+  @@map("exam_types")
+}
+
+model GradingScheme {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  code           String
+  description    String?
+  // Array of { minPercentage, maxPercentage, grade, gpa?, remarks? },
+  // ordered highest-to-lowest — a separate grade_bands table isn't
+  // listed in the plan's flat table list for this domain, and a band
+  // has no independent identity/behavior beyond "one row of this
+  // scheme's scale," the same collapsing reasoning already applied to
+  // KnowledgeCheckQuestion.options and Assignment's rubric fields.
+  bands          Json
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+  @@map("grading_schemes")
+}
+
+model QuestionBank {
+  id                  String   @id @default(uuid())
+  organizationId      String
+  // Not term-scoped like Syllabus — a bank of questions for a subject
+  // is reusable across exams and terms, unlike a syllabus which tracks
+  // one term's actual coverage.
+  curriculumSubjectId String
+  name                String
+  description         String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  organization      Organization      @relation(fields: [organizationId], references: [id])
+  curriculumSubject CurriculumSubject @relation(fields: [curriculumSubjectId], references: [id])
+  questions         Question[]
+
+  @@index([organizationId])
+  @@index([curriculumSubjectId])
+  @@map("question_banks")
+}
+
+enum QuestionType {
+  // Single correct choice among `options`, auto-scored later (4c) —
+  // never trust a client-submitted score, same rule as KnowledgeCheck.
+  OBJECTIVE
+  // Free-text, manually marked — no options/correctOptionIndex.
+  SUBJECTIVE
+}
+
+model Question {
+  id                 String       @id @default(uuid())
+  organizationId     String
+  questionBankId     String
+  sequence           Int
+  text               String
+  questionType       QuestionType
+  // Points this question is worth within any exam that draws on it.
+  marks              Int
+  // string[], OBJECTIVE only — the answer choices, in display order.
+  options            Json?
+  // OBJECTIVE only.
+  correctOptionIndex Int?
+  // SUBJECTIVE only, optional — a reference answer/marking note for
+  // the human grader; never used for auto-scoring.
+  modelAnswer        String?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  questionBank QuestionBank @relation(fields: [questionBankId], references: [id])
+
+  @@index([organizationId])
+  @@index([questionBankId])
+  @@map("questions")
 }

@@ -100,6 +100,15 @@ import type {
   TeacherDashboard,
   StudentDashboard,
   ParentDashboard,
+  ExamType,
+  CreateExamTypeInput,
+  GradingScheme,
+  CreateGradingSchemeInput,
+  QuestionBankSummary,
+  QuestionBank,
+  CreateQuestionBankInput,
+  ExamQuestion,
+  CreateExamQuestionInput,
 } from "./types";
 
 export class ApiError extends Error {
@@ -497,6 +506,25 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       request<StudentDashboard>(`/organizations/me/dashboards/student/${studentId}`),
     getParentDashboard: (guardianId: string) =>
       request<ParentDashboard>(`/organizations/me/dashboards/parent/${guardianId}`),
+
+    listExamTypes: () => request<ExamType[]>("/organizations/me/exam-types"),
+    createExamType: (input: CreateExamTypeInput) =>
+      request<ExamType>("/organizations/me/exam-types", { method: "POST", body: JSON.stringify(input) }),
+
+    listGradingSchemes: () => request<GradingScheme[]>("/organizations/me/grading-schemes"),
+    createGradingScheme: (input: CreateGradingSchemeInput) =>
+      request<GradingScheme>("/organizations/me/grading-schemes", { method: "POST", body: JSON.stringify(input) }),
+
+    listQuestionBanks: () => request<QuestionBankSummary[]>("/organizations/me/question-banks"),
+    createQuestionBank: (input: CreateQuestionBankInput) =>
+      request<QuestionBankSummary>("/organizations/me/question-banks", { method: "POST", body: JSON.stringify(input) }),
+    getQuestionBank: (questionBankId: string) =>
+      request<QuestionBank>(`/organizations/me/question-banks/${questionBankId}`),
+    addExamQuestion: (questionBankId: string, input: CreateExamQuestionInput) =>
+      request<ExamQuestion>(`/organizations/me/question-banks/${questionBankId}/questions`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
   };
 }
 

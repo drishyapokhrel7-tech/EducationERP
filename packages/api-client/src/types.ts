@@ -985,3 +985,89 @@ export interface ParentDashboard {
   guardian: Guardian;
   children: (StudentDashboard & { relationship: string; isPrimaryContact: boolean })[];
 }
+
+export interface ExamType {
+  id: string;
+  organizationId: string;
+  name: string;
+  code: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateExamTypeInput {
+  name: string;
+  code: string;
+}
+
+export interface GradeBand {
+  minPercentage: number;
+  maxPercentage: number;
+  grade: string;
+  gpa?: number;
+  remarks?: string;
+}
+
+export interface GradingScheme {
+  id: string;
+  organizationId: string;
+  name: string;
+  code: string;
+  description: string | null;
+  bands: GradeBand[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateGradingSchemeInput {
+  name: string;
+  code: string;
+  description?: string;
+  bands: GradeBand[];
+}
+
+export type QuestionType = "OBJECTIVE" | "SUBJECTIVE";
+
+export interface ExamQuestion {
+  id: string;
+  organizationId: string;
+  questionBankId: string;
+  sequence: number;
+  text: string;
+  questionType: QuestionType;
+  marks: number;
+  options: string[] | null;
+  correctOptionIndex: number | null;
+  modelAnswer: string | null;
+}
+
+export interface QuestionBankSummary {
+  id: string;
+  organizationId: string;
+  curriculumSubjectId: string;
+  name: string;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+  curriculumSubject: CurriculumSubject & { subject: Subject; curriculum: Curriculum };
+}
+
+export interface QuestionBank extends QuestionBankSummary {
+  questions: ExamQuestion[];
+}
+
+export interface CreateQuestionBankInput {
+  curriculumSubjectId: string;
+  name: string;
+  description?: string;
+}
+
+export interface CreateExamQuestionInput {
+  sequence: number;
+  text: string;
+  questionType: QuestionType;
+  marks: number;
+  options?: string[];
+  correctOptionIndex?: number;
+  modelAnswer?: string;
+}

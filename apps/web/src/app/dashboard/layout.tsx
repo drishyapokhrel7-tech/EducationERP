@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   ClipboardCheck,
   ClipboardList,
+  FileQuestion,
   GraduationCap,
   LayoutDashboard,
   LayoutPanelTop,
@@ -38,6 +39,7 @@ const NAV = [
   { href: "/dashboard/assignments", label: "Assignments", icon: ClipboardCheck },
   { href: "/dashboard/knowledge-checks", label: "Knowledge Checks", icon: ListChecks },
   { href: "/dashboard/learning-dashboards", label: "Learning Dashboards", icon: LayoutPanelTop },
+  { href: "/dashboard/exam-setup", label: "Exam Setup", icon: FileQuestion },
 ];
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
