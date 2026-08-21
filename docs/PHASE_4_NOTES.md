@@ -690,3 +690,191 @@ needs its own explicit go-ahead, per this project's established
 per-slice check-in rhythm. It would be this project's first Electron
 app; expect it to need `EnterPlanMode` given the architectural novelty
 (new client type, secure IPC), same as 4e and 4f's own approved plans.
+
+## Slice 4g — Secure Examination Client (Electron) — raised deferred scope complete
+
+User said "go-ahead" to the slice 4f check-in. Mid-turn, before any
+Electron code was written, asked to first check the whole web
+application thoroughly — a verification-only detour (typecheck/lint/
+build/unit/e2e across everything from Phase 1 through 4f), not a
+replacement for the approved next step. That pass surfaced a real
+environment issue, not a code regression: a `jest` process from an
+earlier full e2e run in this same session had never exited and was
+silently holding its own stuck Prisma connection pool against the dev
+database for hours, degrading every subsequent run (the exact same
+"leaked process" class this project has hit before, just from a
+`jest` run this time instead of a stray `nest start --watch`). Killing
+it and re-running brought the suite straight back to 47/47 clean —
+confirmed the "flakiness" seen across this session's earlier runs was
+never a regression in slice 4f's own code.
+
+This is this project's first Electron app (plan §2.1/§12 names five
+planned Electron clients; none existed yet). The plan's spec for this
+one is terse — "controlled exam environment, local caching, autosave,
+offline operation and synchronization" — so `EnterPlanMode` +
+`AskUserQuestion` were used before writing any code, same as 4e/4f.
+Two forks, both answered "no preference" → went with the recommended
+(smaller) option:
+
+1. **Offline depth**: resilient-online, not true offline. The client
+   wraps 4f's existing exam-taking API unchanged, with an in-memory
+   retry queue for network blips — no embedded database, no offline
+   shuffle recomputation, no answering during an extended outage.
+2. **Lockdown depth**: soft kiosk mode (Electron's own fullscreen/
+   kiosk APIs, blocked navigation/devtools/copy), not deep OS-level
+   enforcement (blocking other running apps, screen-recording
+   detection) — the latter needs native, per-OS modules and is a
+   qualitatively bigger, higher-risk build.
+
+## What shipped
+
+New workspace package `apps/exam-client` (Electron + React + TypeScript
++ Vite, matching the plan's stack line exactly, via `electron-vite`).
+Three-target layout:
+
+- **Main process** (`electron/main/`) owns everything sensitive — one
+  `createApiClient` instance from `@education-erp/api-client` (reused
+  as-is, zero backend changes this slice), and the JWT held **in
+  memory only**, cleared on logout/quit, never written to disk. This
+  is a deliberate departure from `apps/web`'s `localStorage` session
+  (already flagged in its own code as an insecure Phase-1 shortcut):
+  a shared exam-lab machine should start every sitting with a fresh
+  login and leave nothing behind for the next student.
+- `ipcMain.handle` for exactly six channels (`auth:login`,
+  `auth:logout`, `exams:list`, `exams:start`, `exams:saveAnswer`,
+  `exams:submit`) — thin wrappers around the api-client methods 4f
+  already built and tested. The exam-taking business logic (shuffle,
+  scoring, window enforcement) stays server-side, untouched.
+- **The retry queue** (`retryQueue.ts`) is the "resilient-online"
+  piece: a network-level failure (fetch never got a response) retries
+  with capped exponential backoff (1s→2s→4s→8s→15s); a real HTTP error
+  response (`ApiError` — 409 already submitted, 400 window closed) is
+  surfaced immediately, never retried, since that's a definitive
+  answer from the server, not a connectivity problem. `AnswerSyncQueue`
+  coalesces by `questionId` so a newer edit supersedes an older unsent
+  one — and actively **cancels** the superseded call (checked before
+  every retry attempt, not just after it finishes) rather than merely
+  ignoring its result, which would otherwise let a stale retry land
+  *after* the newer save already succeeded and silently overwrite it.
+- **Locked-down `BrowserWindow`**: `kiosk: true`, `frame: false`, no
+  menu bar, devtools disabled once packaged, `setWindowOpenHandler`
+  denies every new window, `will-navigate` blocked to anything off the
+  app's own origin (denied outright, not opened externally either —
+  popping a real system browser would itself be an escape hatch).
+  `before-input-event` blocks the shortcuts Electron can actually
+  intercept (devtools, F11/F12) — explicitly best-effort, not a
+  guarantee, per the lockdown-depth decision.
+- **Preload** (`electron/preload/`): one `contextBridge.exposeInMainWorld`
+  surface, six methods plus a `onSyncStatus` subscriber, nothing else
+  reachable from the renderer. Deliberately kept as a single
+  self-contained file rather than extracted into a shared
+  `packages/electron-preload` yet — that abstraction is for when a
+  *second* Electron client exists to share it with; building it for
+  one consumer today would be premature (same "defer until actually
+  needed" pattern as `teacher_subjects`/`syllabus_versions`/
+  `staff_documents` elsewhere in this project).
+- **Renderer** (`src/`): plain React + plain CSS, no Tailwind/shadcn —
+  a 3-screen kiosk UI (Login → Exam List → Exam Taking → brief
+  "Submitted" confirmation), not a general dashboard, so duplicating
+  `apps/web`'s full UI toolchain wasn't justified. `ExamTakingScreen`
+  ports the exact logic already proven in `apps/web/src/app/portal/
+  exams/[examSubjectId]/page.tsx` (countdown, debounced autosave,
+  confirm-gated submit, auto-submit at zero) onto `window.examClient.*`
+  instead of `fetch`/`useSWR`, plus a sync-status line. Question/option
+  text has `user-select: none` and blocks `copy`/`contextmenu` — the
+  subjective textarea and radio inputs are unaffected.
+
+## Real toolchain incompatibilities hit and fixed while wiring this up
+
+None of these were product bugs — all were dependency-version
+mismatches across a very new part of the JS ecosystem, each diagnosed
+from the actual error before touching anything:
+
+1. **`vite@^8` (installed as "latest") silently broke
+   `electron-vite@5.0.0`'s dependency externalization.** Vite 8
+   switched its default bundler to Rolldown; `electron-vite`'s peer
+   range is `^5 || ^6 || ^7`. The symptom was severe: the `electron`
+   npm package's own Node-side "download the Electron binary" launcher
+   script got bundled *into the app's own main-process output*
+   instead of being left as an external `require("electron")` for the
+   real Electron runtime to resolve — so the packaged app tried to
+   re-download/verify its own host binary from inside itself on every
+   launch. Fixed by pinning `vite@^7.1.10` (electron-vite's own
+   tested version).
+2. **`@vitejs/plugin-react@^6` requires Vite 8 exclusively** (the
+   inverse problem) — pinned to `@vitejs/plugin-react@^5.2.0`, which
+   supports Vite 7.
+3. **Node's built-in strip-only TypeScript loader can't run
+   `@education-erp/api-client` unbundled.** That package ships raw
+   `.ts` with no build step (fine for bundler-based consumers like
+   `apps/web` or `ts-jest`) — but `ApiError`'s constructor parameter
+   properties are real TypeScript syntax requiring an actual code
+   transform, not just type-annotation erasure, which Node's
+   type-stripping explicitly rejects. Fixed by excluding
+   `@education-erp/api-client` from `electron-vite`'s
+   `externalizeDepsPlugin`, so it gets bundled/transpiled into plain
+   JS at build time instead of left as a runtime `require` of raw
+   `.ts`.
+
+**Lesson for this project**: "latest" is not a safe default for a
+fast-moving Electron/Vite toolchain the way it's been fine for this
+project's other dependencies — check the actual peer-dependency ranges
+of the specific tool combination (`electron-vite` × `vite` ×
+`@vitejs/plugin-react`) before pinning versions, not just `npm view
+<pkg> version`.
+
+## Verified (slice 4g)
+
+- `pnpm -r typecheck` / `lint` / `build` clean across all four
+  packages now, including `apps/exam-client`'s three build targets
+  (main/preload/renderer).
+- Unit tests: `retryQueue.spec.ts`, 5/5 — success-on-first-try,
+  retry-until-success on a network failure, no-retry-on-a-real-
+  `ApiError`, and the two `AnswerSyncQueue` coalescing/cancellation
+  cases (including the specific "a superseded call must not overwrite
+  a newer save" scenario the design explicitly guards against).
+- Integration test (`examFlow.integration.spec.ts`) against the real
+  dev API server: registered a fresh disposable org, built the same
+  online-exam fixture chain 4f's own e2e test builds (question bank →
+  exam subject with `questionBankId` → schedule covering "now" →
+  student + portal login → recorded attempt), then exercised this
+  app's own `apiClient`/`retryQueue` modules exactly as `ipc.ts`'s
+  handlers do (without needing `electron`'s `ipcMain`/`BrowserWindow`,
+  which can't run outside a real Electron process) — login →
+  listMyExams → startMyExam (confirmed shuffled, confirmed no
+  `correctOptionIndex` in the payload) → saveMyAnswer through the
+  retry queue → submitMyExam → resubmission correctly rejected as a
+  409 `ApiError`, not retried → admin-side `listExamAnswers` confirmed
+  the objective answer auto-scored 5/5. All test data removed
+  afterward via a disposable-org cleanup script, same pattern as every
+  other slice's test-data cleanup.
+- **No visual/interactive verification was possible in this
+  environment** — unlike every web slice's Browser-pane pass or a
+  mobile slice's Simulator pass, there is no GUI-automation tool here
+  for a desktop Electron window, and that's stated plainly rather than
+  claimed. What *was* confirmed: the packaged app boots cleanly
+  (`npx electron .` produces a full legitimate Electron process tree —
+  main, renderer, GPU, network utility — and logs `[exam-client]
+  window loaded` with no uncaught main-process exception). The actual
+  kiosk look and feel (does fullscreen look right, does a shortcut
+  really get intercepted) has **not** been seen by either the user or
+  me — trying `pnpm --filter @education-erp/exam-client dev` is the
+  only way to actually check that before relying on it for a real
+  exam. The `services/api` dev server was left running on `:4000`
+  after this session's verification so the user can try the app
+  immediately without a setup step; stop it with `pkill -f "nest start"`
+  when done.
+
+## Next step
+
+Slice 4g done, stopped per plan §21 step 17. **This closes the entire
+raised deferred scope** — both the online exam-taking engine (4f) and
+its Electron lockdown wrapper (4g) are shipped. What's left, if the
+user wants to continue: Phase 4's originally-scheduled 4a–4d plus both
+raised-deferred pieces are now all done; anything further is either a
+new phase per the plan docx (not yet re-scoped into slices) or
+deepening this slice's two explicitly-deferred edges (true offline
+exam-taking, or deep OS-level lockdown) if a real need for either
+surfaces. Code signing and auto-update for `apps/exam-client` remain
+unaddressed, per Phase 0's already-flagged open risk — no signing
+infrastructure exists in this environment.

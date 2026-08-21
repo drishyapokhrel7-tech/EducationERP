@@ -6,6 +6,8 @@ allowBuilds:
   '@prisma/client': true
   '@prisma/engines': true
   argon2: true
+  electron-winstaller: false
+  esbuild: true
   msgpackr-extract: true
   prisma: true
   unrs-resolver: true

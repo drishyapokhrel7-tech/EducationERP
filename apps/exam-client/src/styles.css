@@ -1,0 +1,155 @@
+:root {
+  color-scheme: light;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #f5f5f4;
+  color: #1c1917;
+}
+
+.screen {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.screen.centered {
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  background: white;
+  border-bottom: 1px solid #e7e5e4;
+}
+
+.content {
+  flex: 1;
+  padding: 1.5rem;
+  max-width: 640px;
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.card {
+  background: white;
+  border: 1px solid #e7e5e4;
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.exam-list .card {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.question-text {
+  font-weight: 600;
+  margin: 0;
+}
+
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+}
+
+textarea {
+  min-height: 6rem;
+  padding: 0.625rem;
+  border: 1px solid #d6d3d1;
+  border-radius: 0.5rem;
+  font-family: inherit;
+  font-size: 0.95rem;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+input[type="text"],
+input[type="password"] {
+  padding: 0.625rem;
+  border: 1px solid #d6d3d1;
+  border-radius: 0.5rem;
+  font-size: 1rem;
+}
+
+button {
+  padding: 0.625rem 1.25rem;
+  border: none;
+  border-radius: 0.5rem;
+  background: #1c1917;
+  color: white;
+  font-size: 0.95rem;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.muted {
+  color: #78716c;
+  font-size: 0.85rem;
+  margin: 0.125rem 0 0;
+}
+
+.error {
+  color: #b91c1c;
+  font-size: 0.85rem;
+}
+
+.countdown {
+  text-align: right;
+}
+
+.countdown-value {
+  font-family: ui-monospace, monospace;
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+/* Prevents copying exam content out of the window — soft lockdown, not a
+   guarantee (a determined user with OS-level access isn't fully
+   stopped, see the plan's design notes). Typing into the subjective
+   textarea and clicking radios is unaffected. */
+.no-select {
+  user-select: none;
+}
+
+.selectable {
+  user-select: text;
+}
