@@ -84,6 +84,14 @@ export class ExamSchedulingService {
       });
       if (existing) throw new ConflictException("This subject is already part of this exam");
 
+      if (dto.questionBankId) {
+        const questionBank = await tx.questionBank.findUnique({ where: { id: dto.questionBankId } });
+        if (!questionBank) throw new NotFoundException("Question bank not found");
+        if (questionBank.curriculumSubjectId !== dto.curriculumSubjectId) {
+          throw new BadRequestException("Question bank must belong to the same curriculum subject");
+        }
+      }
+
       return tx.examSubject.create({
         data: {
           organizationId,
@@ -91,6 +99,7 @@ export class ExamSchedulingService {
           curriculumSubjectId: dto.curriculumSubjectId,
           fullMarks: dto.fullMarks,
           passMarks: dto.passMarks,
+          questionBankId: dto.questionBankId,
         },
       });
     });

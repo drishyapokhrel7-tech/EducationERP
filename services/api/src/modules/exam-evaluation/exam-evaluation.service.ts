@@ -19,6 +19,22 @@ export class ExamEvaluationService {
     );
   }
 
+  // Answers produced by online exam-taking — auto-scored for OBJECTIVE
+  // on submit, null for SUBJECTIVE pending an admin's review here before
+  // they call recordMarks (this endpoint never writes Marks itself).
+  async listAnswers(organizationId: string, examAttemptId: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const attempt = await tx.examAttempt.findUnique({ where: { id: examAttemptId } });
+      if (!attempt) throw new NotFoundException("Exam attempt not found");
+
+      return tx.answer.findMany({
+        where: { organizationId, examAttemptId },
+        include: { question: true },
+        orderBy: { question: { sequence: "asc" } },
+      });
+    });
+  }
+
   async recordAttempt(organizationId: string, examSubjectId: string, dto: RecordExamAttemptDto) {
     return this.prisma.withTenant(organizationId, async (tx) => {
       const examSubject = await tx.examSubject.findUnique({ where: { id: examSubjectId } });

@@ -32,6 +32,28 @@ async function submitAction(action: () => Promise<unknown>, onSuccess: () => voi
   }
 }
 
+function AttemptAnswers({ examAttemptId }: { examAttemptId: string }) {
+  const answers = useSWR(["exam-answers", examAttemptId], () => api.listExamAnswers(examAttemptId));
+  if (!answers.data || answers.data.length === 0) {
+    return <p className="text-muted-foreground mt-1 pl-4 text-xs">No answers recorded yet.</p>;
+  }
+  return (
+    <ul className="text-muted-foreground mt-1 space-y-0.5 pl-4 text-xs">
+      {answers.data.map((a) => (
+        <li key={a.id}>
+          {a.question.text} —{" "}
+          {a.question.questionType === "OBJECTIVE"
+            ? a.selectedOptionIndex !== null
+              ? (a.question.options ?? [])[a.selectedOptionIndex]
+              : "(no answer)"
+            : (a.textAnswer ?? "(no answer)")}
+          {a.score !== null ? ` — ${a.score}/${a.question.marks}` : " — not yet scored"}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function ExamSubjectAttempts({
   examSubjectId,
   fullMarks,
@@ -47,6 +69,7 @@ function ExamSubjectAttempts({
     status: "PRESENT",
   });
   const [marksForms, setMarksForms] = useState<Record<string, string>>({});
+  const [expandedAnswers, setExpandedAnswers] = useState<Record<string, boolean>>({});
 
   return (
     <div className="pl-4">
@@ -60,6 +83,17 @@ function ExamSubjectAttempts({
             return (
               <li key={a.id}>
                 {a.student.firstName} {a.student.lastName} — {a.status}
+                {a.startedAt ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="ml-2 h-6"
+                    onClick={() => setExpandedAnswers((f) => ({ ...f, [a.id]: !f[a.id] }))}
+                  >
+                    {expandedAnswers[a.id] ? "Hide answers" : "View answers"}
+                  </Button>
+                ) : null}
                 {a.marks ? (
                   <>
                     {` — ${a.marks.obtainedMarks}/${fullMarks}`}
@@ -109,6 +143,7 @@ function ExamSubjectAttempts({
                     </Button>
                   </form>
                 ) : null}
+                {expandedAnswers[a.id] ? <AttemptAnswers examAttemptId={a.id} /> : null}
               </li>
             );
           })}
@@ -226,6 +261,7 @@ export default function ExamsPage() {
   const curricula = useSWR("curricula", () => api.listCurricula());
   const rooms = useSWR("rooms", () => api.listRooms());
   const students = useSWR("students", () => api.listStudents());
+  const questionBanks = useSWR("question-banks", () => api.listQuestionBanks());
   const exams = useSWR("exams", () => api.listExams());
 
   const curriculumSubjectOptions = (curricula.data ?? []).flatMap((c) =>
@@ -241,7 +277,12 @@ export default function ExamsPage() {
   const activeExam = useSWR(activeExamId ? ["exam", activeExamId] : null, () => api.getExam(activeExamId as string));
 
   // --- Exam subjects ---------------------------------------------------------
-  const [subjectForm, setSubjectForm] = useState({ curriculumSubjectId: "", fullMarks: "100", passMarks: "40" });
+  const [subjectForm, setSubjectForm] = useState({
+    curriculumSubjectId: "",
+    fullMarks: "100",
+    passMarks: "40",
+    questionBankId: "",
+  });
 
   // --- Schedule / room forms, keyed per exam subject --------------------------
   const [scheduleForms, setScheduleForms] = useState<Record<string, { date: string; startTime: string; endTime: string }>>(
@@ -379,7 +420,7 @@ export default function ExamsPage() {
                         <p className="font-medium">
                           {es.curriculumSubject.subject.name}{" "}
                           <span className="text-muted-foreground">
-                            (full {es.fullMarks}, pass {es.passMarks})
+                            (full {es.fullMarks}, pass {es.passMarks}){es.questionBankId ? " — Online" : ""}
                           </span>
                         </p>
 
@@ -554,9 +595,10 @@ export default function ExamsPage() {
                           curriculumSubjectId: subjectForm.curriculumSubjectId,
                           fullMarks: Number(subjectForm.fullMarks),
                           passMarks: Number(subjectForm.passMarks),
+                          questionBankId: subjectForm.questionBankId || undefined,
                         }),
                       () => {
-                        setSubjectForm({ curriculumSubjectId: "", fullMarks: "100", passMarks: "40" });
+                        setSubjectForm({ curriculumSubjectId: "", fullMarks: "100", passMarks: "40", questionBankId: "" });
                         activeExam.mutate();
                       },
                     );
@@ -568,7 +610,7 @@ export default function ExamsPage() {
                       className="w-56"
                       placeholder="Select subject"
                       value={subjectForm.curriculumSubjectId}
-                      onChange={(v) => setSubjectForm((f) => ({ ...f, curriculumSubjectId: v }))}
+                      onChange={(v) => setSubjectForm((f) => ({ ...f, curriculumSubjectId: v, questionBankId: "" }))}
                       options={curriculumSubjectOptions}
                     />
                   </div>
@@ -588,6 +630,18 @@ export default function ExamsPage() {
                       className="w-24"
                       value={subjectForm.passMarks}
                       onChange={(e) => setSubjectForm((f) => ({ ...f, passMarks: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Question bank (optional — for online delivery)</Label>
+                    <NativeSelect
+                      className="w-56"
+                      placeholder="No question bank"
+                      value={subjectForm.questionBankId}
+                      onChange={(v) => setSubjectForm((f) => ({ ...f, questionBankId: v }))}
+                      options={(questionBanks.data ?? [])
+                        .filter((b) => b.curriculumSubjectId === subjectForm.curriculumSubjectId)
+                        .map((b) => ({ value: b.id, label: b.name }))}
                     />
                   </div>
                   <Button type="submit" disabled={!subjectForm.curriculumSubjectId}>

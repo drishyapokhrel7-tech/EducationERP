@@ -128,6 +128,11 @@ import type {
   GradeRecord,
   ReportCard,
   ReportCardRecord,
+  MyExamAttempt,
+  ExamTakingState,
+  SaveAnswerInput,
+  AnswerRecord,
+  AnswerWithQuestion,
 } from "./types";
 
 export class ApiError extends Error {
@@ -582,6 +587,8 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         method: "POST",
         body: JSON.stringify(input),
       }),
+    listExamAnswers: (examAttemptId: string) =>
+      request<AnswerWithQuestion[]>(`/organizations/me/exam-attempts/${examAttemptId}/answers`),
 
     computeGrade: (examAttemptId: string) =>
       request<GradeRecord>(`/organizations/me/exam-attempts/${examAttemptId}/grade`, { method: "POST" }),
@@ -595,6 +602,19 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
     // No studentId param — the server derives it from the caller's own
     // linked Student row. See StudentPortalService.
     getPortalDashboard: () => request<StudentDashboard>("/organizations/me/portal/dashboard"),
+
+    // Self-service exam-taking — same "no studentId param" reasoning as
+    // the portal dashboard above. See ExamTakingService.
+    listMyExams: () => request<MyExamAttempt[]>("/organizations/me/portal/exams"),
+    startMyExam: (examSubjectId: string) =>
+      request<ExamTakingState>(`/organizations/me/portal/exams/${examSubjectId}/start`, { method: "POST" }),
+    saveMyAnswer: (examSubjectId: string, questionId: string, input: SaveAnswerInput) =>
+      request<AnswerRecord>(`/organizations/me/portal/exams/${examSubjectId}/answers/${questionId}`, {
+        method: "PUT",
+        body: JSON.stringify(input),
+      }),
+    submitMyExam: (examSubjectId: string) =>
+      request<ExamAttemptRecord>(`/organizations/me/portal/exams/${examSubjectId}/submit`, { method: "POST" }),
   };
 }
 

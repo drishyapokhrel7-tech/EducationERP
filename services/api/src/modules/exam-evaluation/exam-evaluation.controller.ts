@@ -38,4 +38,10 @@ export class ExamEvaluationController {
   ) {
     return this.examEvaluation.recordMarks(user.organizationId, examAttemptId, dto);
   }
+
+  @Get("exam-attempts/:examAttemptId/answers")
+  @RequirePermissions("exam_attempt:view")
+  listAnswers(@CurrentUser() user: JwtPayload, @Param("examAttemptId") examAttemptId: string) {
+    return this.examEvaluation.listAnswers(user.organizationId, examAttemptId);
+  }
 }

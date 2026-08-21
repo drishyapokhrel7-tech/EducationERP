@@ -73,6 +73,10 @@ describe("Tenant isolation (e2e)", () => {
       // call here is its own short transaction; order still matters
       // (children before the parents they reference).
       const deleteOrder: string[] = [
+        // answer references examAttempt + question — examAttempt is
+        // deleted early in this list and question very late, so answer
+        // must lead everything, ahead of even reportCard/grade/marks.
+        "answer",
         // examRoom references examSchedule + room; examSchedule
         // references examSubject; examSubject references exam +
         // curriculumSubject; exam references examType/term/
@@ -3318,6 +3322,326 @@ describe("Tenant isolation (e2e)", () => {
         .post(`/organizations/me/students/${student.body.id}/create-login`)
         .set(...auth(tokenB))
         .send({ password: "StudentPass123" })
+        .expect(404);
+    });
+  });
+
+  describe("online exam-taking (student portal: start → shuffle → autosave → resume → submit → auto-score)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    async function buildOnlineExamTarget(
+      token: string,
+      suffix: string,
+      opts: {
+        schedule?: { date: string; startTime: string; endTime: string };
+        recordAttemptForA?: boolean;
+      } = {},
+    ) {
+      const campus = await request(app.getHttpServer())
+        .post("/organizations/me/campuses")
+        .set(...auth(token))
+        .send({ name: `OnlineExam Campus ${suffix}`, code: `OECAMP${suffix}` })
+        .expect(201);
+      const faculty = await request(app.getHttpServer())
+        .post("/organizations/me/faculties")
+        .set(...auth(token))
+        .send({ campusId: campus.body.id, name: `OnlineExam Faculty ${suffix}`, code: `OEFAC${suffix}` })
+        .expect(201);
+      const department = await request(app.getHttpServer())
+        .post("/organizations/me/departments")
+        .set(...auth(token))
+        .send({ facultyId: faculty.body.id, name: `OnlineExam Dept ${suffix}`, code: `OEDEP${suffix}` })
+        .expect(201);
+      const program = await request(app.getHttpServer())
+        .post("/organizations/me/programs")
+        .set(...auth(token))
+        .send({ departmentId: department.body.id, name: `OnlineExam Program ${suffix}`, code: `OEPROG${suffix}` })
+        .expect(201);
+      const subject = await request(app.getHttpServer())
+        .post("/organizations/me/subjects")
+        .set(...auth(token))
+        .send({ name: `OnlineExam Subject ${suffix}`, code: `OESUB${suffix}` })
+        .expect(201);
+      const curriculum = await request(app.getHttpServer())
+        .post("/organizations/me/curricula")
+        .set(...auth(token))
+        .send({ programId: program.body.id, name: `OnlineExam Curriculum ${suffix}`, code: `OECURR${suffix}` })
+        .expect(201);
+      const curriculumSubject = await request(app.getHttpServer())
+        .post(`/organizations/me/curricula/${curriculum.body.id}/subjects`)
+        .set(...auth(token))
+        .send({ subjectId: subject.body.id })
+        .expect(201);
+      const year = await request(app.getHttpServer())
+        .post("/organizations/me/academic-years")
+        .set(...auth(token))
+        .send({ name: `OnlineExam Year ${suffix}`, startDate: "2099-01-01", endDate: "2099-12-31" })
+        .expect(201);
+      const term = await request(app.getHttpServer())
+        .post("/organizations/me/terms")
+        .set(...auth(token))
+        .send({
+          academicYearId: year.body.id,
+          name: `OnlineExam Term ${suffix}`,
+          code: `OET${suffix}`,
+          sequence: 1,
+          startDate: "2099-01-01",
+          endDate: "2099-06-30",
+        })
+        .expect(201);
+      const examType = await request(app.getHttpServer())
+        .post("/organizations/me/exam-types")
+        .set(...auth(token))
+        .send({ name: `OnlineExam Type ${suffix}`, code: `OEET${suffix}` })
+        .expect(201);
+      const exam = await request(app.getHttpServer())
+        .post("/organizations/me/exams")
+        .set(...auth(token))
+        .send({ examTypeId: examType.body.id, termId: term.body.id, name: `OnlineExam ${suffix}` })
+        .expect(201);
+
+      const bank = await request(app.getHttpServer())
+        .post("/organizations/me/question-banks")
+        .set(...auth(token))
+        .send({ curriculumSubjectId: curriculumSubject.body.id, name: `OnlineExam Bank ${suffix}` })
+        .expect(201);
+
+      const q1 = await request(app.getHttpServer())
+        .post(`/organizations/me/question-banks/${bank.body.id}/questions`)
+        .set(...auth(token))
+        .send({
+          sequence: 1,
+          text: "What is the capital of France?",
+          questionType: "OBJECTIVE",
+          marks: 5,
+          options: ["Paris", "London", "Berlin"],
+          correctOptionIndex: 0,
+        })
+        .expect(201);
+      const q2 = await request(app.getHttpServer())
+        .post(`/organizations/me/question-banks/${bank.body.id}/questions`)
+        .set(...auth(token))
+        .send({
+          sequence: 2,
+          text: "2 + 2 = ?",
+          questionType: "OBJECTIVE",
+          marks: 5,
+          options: ["2", "3", "4", "5"],
+          correctOptionIndex: 2,
+        })
+        .expect(201);
+      const q3 = await request(app.getHttpServer())
+        .post(`/organizations/me/question-banks/${bank.body.id}/questions`)
+        .set(...auth(token))
+        .send({
+          sequence: 3,
+          text: "Explain photosynthesis.",
+          questionType: "SUBJECTIVE",
+          marks: 10,
+          modelAnswer: "Plants convert light energy into chemical energy.",
+        })
+        .expect(201);
+
+      const examSubject = await request(app.getHttpServer())
+        .post(`/organizations/me/exams/${exam.body.id}/subjects`)
+        .set(...auth(token))
+        .send({
+          curriculumSubjectId: curriculumSubject.body.id,
+          fullMarks: 100,
+          passMarks: 40,
+          questionBankId: bank.body.id,
+        })
+        .expect(201);
+      expect(examSubject.body.questionBankId).toBe(bank.body.id);
+
+      const today = new Date().toISOString().slice(0, 10);
+      const schedule = opts.schedule ?? { date: today, startTime: "00:00", endTime: "23:59" };
+      await request(app.getHttpServer())
+        .post(`/organizations/me/exam-subjects/${examSubject.body.id}/schedule`)
+        .set(...auth(token))
+        .send(schedule)
+        .expect(201);
+
+      const studentA = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(token))
+        .send({ studentCode: `OE-A-${suffix}`, firstName: "Aarav", lastName: "Sharma", dateOfBirth: "2015-01-01" })
+        .expect(201);
+      const studentB = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(token))
+        .send({ studentCode: `OE-B-${suffix}`, firstName: "Sita", lastName: "Gurung", dateOfBirth: "2015-01-01" })
+        .expect(201);
+
+      const loginA = await request(app.getHttpServer())
+        .post(`/organizations/me/students/${studentA.body.id}/create-login`)
+        .set(...auth(token))
+        .send({ password: "StudentPass123" })
+        .expect(201);
+      const loginB = await request(app.getHttpServer())
+        .post(`/organizations/me/students/${studentB.body.id}/create-login`)
+        .set(...auth(token))
+        .send({ password: "StudentPass456" })
+        .expect(201);
+
+      const sessionA = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: loginA.body.username, password: "StudentPass123" })
+        .expect(201);
+      const sessionB = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: loginB.body.username, password: "StudentPass456" })
+        .expect(201);
+
+      if (opts.recordAttemptForA !== false) {
+        await request(app.getHttpServer())
+          .post(`/organizations/me/exam-subjects/${examSubject.body.id}/attempts`)
+          .set(...auth(token))
+          .send({ studentId: studentA.body.id, status: "PRESENT" })
+          .expect(201);
+      }
+
+      return {
+        examSubjectId: examSubject.body.id as string,
+        q1Id: q1.body.id as string,
+        q2Id: q2.body.id as string,
+        q3Id: q3.body.id as string,
+        studentAId: studentA.body.id as string,
+        studentBId: studentB.body.id as string,
+        tokenA: sessionA.body.accessToken as string,
+        tokenB: sessionB.body.accessToken as string,
+      };
+    }
+
+    it("shuffles questions/options with no leaked answer key, autosaves, resumes with the same order, submits, auto-scores objective answers, blocks resubmission, and is IDOR-safe for a student not registered for the exam", async () => {
+      const t = await buildOnlineExamTarget(tokenA, "OEA");
+
+      const started = await request(app.getHttpServer())
+        .post(`/organizations/me/portal/exams/${t.examSubjectId}/start`)
+        .set(...auth(t.tokenA))
+        .expect(201);
+      expect(started.body.questions).toHaveLength(3);
+      for (const q of started.body.questions) {
+        expect(q).not.toHaveProperty("correctOptionIndex");
+        expect(q).not.toHaveProperty("modelAnswer");
+      }
+
+      const q1 = started.body.questions.find((q: { id: string }) => q.id === t.q1Id);
+      const q2 = started.body.questions.find((q: { id: string }) => q.id === t.q2Id);
+      const q1CorrectDisplayIndex = q1.options.indexOf("Paris");
+      const q2WrongDisplayIndex = q2.options.findIndex((o: string) => o !== "4");
+
+      await request(app.getHttpServer())
+        .put(`/organizations/me/portal/exams/${t.examSubjectId}/answers/${t.q1Id}`)
+        .set(...auth(t.tokenA))
+        .send({ selectedOptionIndex: q1CorrectDisplayIndex })
+        .expect(200);
+      await request(app.getHttpServer())
+        .put(`/organizations/me/portal/exams/${t.examSubjectId}/answers/${t.q2Id}`)
+        .set(...auth(t.tokenA))
+        .send({ selectedOptionIndex: q2WrongDisplayIndex })
+        .expect(200);
+      await request(app.getHttpServer())
+        .put(`/organizations/me/portal/exams/${t.examSubjectId}/answers/${t.q3Id}`)
+        .set(...auth(t.tokenA))
+        .send({ textAnswer: "Plants convert light energy into chemical energy." })
+        .expect(200);
+
+      // Resume: a second fetch of the same in-progress attempt returns the
+      // identical question/option order (deterministic seed) and the
+      // previously-saved answers, pre-selected — no reshuffle on refresh.
+      const resumed = await request(app.getHttpServer())
+        .post(`/organizations/me/portal/exams/${t.examSubjectId}/start`)
+        .set(...auth(t.tokenA))
+        .expect(201);
+      expect(resumed.body.questions.map((q: { id: string }) => q.id)).toEqual(
+        started.body.questions.map((q: { id: string }) => q.id),
+      );
+      const resumedQ1 = resumed.body.questions.find((q: { id: string }) => q.id === t.q1Id);
+      const resumedQ2 = resumed.body.questions.find((q: { id: string }) => q.id === t.q2Id);
+      const resumedQ3 = resumed.body.questions.find((q: { id: string }) => q.id === t.q3Id);
+      expect(resumedQ1.options).toEqual(q1.options);
+      expect(resumedQ1.selectedOptionIndex).toBe(q1CorrectDisplayIndex);
+      expect(resumedQ2.selectedOptionIndex).toBe(q2WrongDisplayIndex);
+      expect(resumedQ3.textAnswer).toBe("Plants convert light energy into chemical energy.");
+
+      const submitted = await request(app.getHttpServer())
+        .post(`/organizations/me/portal/exams/${t.examSubjectId}/submit`)
+        .set(...auth(t.tokenA))
+        .expect(201);
+      expect(submitted.body.submittedAt).not.toBeNull();
+
+      // Resubmission and further edits are rejected once submitted.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/portal/exams/${t.examSubjectId}/submit`)
+        .set(...auth(t.tokenA))
+        .expect(409);
+      await request(app.getHttpServer())
+        .put(`/organizations/me/portal/exams/${t.examSubjectId}/answers/${t.q1Id}`)
+        .set(...auth(t.tokenA))
+        .send({ selectedOptionIndex: 0 })
+        .expect(409);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/portal/exams/${t.examSubjectId}/start`)
+        .set(...auth(t.tokenA))
+        .expect(409);
+
+      // Admin reviews the auto-scored Answer breakdown — correct objective
+      // answer scores full marks, incorrect scores zero, subjective is left
+      // unscored for human grading (4c/4d's recordMarks/computeGrade, both
+      // untouched by this slice).
+      const attempts = await request(app.getHttpServer())
+        .get(`/organizations/me/exam-subjects/${t.examSubjectId}/attempts`)
+        .set(...auth(tokenA))
+        .expect(200);
+      const attemptA = attempts.body.find((a: { studentId: string }) => a.studentId === t.studentAId);
+      const answers = await request(app.getHttpServer())
+        .get(`/organizations/me/exam-attempts/${attemptA.id}/answers`)
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(answers.body).toHaveLength(3);
+      const answerQ1 = answers.body.find((a: { questionId: string }) => a.questionId === t.q1Id);
+      const answerQ2 = answers.body.find((a: { questionId: string }) => a.questionId === t.q2Id);
+      const answerQ3 = answers.body.find((a: { questionId: string }) => a.questionId === t.q3Id);
+      expect(answerQ1.score).toBe(5);
+      expect(answerQ2.score).toBe(0);
+      expect(answerQ3.score).toBeNull();
+      expect(answerQ3.textAnswer).toBe("Plants convert light energy into chemical energy.");
+
+      // IDOR: studentB has a login but was never recorded as an attempt for
+      // this exam subject — every route 404s for them, both ways (they
+      // can't start, answer, or submit against studentA's exam), because
+      // studentId is derived from the caller's own linked Student row, not
+      // a request param — there is nothing to tamper with.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/portal/exams/${t.examSubjectId}/start`)
+        .set(...auth(t.tokenB))
+        .expect(404);
+      await request(app.getHttpServer())
+        .put(`/organizations/me/portal/exams/${t.examSubjectId}/answers/${t.q1Id}`)
+        .set(...auth(t.tokenB))
+        .send({ selectedOptionIndex: 0 })
+        .expect(404);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/portal/exams/${t.examSubjectId}/submit`)
+        .set(...auth(t.tokenB))
+        .expect(404);
+    });
+
+    it("rejects starting outside the scheduled window (400) and starting without a pre-existing attempt (404)", async () => {
+      const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const outsideWindow = await buildOnlineExamTarget(tokenA, "OEW", {
+        schedule: { date: tomorrow, startTime: "09:00", endTime: "11:00" },
+      });
+      await request(app.getHttpServer())
+        .post(`/organizations/me/portal/exams/${outsideWindow.examSubjectId}/start`)
+        .set(...auth(outsideWindow.tokenA))
+        .expect(400);
+
+      const noAttempt = await buildOnlineExamTarget(tokenA, "OEN", { recordAttemptForA: false });
+      await request(app.getHttpServer())
+        .post(`/organizations/me/portal/exams/${noAttempt.examSubjectId}/start`)
+        .set(...auth(noAttempt.tokenA))
         .expect(404);
     });
   });

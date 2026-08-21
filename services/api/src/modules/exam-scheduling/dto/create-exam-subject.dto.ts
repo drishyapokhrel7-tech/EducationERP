@@ -1,4 +1,4 @@
-import { IsInt, IsPositive, IsString } from "class-validator";
+import { IsInt, IsOptional, IsPositive, IsString } from "class-validator";
 
 export class CreateExamSubjectDto {
   @IsString()
@@ -11,4 +11,10 @@ export class CreateExamSubjectDto {
   @IsInt()
   @IsPositive()
   passMarks!: number;
+
+  // Only set when this subject is delivered online — must belong to
+  // the same curriculumSubjectId (validated in the service).
+  @IsOptional()
+  @IsString()
+  questionBankId?: string;
 }

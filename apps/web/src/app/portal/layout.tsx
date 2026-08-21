@@ -2,10 +2,16 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { GraduationCap, LogOut } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth-context";
+
+const NAV = [
+  { href: "/portal", label: "Dashboard" },
+  { href: "/portal/exams", label: "My Exams" },
+];
 
 export default function PortalLayout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
@@ -35,9 +41,18 @@ export default function PortalLayout({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen flex-1 flex-col">
       <header className="flex items-center justify-between border-b p-4">
-        <div className="flex items-center gap-2">
-          <GraduationCap className="size-5" />
-          <span className="font-semibold">Education ERP — Student Portal</span>
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-2">
+            <GraduationCap className="size-5" />
+            <span className="font-semibold">Education ERP — Student Portal</span>
+          </div>
+          <nav className="flex items-center gap-4">
+            {NAV.map(({ href, label }) => (
+              <Link key={href} href={href} className="text-muted-foreground hover:text-foreground text-sm">
+                {label}
+              </Link>
+            ))}
+          </nav>
         </div>
         <div className="flex items-center gap-3">
           <Avatar className="size-8">

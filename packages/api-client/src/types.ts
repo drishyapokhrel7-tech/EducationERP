@@ -1127,6 +1127,7 @@ export interface ExamSubjectDetail {
   curriculumSubjectId: string;
   fullMarks: number;
   passMarks: number;
+  questionBankId: string | null;
   createdAt: string;
   curriculumSubject: CurriculumSubject;
   examSchedule: ExamScheduleDetail | null;
@@ -1152,6 +1153,7 @@ export interface ExamSubjectRecord {
   curriculumSubjectId: string;
   fullMarks: number;
   passMarks: number;
+  questionBankId: string | null;
   createdAt: string;
 }
 
@@ -1159,6 +1161,8 @@ export interface CreateExamSubjectInput {
   curriculumSubjectId: string;
   fullMarks: number;
   passMarks: number;
+  // Only set when this subject is delivered online.
+  questionBankId?: string;
 }
 
 export interface ExamScheduleRecord {
@@ -1222,6 +1226,11 @@ export interface ExamAttemptRecord {
   examSubjectId: string;
   studentId: string;
   status: AttendanceStatus;
+  // Online exam-taking lifecycle — both null for admin-recorded
+  // (paper-exam) attempts and until a student actually opens/submits
+  // an online one.
+  startedAt: string | null;
+  submittedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1284,4 +1293,71 @@ export interface ReportCardSubject {
 // ExamAttempt/ExamSubject, per the schema's reasoning.
 export interface ReportCard extends ReportCardRecord {
   subjects: ReportCardSubject[];
+}
+
+// ── Online exam-taking (self-service, portal-only) ─────────────────────
+
+export interface ExamTakingSubject {
+  id: string;
+  examId: string;
+  curriculumSubjectId: string;
+  fullMarks: number;
+  passMarks: number;
+  questionBankId: string | null;
+  curriculumSubject: { subject: Subject };
+  examSchedule: ExamScheduleRecord | null;
+}
+
+// listMyExams' shape — an ExamAttempt with its exam subject nested.
+export interface MyExamAttempt {
+  id: string;
+  examSubjectId: string;
+  studentId: string;
+  status: AttendanceStatus;
+  startedAt: string | null;
+  submittedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  examSubject: ExamTakingSubject;
+}
+
+// startExam's per-question shape — options are already shuffled and
+// never carry the answer key (no correctOptionIndex/modelAnswer, unlike
+// the admin-facing ExamQuestion type).
+export interface ExamTakingQuestion {
+  id: string;
+  text: string;
+  questionType: QuestionType;
+  marks: number;
+  options?: string[];
+  selectedOptionIndex?: number;
+  textAnswer?: string;
+}
+
+export interface ExamTakingState {
+  deadline: string;
+  questions: ExamTakingQuestion[];
+}
+
+export interface SaveAnswerInput {
+  selectedOptionIndex?: number;
+  textAnswer?: string;
+}
+
+export interface AnswerRecord {
+  id: string;
+  organizationId: string;
+  examAttemptId: string;
+  questionId: string;
+  selectedOptionIndex: number | null;
+  textAnswer: string | null;
+  score: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// listAnswers' admin-facing shape — includes the real question (with
+// the answer key), unlike ExamTakingQuestion which the student sees.
+export interface AnswerWithQuestion extends AnswerRecord {
+  question: ExamQuestion;
 }

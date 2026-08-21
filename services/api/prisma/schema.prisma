@@ -79,6 +79,7 @@ model Organization {
   marks                    Marks[]
   grades                   Grade[]
   reportCards              ReportCard[]
+  answers                  Answer[]
 
   @@map("organizations")
 }
@@ -1477,6 +1478,7 @@ model QuestionBank {
   organization      Organization      @relation(fields: [organizationId], references: [id])
   curriculumSubject CurriculumSubject @relation(fields: [curriculumSubjectId], references: [id])
   questions         Question[]
+  examSubjects      ExamSubject[]
 
   @@index([organizationId])
   @@index([curriculumSubjectId])
@@ -1512,6 +1514,7 @@ model Question {
 
   organization Organization @relation(fields: [organizationId], references: [id])
   questionBank QuestionBank @relation(fields: [questionBankId], references: [id])
+  answers      Answer[]
 
   @@index([organizationId])
   @@index([questionBankId])
@@ -1549,11 +1552,17 @@ model ExamSubject {
   curriculumSubjectId String
   fullMarks           Int
   passMarks           Int
+  // Optional — a traditional paper exam subject (4a-4d's whole existing
+  // scope) has none. Only set when this subject is delivered online; a
+  // student can only start an exam that has one. Must share this
+  // subject's curriculumSubjectId (validated in the service).
+  questionBankId      String?
   createdAt           DateTime @default(now())
 
   organization      Organization      @relation(fields: [organizationId], references: [id])
   exam              Exam              @relation(fields: [examId], references: [id])
   curriculumSubject CurriculumSubject @relation(fields: [curriculumSubjectId], references: [id])
+  questionBank      QuestionBank?     @relation(fields: [questionBankId], references: [id])
   // At most one schedule per exam subject — a subject is examined once
   // within a given exam sitting; a subject with a written and a
   // practical component is two ExamSubject rows (two CurriculumSubject-
@@ -1618,6 +1627,14 @@ model ExamAttempt {
   // introducing a parallel enum for identical semantics would be a new
   // abstraction with no behavioral difference.
   status         AttendanceStatus @default(PRESENT)
+  // Online exam-taking lifecycle, layered onto this same row rather
+  // than a parallel table — this row already models "this student is
+  // taking this exam subject," admin-created as the eligibility gate a
+  // student must have before they can start. Both null until the
+  // student actually opens/submits an online exam; paper exams (no
+  // linked QuestionBank on ExamSubject) never set either.
+  startedAt      DateTime?
+  submittedAt    DateTime?
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
@@ -1626,6 +1643,7 @@ model ExamAttempt {
   student      Student      @relation(fields: [studentId], references: [id])
   marks        Marks?
   grade        Grade?
+  answers      Answer[]
 
   // One attempt per student per exam subject — admin-recorded on the
   // student's behalf, same pattern as AssignmentSubmission/
@@ -1702,4 +1720,33 @@ model ReportCard {
   @@unique([examId, studentId])
   @@index([organizationId])
   @@map("report_cards")
+}
+
+model Answer {
+  id                  String   @id @default(uuid())
+  organizationId      String
+  examAttemptId       String
+  questionId          String
+  // OBJECTIVE only.
+  selectedOptionIndex Int?
+  // SUBJECTIVE only.
+  textAnswer          String?
+  // Auto-computed for OBJECTIVE on submit (never trust a client-
+  // submitted score, same rule KnowledgeCheckAttempt and
+  // ExamGradingService already follow) — null until then, and stays
+  // null for SUBJECTIVE pending human grading via 4c/4d's existing
+  // admin actions, which this table feeds but never bypasses.
+  score               Int?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  examAttempt  ExamAttempt  @relation(fields: [examAttemptId], references: [id])
+  question     Question     @relation(fields: [questionId], references: [id])
+
+  // One answer per question per attempt — autosave and submit both
+  // upsert this row rather than stacking a new one each save.
+  @@unique([examAttemptId, questionId])
+  @@index([organizationId])
+  @@map("answers")
 }

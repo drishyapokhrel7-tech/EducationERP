@@ -528,3 +528,165 @@ Electron **Secure Examination Client** wraps it as a hardening/
 lockdown layer. Neither is part of this slice; both need their own
 explicit go-ahead, per this project's established per-slice check-in
 rhythm.
+
+## Slice 4f — Online exam-taking engine (web)
+
+User said "go-ahead" to the slice 4e check-in — the confirmed next
+piece of the raised deferred scope. All design forks this slice
+resolved by directly reusing precedent already set in 4c/4d/4e (no
+`AskUserQuestion` needed this time, unlike 4e's two genuine forks) —
+recorded in the approved plan before writing any code.
+
+## What shipped
+
+`ExamSubject.questionBankId String?` (nullable — a subject is only
+online-deliverable if this is set; a traditional paper exam subject
+has none) and `ExamAttempt.startedAt`/`submittedAt` (both nullable,
+layered onto 4c's existing row rather than a new table — starting an
+online exam requires an admin-created `ExamAttempt` to already exist,
+same eligibility-gate precedent as 4c's `recordAttempt`). The `Answer`
+table, deferred explicitly in 4c's writeup as "exactly the deferred
+online-exam-taking scope," is finally built: one row per
+`(examAttemptId, questionId)`, upserted by autosave and submit,
+auto-scored for `OBJECTIVE` on submit (never trusting a client-
+submitted score — same rule `KnowledgeCheckAttempt`/
+`ExamGradingService` already follow) and left `null` for `SUBJECTIVE`,
+pending an admin's review via 4c/4d's existing `recordMarks`/
+`computeGrade` (unchanged — submitting an online exam never
+auto-triggers grading, matching 4d's "grading is a deliberate
+decision" precedent).
+
+New `exam-taking` module, self-service-gated exactly like 4e's
+`student-portal` (`@UseGuards(JwtAuthGuard)` only, `studentId` derived
+from `WHERE userId = jwt.sub`, never a request param): `listMyExams`,
+`startExam` (idempotent — resumes an in-progress attempt), `saveAnswer`,
+`submitExam`, all under `organizations/me/portal/exams`. Question and
+option order are shuffled deterministically per attempt via a small
+seeded-PRNG helper (`shuffle.ts`, mulberry32 + Fisher–Yates) keyed by
+`examAttemptId` (questions) or `${examAttemptId}:${questionId}`
+(options) — the same seed always reproduces the same order, so a page
+refresh never reshuffles what the student sees, without persisting a
+"shuffled order" field. `correctOptionIndex`/`modelAnswer` are never
+included in the question payload sent to the student — omitted from
+the query response entirely, not just hidden client-side. Starting is
+time-window-enforced against the exam's `ExamSchedule` (server clock).
+
+New `/portal/exams` (list) and `/portal/exams/[examSubjectId]` (the
+exam-taking UI: shuffled questions, radio group for `OBJECTIVE`,
+textarea for `SUBJECTIVE`, debounced autosave, a live countdown, a
+confirm-gated submit button, and auto-submit when the countdown hits
+zero) pages in `apps/web`. `/dashboard/exams`' "Add subject" form
+gained an optional question-bank selector (filtered to banks matching
+the chosen curriculum subject); its attempts list gained a "View
+answers" toggle (shown only for attempts with `startedAt` set, i.e.
+genuine online attempts) that renders each `Answer` — question text,
+the student's given answer, and its score or "not yet scored" — via a
+gap-fix `listAnswers` endpoint added to the existing `exam-evaluation`
+module (reusing the existing `exam_attempt:view` permission, no new
+RBAC resource).
+
+## Design decisions worth flagging
+
+**A real gap in this slice's own approved plan, caught and closed
+before it shipped**: the plan's design-decision text said "an admin
+reviews the `Answer` breakdown," but its 10-item implementation list
+never actually specified an endpoint to let an admin view `Answer`
+rows — only the student-facing write paths were listed. Caught while
+starting to write the e2e test, realizing there was no way to verify
+auto-scoring from the admin side. Treated as completing the plan's own
+stated behavior, not scope creep — added `listAnswers` to
+`exam-evaluation` (service + controller + api-client type/method) and
+a UI surface for it, reusing existing RBAC rather than inventing new
+permissions.
+
+**Client-side-only auto-submit for this slice, a deliberate and
+documented gap.** The countdown is computed from `ExamSchedule.date`/
+`endTime`, and the page calls submit itself at zero — but a closed
+browser tab never gets submitted, staying `IN_PROGRESS` indefinitely.
+A background BullMQ sweep for abandoned attempts (the `QueueModule`
+already exists in this project but has never been used for a real
+domain job, only a health-check queue) would close this — deliberately
+deferred as a first real use of that infrastructure, not silently
+dropped. A teacher can already handle an abandoned attempt manually
+via 4c's existing attendance/marks actions.
+
+**Index-translation for shuffled options is the trickiest logic in
+this slice, worth recording precisely for future reference.** The
+shuffle is applied to an array of option *indices*, not the option
+strings. Display: `options[displayPosition] = originalOptions[order[displayPosition]]`.
+Saving: the student submits a display position; the service computes
+`originalIndex = order[displayPosition]` and stores that (original-
+space) in `Answer.selectedOptionIndex`. Resuming: `displayPosition =
+order.indexOf(originalIndex)` (the inverse mapping) to pre-select the
+right radio button. Scoring: the stored (already original-space)
+`selectedOptionIndex` is compared directly to `Question.correctOptionIndex`.
+
+**`@base-ui/react`'s `Button` doesn't support Radix's `asChild`
+pattern** — discovered wrapping a `Link` in a `Button` on
+`/portal/exams`. Fixed by using the already-exported `buttonVariants()`
+className function directly on a plain `<Link>` instead. No existing
+Button+Link precedent existed in the codebase to copy from; this is
+now that precedent for any future page that needs a link styled as a
+button.
+
+## Verified (slice 4f)
+
+- `pnpm typecheck` / `lint` / `build` clean across all three packages.
+  `shuffle.ts` unit tests (deterministic given the same seed, produces
+  a real permutation, doesn't mutate input, different seed → different
+  order) 4/4 passing.
+- `services/api` e2e: 47/47 on a clean run — two new tests covering
+  the full start (shuffled, no leaked answer key) → autosave → resume
+  (identical order, previously-saved answers pre-selected) → submit →
+  auto-score-correct(5/5)/auto-score-wrong(0/5)/subjective-unscored →
+  resubmit-rejected(409) → save-after-submit-rejected(409) →
+  start-after-submit-rejected(409) → IDOR-both-ways(404 for a student
+  never registered for the exam subject) chain, plus
+  outside-window-rejected(400) and no-prior-attempt-rejected(404).
+  A full-suite run did hit ambient flakiness (one transient `P2028` in
+  an unrelated pre-existing module on one run; JWT-expiry 401s on a
+  different full run once total suite runtime grew past this
+  session's token TTL) — both new tests were individually re-run
+  filtered (`-t`) and passed cleanly every time, confirming neither was
+  a real regression. Flagged the token-expiry/suite-length issue as a
+  separate follow-up task rather than fixing it inline (out of this
+  slice's scope).
+- Full browser pass: as the demo admin, created a question bank with
+  one `OBJECTIVE` (capital of France) and one `SUBJECTIVE`
+  (photosynthesis) question, linked it to a new exam subject, scheduled
+  it for a window covering "now," created a portal login for Aarav
+  Sharma, and recorded a `PRESENT` attempt. Logged in as Aarav: started
+  the exam (confirmed via the raw network response that the question
+  order was shuffled — subjective first — and no `correctOptionIndex`/
+  `modelAnswer` anywhere in the payload), answered both questions,
+  reloaded the page and confirmed both the text answer and the radio
+  selection persisted exactly (autosave + resume), submitted (behind a
+  `window.confirm` — verified by temporarily overriding `window.confirm`
+  in the page since automated browser control auto-dismisses native
+  confirm dialogs, not a product issue), and confirmed the exam list
+  immediately showed "Submitted" with no further Start/Resume action.
+  Back as admin, used the new "View answers" toggle and confirmed the
+  objective answer was auto-scored 5/5 (correct) and the subjective
+  answer showed the student's actual text with "not yet scored." All
+  test data (exam type, question bank + questions, exam + subject +
+  schedule, the attempt/answers, and Aarav's portal login) removed
+  afterward via a cleanup script scoped to the demo org; reconfirmed
+  via a fresh admin session that Exam Setup is empty again and Aarav
+  shows "Create login."
+- Hit the now-familiar stale-render timing artifact twice (a newly
+  added question and the "Mathematics — Online" subject briefly not
+  showing after a 201 Created) — confirmed both via the raw network
+  response before concluding anything, consistent with every prior
+  occurrence in this project.
+
+## Next step
+
+Slice 4f done, stopped per plan §21 step 17. This closes out the
+second and last piece of the raised deferred scope that was scoped to
+ship as a web feature. The remaining piece — the Electron **Secure
+Examination Client**, wrapping this exam-taking engine as a hardening/
+lockdown layer for controlled/offline sittings — is not started and
+needs its own explicit go-ahead, per this project's established
+per-slice check-in rhythm. It would be this project's first Electron
+app; expect it to need `EnterPlanMode` given the architectural novelty
+(new client type, secure IPC), same as 4e and 4f's own approved plans.
