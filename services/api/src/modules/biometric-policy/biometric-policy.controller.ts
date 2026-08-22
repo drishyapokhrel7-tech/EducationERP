@@ -1,4 +1,16 @@
-import { Body, Controller, Get, Param, Post, Put, UseGuards } from "@nestjs/common";
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Put,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import { BiometricPolicyService } from "./biometric-policy.service";
 import { UpdateBiometricPolicyDto } from "./dto/update-biometric-policy.dto";
 import { CreateFaceEnrollmentDto } from "./dto/create-face-enrollment.dto";
@@ -41,5 +53,19 @@ export class BiometricPolicyController {
   @RequirePermissions("biometric_enrollment:update")
   withdrawEnrollment(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
     return this.biometricPolicy.withdrawEnrollment(user.organizationId, user.sub, id);
+  }
+
+  @Post("biometric/enrollments/:id/photo")
+  @RequirePermissions("biometric_enrollment:update")
+  @UseInterceptors(FileInterceptor("image"))
+  addEnrollmentPhoto(
+    @CurrentUser() user: JwtPayload,
+    @Param("id") id: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+  ) {
+    if (!file) {
+      throw new BadRequestException("No file uploaded (expected a multipart field named 'image')");
+    }
+    return this.biometricPolicy.addEnrollmentPhoto(user.organizationId, user.sub, id, file);
   }
 }

@@ -1362,9 +1362,8 @@ export interface AnswerWithQuestion extends AnswerRecord {
   question: ExamQuestion;
 }
 
-// ── CCTV / Biometric — privacy & consent foundation (Phase 6 slice 6a) ──
-// No face image/embedding/camera/matching types exist yet — those are
-// added once the pipeline that would produce them exists (slices 6b/6c).
+// ── CCTV / Biometric — privacy & consent foundation (Phase 6 slice 6a),
+// camera capture/matching (slice 6c) ─────────────────────────────────
 
 export interface BiometricPolicyRecord {
   organizationId: string;
@@ -1401,9 +1400,85 @@ export interface FaceEnrollmentRecord {
   updatedAt: string;
 }
 
+// Deliberately no `embedding` field — Prisma's Unsupported() column
+// can't be selected/returned through the normal client API at all, so
+// this is the complete shape the server can ever send, not a
+// client-side redaction.
+export interface FaceEmbeddingSummary {
+  id: string;
+  modelVersion: string;
+  createdAt: string;
+}
+
 // listEnrollments' fuller shape — the linked student/staff record, so
-// the admin UI can show a name without a second lookup.
+// the admin UI can show a name without a second lookup, plus whether an
+// enrollment photo has been captured yet.
 export interface FaceEnrollment extends FaceEnrollmentRecord {
   student: StudentSummary | null;
   staff: Employee | null;
+  faceEmbedding: FaceEmbeddingSummary | null;
+}
+
+export interface AddEnrollmentPhotoResult {
+  enrollmentId: string;
+  detScore: number;
+  modelName: string;
+}
+
+export type CameraAdapterType = "SIMULATED" | "RTSP" | "USB_WEBCAM";
+export type CameraStatus = "ACTIVE" | "INACTIVE";
+
+export interface CreateCameraInput {
+  name: string;
+  location?: string;
+  adapterType?: CameraAdapterType;
+}
+
+export interface CameraRecord {
+  id: string;
+  organizationId: string;
+  name: string;
+  location: string | null;
+  adapterType: CameraAdapterType;
+  status: CameraStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type FaceMatchResultValue = "IDENTIFIED" | "POSSIBLE_MATCH" | "UNKNOWN";
+export type FaceMatchReviewDecision = "CONFIRMED" | "REJECTED";
+
+export interface FaceMatchEventRecord {
+  id: string;
+  organizationId: string;
+  cameraEventId: string;
+  matchedEnrollmentId: string | null;
+  confidence: number;
+  result: FaceMatchResultValue;
+  reviewedAt: string | null;
+  reviewedBy: string | null;
+  reviewDecision: FaceMatchReviewDecision | null;
+  createdAt: string;
+}
+
+// ingestEvent's response shape — the created CameraEvent (never the raw
+// image bytes) plus every face-match attempt it produced.
+export interface CameraEventResult {
+  id: string;
+  organizationId: string;
+  cameraId: string;
+  capturedAt: string;
+  createdAt: string;
+  hasImage: boolean;
+  matches: (FaceMatchEventRecord & { matchedEnrollment: FaceEnrollment | null })[];
+}
+
+// listFaceMatchEvents' fuller shape — the review queue.
+export interface FaceMatchEvent extends FaceMatchEventRecord {
+  matchedEnrollment: FaceEnrollment | null;
+  cameraEvent: { id: string; capturedAt: string; camera: CameraRecord };
+}
+
+export interface ReviewFaceMatchInput {
+  decision: FaceMatchReviewDecision;
 }

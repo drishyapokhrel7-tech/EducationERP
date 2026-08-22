@@ -17,7 +17,7 @@ from fastapi import Depends, FastAPI, HTTPException, UploadFile, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
-from .face_model import get_face_analysis
+from .face_model import FACE_MODEL_NAME, get_face_analysis
 
 app = FastAPI(title="Education ERP — AI service (face embedding)")
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -41,6 +41,11 @@ class DetectedFace(BaseModel):
 
 class FaceEmbedResponse(BaseModel):
     faces: list[DetectedFace]
+    # Which model actually produced these embeddings — a caller that
+    # persists an embedding (slice 6c) needs the *true* model name, not
+    # a value it guesses from its own copy of an env var that could
+    # drift out of sync with what this service is actually running.
+    modelName: str
 
 
 @app.post("/v1/face/embed", response_model=FaceEmbedResponse, dependencies=[Depends(require_api_key)])
@@ -62,7 +67,8 @@ async def embed_faces(image: UploadFile) -> FaceEmbedResponse:
                 embedding=[float(v) for v in f.embedding],
             )
             for f in faces
-        ]
+        ],
+        modelName=FACE_MODEL_NAME,
     )
 
 

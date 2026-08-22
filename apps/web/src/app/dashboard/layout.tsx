@@ -6,6 +6,7 @@ import Link from "next/link";
 import {
   BookOpen,
   Building2,
+  Camera,
   CalendarCheck,
   CalendarClock,
   CheckCircle2,
@@ -44,6 +45,7 @@ const NAV = [
   { href: "/dashboard/exam-setup", label: "Exam Setup", icon: FileQuestion },
   { href: "/dashboard/exams", label: "Exams", icon: ScrollText },
   { href: "/dashboard/biometric-policy", label: "Biometric", icon: Fingerprint },
+  { href: "/dashboard/cameras", label: "Cameras", icon: Camera },
 ];
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {

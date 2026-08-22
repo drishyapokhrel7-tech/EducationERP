@@ -32,6 +32,7 @@ def test_detects_faces_and_returns_embeddings(sample_image_bytes, test_api_key):
     assert len(face["embedding"]) == 512
     assert 0.0 <= face["detScore"] <= 1.0
     assert len(face["bbox"]) == 4
+    assert body["modelName"]
 
 
 def test_rejects_undecodable_image(test_api_key):

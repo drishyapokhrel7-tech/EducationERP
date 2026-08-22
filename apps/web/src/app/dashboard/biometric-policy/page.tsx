@@ -126,29 +126,45 @@ export default function BiometricPolicyPage() {
           {!enrollments.data || enrollments.data.length === 0 ? (
             <p className="text-muted-foreground text-sm">No consent recorded yet.</p>
           ) : (
-            <ul className="space-y-1 text-sm">
+            <ul className="space-y-2 text-sm">
               {enrollments.data.map((e) => (
-                <li key={e.id} className="flex items-center justify-between">
+                <li key={e.id} className="flex flex-wrap items-center justify-between gap-2">
                   <span>
                     {e.student ? `${e.student.firstName} ${e.student.lastName} (student)` : null}
                     {e.staff ? `${e.staff.firstName} ${e.staff.lastName} (staff)` : null}
                     {` — consented by ${e.consentGivenBy} on ${new Date(e.consentGivenAt).toLocaleDateString()}`}
-                    {e.status === "WITHDRAWN" ? " — withdrawn" : ""}
+                    {e.status === "WITHDRAWN" ? " — withdrawn" : e.faceEmbedding ? " — photo captured" : " — no photo yet"}
                   </span>
                   {e.status === "ACTIVE" ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() =>
-                        submitAction(
-                          () => api.withdrawFaceEnrollment(e.id),
-                          () => enrollments.mutate(),
-                        )
-                      }
-                    >
-                      Withdraw
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="text-xs"
+                        onChange={(ev) => {
+                          const file = ev.target.files?.[0];
+                          if (!file) return;
+                          submitAction(
+                            () => api.addEnrollmentPhoto(e.id, file),
+                            () => enrollments.mutate(),
+                          );
+                          ev.target.value = "";
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          submitAction(
+                            () => api.withdrawFaceEnrollment(e.id),
+                            () => enrollments.mutate(),
+                          )
+                        }
+                      >
+                        Withdraw
+                      </Button>
+                    </div>
                   ) : null}
                 </li>
               ))}

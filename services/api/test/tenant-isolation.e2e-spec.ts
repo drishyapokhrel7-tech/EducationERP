@@ -77,6 +77,17 @@ describe("Tenant isolation (e2e)", () => {
         // deleted early in this list and question very late, so answer
         // must lead everything, ahead of even reportCard/grade/marks.
         "answer",
+        // faceMatchEvent.cameraEventId is RESTRICT (must precede
+        // cameraEvent); cameraEvent.cameraId is RESTRICT (must precede
+        // camera); faceMatchEvent's matchedEnrollmentId/reviewedBy are
+        // SET NULL, so no ordering requirement against
+        // faceEnrollment/user specifically.
+        "faceMatchEvent",
+        "cameraEvent",
+        "camera",
+        // faceEmbedding.faceEnrollmentId is RESTRICT — must precede
+        // faceEnrollment.
+        "faceEmbedding",
         // faceEnrollment's studentId/staffId FKs are ON DELETE SET NULL
         // (not RESTRICT), so it doesn't block on student/employee
         // ordering the way most tables here do — it only needs to
@@ -3790,5 +3801,152 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(tokenB))
         .expect(404);
     });
+  });
+
+  describe("camera capture & face matching (Phase 6 slice 6c — requires services/ai running on AI_SERVICE_URL)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    // Two single-face crops derived from InsightFace's own bundled
+    // demo/test image (t1.jpg, a generic stock photo — not a named
+    // real individual's photo), prepared once via a throwaway Python
+    // script before this slice was planned. Not new assets added to
+    // this repo — read from the session scratchpad.
+    const fixturesDir =
+      "/private/tmp/claude-501/-Users-nepalpolicemac5-website/87a26d71-4b2c-4aaf-b1d1-16be580a0359/scratchpad";
+    const enrollmentFace = `${fixturesDir}/enrollment-face.jpg`;
+    const differentFace = `${fixturesDir}/different-face.jpg`;
+    // The un-cropped original (6 faces) — used only to prove the
+    // enrollment-photo endpoint actually rejects a multi-face photo,
+    // not to enroll with it.
+    const multiFacePhoto =
+      "/Users/nepalpolicemac5/educationERP/services/ai/.venv/lib/python3.13/site-packages/insightface/data/images/t1.jpg";
+
+    it("identifies a capture against its own enrollment photo, keeps the image only for an uncertain match against a different face, and supports review", async () => {
+      await request(app.getHttpServer())
+        .put("/organizations/me/biometric-policy")
+        .set(...auth(tokenA))
+        .send({ enabled: true })
+        .expect(200);
+
+      const student = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({ studentCode: `CAM-STU-${run}`, firstName: "Cami", lastName: "Rai", dateOfBirth: "2015-01-01" })
+        .expect(201);
+      const enrollment = await request(app.getHttpServer())
+        .post("/organizations/me/biometric/enrollments")
+        .set(...auth(tokenA))
+        .send({ studentId: student.body.id, consentGivenBy: "self" })
+        .expect(201);
+
+      // A photo with more than one face is rejected outright.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/biometric/enrollments/${enrollment.body.id}/photo`)
+        .set(...auth(tokenA))
+        .attach("image", multiFacePhoto)
+        .expect(400);
+
+      const photo = await request(app.getHttpServer())
+        .post(`/organizations/me/biometric/enrollments/${enrollment.body.id}/photo`)
+        .set(...auth(tokenA))
+        .attach("image", enrollmentFace)
+        .expect(201);
+      expect(photo.body.detScore).toBeGreaterThan(0);
+
+      const camera = await request(app.getHttpServer())
+        .post("/organizations/me/cameras")
+        .set(...auth(tokenA))
+        .send({ name: `Camera ${run}` })
+        .expect(201);
+
+      const identifiedEvent = await request(app.getHttpServer())
+        .post(`/organizations/me/cameras/${camera.body.id}/events`)
+        .set(...auth(tokenA))
+        .attach("image", enrollmentFace)
+        .expect(201);
+      expect(identifiedEvent.body.matches).toHaveLength(1);
+      expect(identifiedEvent.body.matches[0].result).toBe("IDENTIFIED");
+      expect(identifiedEvent.body.matches[0].matchedEnrollmentId).toBe(enrollment.body.id);
+      expect(identifiedEvent.body.hasImage).toBe(false);
+
+      const uncertainEvent = await request(app.getHttpServer())
+        .post(`/organizations/me/cameras/${camera.body.id}/events`)
+        .set(...auth(tokenA))
+        .attach("image", differentFace)
+        .expect(201);
+      expect(uncertainEvent.body.matches).toHaveLength(1);
+      const uncertainMatch = uncertainEvent.body.matches[0];
+      expect(uncertainMatch.result).not.toBe("IDENTIFIED");
+      expect(uncertainEvent.body.hasImage).toBe(true);
+
+      // No image was kept for the confidently-identified event...
+      await request(app.getHttpServer())
+        .get(`/organizations/me/face-match-events/${identifiedEvent.body.matches[0].id}/image`)
+        .set(...auth(tokenA))
+        .expect(404);
+      // ...but one was for the uncertain one, per the confirmed
+      // retention rule.
+      const imageRes = await request(app.getHttpServer())
+        .get(`/organizations/me/face-match-events/${uncertainMatch.id}/image`)
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(imageRes.headers["content-type"]).toContain("image");
+
+      if (uncertainMatch.result === "POSSIBLE_MATCH") {
+        const reviewed = await request(app.getHttpServer())
+          .post(`/organizations/me/face-match-events/${uncertainMatch.id}/review`)
+          .set(...auth(tokenA))
+          .send({ decision: "REJECTED" })
+          .expect(201);
+        expect(reviewed.body.reviewDecision).toBe("REJECTED");
+
+        // Reviewing a second time is a real conflict, not a silent no-op.
+        await request(app.getHttpServer())
+          .post(`/organizations/me/face-match-events/${uncertainMatch.id}/review`)
+          .set(...auth(tokenA))
+          .send({ decision: "CONFIRMED" })
+          .expect(409);
+      } else {
+        // UNKNOWN — nothing to review, the endpoint only accepts a
+        // POSSIBLE_MATCH.
+        await request(app.getHttpServer())
+          .post(`/organizations/me/face-match-events/${uncertainMatch.id}/review`)
+          .set(...auth(tokenA))
+          .send({ decision: "REJECTED" })
+          .expect(400);
+      }
+
+      const listB = await request(app.getHttpServer())
+        .get("/organizations/me/face-match-events")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(listB.body).toEqual([]);
+    }, 60000);
+
+    it("rejects capture while the org's policy is disabled, and cross-tenant camera/image access (404)", async () => {
+      await request(app.getHttpServer())
+        .put("/organizations/me/biometric-policy")
+        .set(...auth(tokenA))
+        .send({ enabled: false })
+        .expect(200);
+
+      const camera = await request(app.getHttpServer())
+        .post("/organizations/me/cameras")
+        .set(...auth(tokenA))
+        .send({ name: `Disabled-Policy Camera ${run}` })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/cameras/${camera.body.id}/events`)
+        .set(...auth(tokenA))
+        .attach("image", enrollmentFace)
+        .expect(400);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/cameras/${camera.body.id}/events`)
+        .set(...auth(tokenB))
+        .attach("image", enrollmentFace)
+        .expect(404);
+    }, 30000);
   });
 });

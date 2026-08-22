@@ -138,6 +138,13 @@ import type {
   CreateFaceEnrollmentInput,
   FaceEnrollmentRecord,
   FaceEnrollment,
+  AddEnrollmentPhotoResult,
+  CreateCameraInput,
+  CameraRecord,
+  CameraEventResult,
+  FaceMatchEvent,
+  FaceMatchEventRecord,
+  ReviewFaceMatchInput,
 } from "./types";
 
 export class ApiError extends Error {
@@ -637,6 +644,31 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
     listFaceEnrollments: () => request<FaceEnrollment[]>("/organizations/me/biometric/enrollments"),
     withdrawFaceEnrollment: (id: string) =>
       request<FaceEnrollmentRecord>(`/organizations/me/biometric/enrollments/${id}/withdraw`, { method: "POST" }),
+    addEnrollmentPhoto: (id: string, file: File) => {
+      const form = new FormData();
+      form.append("image", file);
+      return requestForm<AddEnrollmentPhotoResult>(`/organizations/me/biometric/enrollments/${id}/photo`, form);
+    },
+
+    // Camera capture + face matching (Phase 6 slice 6c).
+    createCamera: (input: CreateCameraInput) =>
+      request<CameraRecord>("/organizations/me/cameras", { method: "POST", body: JSON.stringify(input) }),
+    listCameras: () => request<CameraRecord[]>("/organizations/me/cameras"),
+    // Doubles as the plan's "simulated camera source" — any image
+    // posted here exercises the full capture→match pipeline, the same
+    // way a real camera adapter eventually will (slice 6e).
+    ingestCameraEvent: (cameraId: string, file: File) => {
+      const form = new FormData();
+      form.append("image", file);
+      return requestForm<CameraEventResult>(`/organizations/me/cameras/${cameraId}/events`, form);
+    },
+    listFaceMatchEvents: () => request<FaceMatchEvent[]>("/organizations/me/face-match-events"),
+    reviewFaceMatch: (id: string, input: ReviewFaceMatchInput) =>
+      request<FaceMatchEventRecord>(`/organizations/me/face-match-events/${id}/review`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    getFaceMatchImage: (id: string) => requestBlob(`/organizations/me/face-match-events/${id}/image`),
   };
 }
 

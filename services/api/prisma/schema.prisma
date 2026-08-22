@@ -82,6 +82,10 @@ model Organization {
   answers                  Answer[]
   biometricPolicy          BiometricPolicy?
   faceEnrollments          FaceEnrollment[]
+  cameras                  Camera[]
+  cameraEvents             CameraEvent[]
+  faceEmbeddings           FaceEmbedding[]
+  faceMatchEvents          FaceMatchEvent[]
 
   @@map("organizations")
 }
@@ -339,13 +343,14 @@ model User {
   updatedAt      DateTime   @updatedAt
   deletedAt      DateTime?
 
-  organization Organization @relation(fields: [organizationId], references: [id])
-  userRoles    UserRole[]
-  sessions     Session[]
-  loginEvents  LoginEvent[]
-  auditLogs    AuditLog[]
-  employee     Employee?
-  student      Student?
+  organization     Organization     @relation(fields: [organizationId], references: [id])
+  userRoles        UserRole[]
+  sessions         Session[]
+  loginEvents      LoginEvent[]
+  auditLogs        AuditLog[]
+  employee         Employee?
+  student          Student?
+  faceMatchReviews FaceMatchEvent[]
 
   @@index([organizationId])
   @@map("users")
@@ -1098,8 +1103,8 @@ enum FaceEnrollmentStatus {
 }
 
 model FaceEnrollment {
-  id             String                @id @default(uuid())
-  organizationId String
+  id                 String               @id @default(uuid())
+  organizationId     String
   // Exactly one of these two is set — the plan's ERD names one shared
   // face_enrollments table (unlike this project's own Attendance
   // precedent, which splits Student/Staff into separate tables), so a
@@ -1120,14 +1125,139 @@ model FaceEnrollment {
   createdAt          DateTime             @default(now())
   updatedAt          DateTime             @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
-  student      Student?     @relation(fields: [studentId], references: [id])
-  staff        Employee?    @relation(fields: [staffId], references: [id])
+  organization  Organization     @relation(fields: [organizationId], references: [id])
+  student       Student?         @relation(fields: [studentId], references: [id])
+  staff         Employee?        @relation(fields: [staffId], references: [id])
+  faceEmbedding FaceEmbedding?
+  matchEvents   FaceMatchEvent[]
 
   @@index([organizationId])
   @@index([studentId])
   @@index([staffId])
   @@map("face_enrollments")
+}
+
+// ── CCTV / Biometric — camera capture, matching, human review (Phase 6
+// slice 6c) ──────────────────────────────────────────────────────────────
+// Where 6a's consent and 6b's embedding service actually connect.
+// FaceEmbedding is only ever created via the enrollment-photo endpoint
+// (a deliberately-empty table until now, same "don't build unused
+// schema" reasoning already applied to Answer/FaceEnrollment). A
+// captured frame's image is discarded immediately for a confidently
+// IDENTIFIED result and kept only for POSSIBLE_MATCH/UNKNOWN, so a
+// human reviewer has something to look at — confirmed with the user
+// before this slice was planned, governed by BiometricPolicy's
+// retentionDays (an automated purge job is a deliberate follow-up, not
+// built here).
+
+enum CameraAdapterType {
+  SIMULATED
+  RTSP
+  USB_WEBCAM
+}
+
+enum CameraStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model Camera {
+  id             String            @id @default(uuid())
+  organizationId String
+  name           String
+  location       String?
+  // Descriptive metadata only — this backend never actually connects
+  // to a camera regardless of type, it only receives already-captured
+  // frames over HTTP. Real adapter behavior (RTSP polling, etc.)
+  // belongs to a future client (slice 6e), not this table.
+  adapterType    CameraAdapterType @default(SIMULATED)
+  status         CameraStatus      @default(ACTIVE)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id])
+  events       CameraEvent[]
+
+  @@index([organizationId])
+  @@map("cameras")
+}
+
+model CameraEvent {
+  id                String   @id @default(uuid())
+  organizationId    String
+  cameraId          String
+  capturedAt        DateTime @default(now())
+  // Null unless at least one detected face in this frame came back
+  // POSSIBLE_MATCH or UNKNOWN — see the retention note above.
+  capturedImage     Bytes?
+  capturedImageType String?
+  createdAt         DateTime @default(now())
+
+  organization Organization     @relation(fields: [organizationId], references: [id])
+  camera       Camera           @relation(fields: [cameraId], references: [id])
+  matches      FaceMatchEvent[]
+
+  @@index([organizationId])
+  @@index([cameraId])
+  @@map("camera_events")
+}
+
+model FaceEmbedding {
+  id               String                     @id @default(uuid())
+  organizationId   String
+  faceEnrollmentId String                     @unique
+  // Prisma has no native vector type — Unsupported() still generates
+  // the column via migration SQL, but reads/writes go through
+  // $queryRaw/$executeRaw (verified directly against this project's
+  // real Neon database before this slice was planned: an uncast read
+  // throws a deserialization error, an explicit ::text cast works,
+  // and the <=> cosine-distance operator ranks correctly).
+  embedding        Unsupported("vector(512)")
+  // Which FACE_MODEL_NAME produced this embedding — future model
+  // changes need to know which rows are stale.
+  modelVersion     String
+  createdAt        DateTime                   @default(now())
+
+  organization   Organization   @relation(fields: [organizationId], references: [id])
+  faceEnrollment FaceEnrollment @relation(fields: [faceEnrollmentId], references: [id])
+
+  @@index([organizationId])
+  @@map("face_embeddings")
+}
+
+enum FaceMatchResult {
+  IDENTIFIED
+  POSSIBLE_MATCH
+  UNKNOWN
+}
+
+enum FaceMatchReviewDecision {
+  CONFIRMED
+  REJECTED
+}
+
+model FaceMatchEvent {
+  id                  String                   @id @default(uuid())
+  organizationId      String
+  cameraEventId       String
+  matchedEnrollmentId String?
+  confidence          Float
+  result              FaceMatchResult
+  // The architecture doc's explicit "human review for uncertain
+  // matches" requirement — only ever set for a POSSIBLE_MATCH.
+  reviewedAt          DateTime?
+  reviewedBy          String?
+  reviewDecision      FaceMatchReviewDecision?
+  createdAt           DateTime                 @default(now())
+
+  organization      Organization    @relation(fields: [organizationId], references: [id])
+  cameraEvent       CameraEvent     @relation(fields: [cameraEventId], references: [id])
+  matchedEnrollment FaceEnrollment? @relation(fields: [matchedEnrollmentId], references: [id])
+  reviewer          User?           @relation(fields: [reviewedBy], references: [id])
+
+  @@index([organizationId])
+  @@index([cameraEventId])
+  @@map("face_match_events")
 }
 
 // ── Syllabus & Lesson Plans (plan §6 "Teaching & Learning" — Phase 3

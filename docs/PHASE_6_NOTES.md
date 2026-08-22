@@ -224,7 +224,7 @@ practical risk for a service this small).
   hit for `apps/exam-client` in slice 4g) — this direct-HTTP check is
   the actual verification, not a browser-style pass, stated plainly.
 
-## Next step
+## Next step (as of slice 6b)
 
 Slice 6b done, stopped per plan §21 step 17. Next up per the roadmap:
 **6c** — camera adapters, the plan's explicit simulated camera source,
@@ -233,3 +233,136 @@ Slice 6b done, stopped per plan §21 step 17. Next up per the roadmap:
 and the three-way match result (identified/possible-match/unknown).
 This is where NestJS actually starts calling `services/ai` for the
 first time. Needs its own go-ahead.
+
+## Slice 6c — camera capture, face matching, human review
+
+User said "go-ahead." This is where 6a's consent and 6b's embedding
+service actually connect, and where NestJS calls `services/ai` for the
+first time. Two technical risks were verified directly against this
+project's real Neon database *before* writing the plan, not assumed:
+reading a raw `Unsupported("vector(n)")` column via `$queryRaw`
+requires an explicit `::text` cast (an uncast read throws a
+deserialization error), and the `<=>` cosine-distance operator works
+correctly once cast. Confirmed with the user before planning: a
+captured frame's raw image is **kept only when the match result is
+uncertain** (`POSSIBLE_MATCH` or `UNKNOWN`) — discarded immediately
+for a confidently `IDENTIFIED` frame — so a human reviewer has
+something to look at; this was the non-default, more-auditable option
+of the two offered, chosen explicitly over the stronger-privacy
+default.
+
+## What shipped
+
+Four new tables: `Camera` (`adapterType` — `SIMULATED`/`RTSP`/
+`USB_WEBCAM` — is metadata for 6e's future client to key off of; this
+backend never connects to a camera itself regardless of type, it only
+receives already-captured frames over HTTP), `CameraEvent`
+(`capturedImage Bytes?`/`capturedImageType` — null unless at least one
+face in the frame came back uncertain, per the confirmed retention
+rule; a `Bytes` column since no object storage exists in this project,
+Phase 2's own deferred decision, and this is a narrow slice of events
+that actually keep an image), `FaceEmbedding` (one per
+`FaceEnrollment`, `embedding Unsupported("vector(512)")` — Prisma
+generated `vector(512) NOT NULL` directly from the `Unsupported` type,
+no manual SQL editing needed — plus `modelVersion`, the model that
+actually produced it, for a future migration story if the model ever
+changes), `FaceMatchEvent` (`result` — `IDENTIFIED`/`POSSIBLE_MATCH`/
+`UNKNOWN` — plus the `reviewedAt`/`reviewedBy`/`reviewDecision` human-
+review trail the architecture doc requires for uncertain matches). A
+migration ordering gotcha turned up here: `pgvector` had been installed
+directly on the real DB back in 6a's spike but was never tracked in
+migration history, so a shadow-DB replay failed with "type vector does
+not exist" — fixed by inserting a `CREATE EXTENSION IF NOT EXISTS
+vector;` migration with an earlier timestamp than the schema migration,
+applied to the real DB as an idempotent no-op.
+
+New `AiGatewayService` — one method, a thin `fetch`-based multipart
+POST to `services/ai`'s `/v1/face/embed` (Node's built-in `fetch`/
+`FormData`/`Blob`, no new HTTP client dependency). The AI service's
+response carries `modelName` (which model actually produced the
+embeddings) so NestJS records that ground truth rather than trusting
+its own possibly-out-of-sync `FACE_MODEL_NAME` env var.
+
+Extended `biometric-policy`: `POST
+/organizations/me/biometric/enrollments/:id/photo` — calls
+`AiGatewayService`, rejects 400 for zero/multiple faces or a
+detection-confidence floor (a good enrollment photo is one clear
+headshot — exactly the "what's a good photo" policy 6b deliberately
+left to its caller), stores the embedding via a raw-SQL upsert (Prisma
+can't set an `Unsupported` column through its normal Client API).
+
+New `camera-events` module: register/list cameras, the ingestion
+endpoint (`POST .../cameras/:id/events` — 400s if the org's
+`BiometricPolicy` isn't enabled, runs the pgvector similarity search
+per detected face against every embedding in the org, classifies
+`IDENTIFIED`/`POSSIBLE_MATCH`/`UNKNOWN` against the 6a-configurable
+`matchConfidenceThreshold` with a fixed internal "possible match"
+band below it), the review-queue list (never the raw image bytes in a
+list payload), a `StreamableFile` image-serving route (404 if no image
+was kept), and review (`CONFIRMED`/`REJECTED`, 400 if not
+`POSSIBLE_MATCH`, 409 if already reviewed — not a silent no-op, same
+precedent as 6a's withdraw). **No separate camera simulator was
+built** — the ingestion endpoint is adapter-agnostic by design, so any
+multipart image POSTed to it during dev/testing already exercises the
+same real pipeline a future 6e camera adapter will use. Two new RBAC
+resources (`camera`, `face_match_event`; 50 resources total), Super
+Admin/Organization Admin only, same as every resource so far.
+
+New `/dashboard/cameras` page — camera registration, a "simulate a
+capture" form (camera + image upload, doubling as both the admin UI
+and the dev-testing tool for the simulated camera source), and a
+review queue rendering the kept image via a blob-fetching component
+with Confirm/Reject actions. `/dashboard/biometric-policy` extended
+with a per-enrollment photo-upload input.
+
+Test fixtures: no new image asset was committed. Both slices in this
+phase reuse InsightFace's own bundled `t1.jpg` (6 faces); since the
+enrollment endpoint rejects multi-face photos, two single-face crops
+were prepared via a throwaway script for enrollment/verification use,
+each confirmed to contain exactly one detectable face — deliberately
+avoiding the package's other bundled demo image, a named real
+individual's photo.
+
+## Verified
+
+- `pnpm -r typecheck` / `lint` / `build` clean across all four
+  packages.
+- `services/api` e2e: 51/51, zero regressions. Two new tests: the full
+  happy path (enable policy → enroll a student → reject a multi-face
+  enrollment photo (400) → upload a real single-face enrollment photo
+  → register a camera → ingest the *same* photo as a captured event →
+  `IDENTIFIED`, no kept image → ingest a *different* face → not
+  `IDENTIFIED`, image kept → 404 on the identified event's image / 200
+  on the uncertain one → review it if `POSSIBLE_MATCH`, or confirm a
+  400 on attempting to review an `UNKNOWN` → cross-tenant guards
+  throughout), plus capture-while-disabled (400) and cross-tenant
+  camera/image 404s.
+- Full browser pass, as the demo admin: enabled the policy, recorded
+  consent, uploaded an enrollment photo (via a direct authenticated
+  request using the session's own token — the browser automation tool
+  cannot drive a native file-picker dialog, a genuine tool limitation
+  stated plainly, same class of gap already hit for `apps/exam-client`
+  in 4g), confirmed the UI updated from "no photo yet" to "photo
+  captured" after reload, registered a camera through the actual UI
+  form, and simulated two captures: the same enrollment photo came
+  back `IDENTIFIED` at confidence 1.0 with no kept image; a genuinely
+  different face came back `UNKNOWN` at confidence 0.057 (correctly
+  nowhere near a match) with an image kept per the retention rule.
+  Since that second result landed as `UNKNOWN` rather than
+  `POSSIBLE_MATCH` on this exact test pair, the org's threshold was
+  temporarily lowered to reclassify that same low-confidence result as
+  `POSSIBLE_MATCH` specifically to exercise the review-queue UI itself
+  — confirmed the queue correctly rendered the kept image and label,
+  clicked Reject, confirmed the "Saved" toast and the queue correctly
+  emptying to "Nothing awaiting review." All test data (camera, camera
+  events, face-match events, the face embedding, the enrollment) and
+  the policy's enabled flag/threshold were reset afterward via a
+  cleanup script scoped to the demo org.
+
+## Next step (as of slice 6c)
+
+Slice 6c done, stopped per plan §21 step 17. Next up per the roadmap:
+**6d, attendance reconciliation** — wiring a confirmed face match into
+the existing `AttendanceSession`/`StudentAttendance`/`StaffAttendance`
+models from slice 3b (already flagged there as deferred to here).
+Needs its own go-ahead.

@@ -104,6 +104,11 @@ const RESOURCES = [
   // resource, not a special case added just for it.
   "biometric_policy",
   "biometric_enrollment",
+  // Phase 6 slice 6c added camera (registration + the capture-ingestion
+  // endpoint) and face_match_event (the review queue) — same
+  // Super-Admin/Organization-Admin-only reasoning as 6a's two.
+  "camera",
+  "face_match_event",
 ];
 const ACTIONS = Object.values(PermissionAction);
 
