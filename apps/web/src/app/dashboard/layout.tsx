@@ -12,6 +12,7 @@ import {
   ClipboardCheck,
   ClipboardList,
   FileQuestion,
+  Fingerprint,
   GraduationCap,
   ScrollText,
   LayoutDashboard,
@@ -42,6 +43,7 @@ const NAV = [
   { href: "/dashboard/learning-dashboards", label: "Learning Dashboards", icon: LayoutPanelTop },
   { href: "/dashboard/exam-setup", label: "Exam Setup", icon: FileQuestion },
   { href: "/dashboard/exams", label: "Exams", icon: ScrollText },
+  { href: "/dashboard/biometric-policy", label: "Biometric", icon: Fingerprint },
 ];
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {

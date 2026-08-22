@@ -1361,3 +1361,49 @@ export interface AnswerRecord {
 export interface AnswerWithQuestion extends AnswerRecord {
   question: ExamQuestion;
 }
+
+// ── CCTV / Biometric — privacy & consent foundation (Phase 6 slice 6a) ──
+// No face image/embedding/camera/matching types exist yet — those are
+// added once the pipeline that would produce them exists (slices 6b/6c).
+
+export interface BiometricPolicyRecord {
+  organizationId: string;
+  enabled: boolean;
+  retentionDays: number;
+  matchConfidenceThreshold: number;
+}
+
+export interface UpdateBiometricPolicyInput {
+  enabled?: boolean;
+  retentionDays?: number;
+  matchConfidenceThreshold?: number;
+}
+
+export type FaceEnrollmentStatus = "ACTIVE" | "WITHDRAWN";
+
+export interface CreateFaceEnrollmentInput {
+  studentId?: string;
+  staffId?: string;
+  consentGivenBy: string;
+  consentGivenAt?: string;
+}
+
+export interface FaceEnrollmentRecord {
+  id: string;
+  organizationId: string;
+  studentId: string | null;
+  staffId: string | null;
+  status: FaceEnrollmentStatus;
+  consentGivenAt: string;
+  consentGivenBy: string;
+  consentWithdrawnAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// listEnrollments' fuller shape — the linked student/staff record, so
+// the admin UI can show a name without a second lookup.
+export interface FaceEnrollment extends FaceEnrollmentRecord {
+  student: StudentSummary | null;
+  staff: Employee | null;
+}

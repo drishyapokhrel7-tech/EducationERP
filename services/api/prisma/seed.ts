@@ -95,6 +95,15 @@ const RESOURCES = [
   "marks",
   "grade",
   "report_card",
+  // Phase 6 slice 6a added biometric_policy (the org-wide enable/
+  // disable + retention/threshold settings) and biometric_enrollment
+  // (per-person consent records) — same as every resource added since
+  // Phase 1, only Super Admin/Organization Admin get permissions here
+  // (below), which happens to match the architecture doc's explicit
+  // "strict biometric access control" requirement for this one
+  // resource, not a special case added just for it.
+  "biometric_policy",
+  "biometric_enrollment",
 ];
 const ACTIONS = Object.values(PermissionAction);
 

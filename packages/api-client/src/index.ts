@@ -133,6 +133,11 @@ import type {
   SaveAnswerInput,
   AnswerRecord,
   AnswerWithQuestion,
+  BiometricPolicyRecord,
+  UpdateBiometricPolicyInput,
+  CreateFaceEnrollmentInput,
+  FaceEnrollmentRecord,
+  FaceEnrollment,
 } from "./types";
 
 export class ApiError extends Error {
@@ -615,6 +620,23 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       }),
     submitMyExam: (examSubjectId: string) =>
       request<ExamAttemptRecord>(`/organizations/me/portal/exams/${examSubjectId}/submit`, { method: "POST" }),
+
+    // CCTV/Biometric privacy & consent foundation (Phase 6 slice 6a) —
+    // no capture/matching capability yet, see BiometricPolicyService.
+    getBiometricPolicy: () => request<BiometricPolicyRecord>("/organizations/me/biometric-policy"),
+    updateBiometricPolicy: (input: UpdateBiometricPolicyInput) =>
+      request<BiometricPolicyRecord>("/organizations/me/biometric-policy", {
+        method: "PUT",
+        body: JSON.stringify(input),
+      }),
+    createFaceEnrollment: (input: CreateFaceEnrollmentInput) =>
+      request<FaceEnrollmentRecord>("/organizations/me/biometric/enrollments", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    listFaceEnrollments: () => request<FaceEnrollment[]>("/organizations/me/biometric/enrollments"),
+    withdrawFaceEnrollment: (id: string) =>
+      request<FaceEnrollmentRecord>(`/organizations/me/biometric/enrollments/${id}/withdraw`, { method: "POST" }),
   };
 }
 

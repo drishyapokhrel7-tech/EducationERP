@@ -21,6 +21,7 @@ import { ExamEvaluationModule } from "./modules/exam-evaluation/exam-evaluation.
 import { ExamGradingModule } from "./modules/exam-grading/exam-grading.module";
 import { StudentPortalModule } from "./modules/student-portal/student-portal.module";
 import { ExamTakingModule } from "./modules/exam-taking/exam-taking.module";
+import { BiometricPolicyModule } from "./modules/biometric-policy/biometric-policy.module";
 import { QueueModule } from "./queue/queue.module";
 import { HealthController } from "./common/health.controller";
 
@@ -48,6 +49,7 @@ import { HealthController } from "./common/health.controller";
     ExamGradingModule,
     StudentPortalModule,
     ExamTakingModule,
+    BiometricPolicyModule,
     QueueModule,
   ],
   controllers: [HealthController],

@@ -77,6 +77,12 @@ describe("Tenant isolation (e2e)", () => {
         // deleted early in this list and question very late, so answer
         // must lead everything, ahead of even reportCard/grade/marks.
         "answer",
+        // faceEnrollment's studentId/staffId FKs are ON DELETE SET NULL
+        // (not RESTRICT), so it doesn't block on student/employee
+        // ordering the way most tables here do — it only needs to
+        // precede organization itself, same as biometricPolicy.
+        "faceEnrollment",
+        "biometricPolicy",
         // examRoom references examSchedule + room; examSchedule
         // references examSubject; examSubject references exam +
         // curriculumSubject; exam references examType/term/
@@ -3642,6 +3648,146 @@ describe("Tenant isolation (e2e)", () => {
       await request(app.getHttpServer())
         .post(`/organizations/me/portal/exams/${noAttempt.examSubjectId}/start`)
         .set(...auth(noAttempt.tokenA))
+        .expect(404);
+    });
+  });
+
+  describe("biometric policy (privacy/consent foundation — Phase 6 slice 6a, no capture/matching capability)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    it("defaults to disabled, rejects enrollment while disabled, enrolls a student and a staff member once enabled, rejects neither/both ids, withdraws, and stays tenant-scoped", async () => {
+      const defaultPolicy = await request(app.getHttpServer())
+        .get("/organizations/me/biometric-policy")
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(defaultPolicy.body.enabled).toBe(false);
+
+      const student = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({ studentCode: `BIO-STU-${run}`, firstName: "Bina", lastName: "Rai", dateOfBirth: "2015-01-01" })
+        .expect(201);
+
+      // No consent can be recorded while the org hasn't enabled biometrics.
+      await request(app.getHttpServer())
+        .post("/organizations/me/biometric/enrollments")
+        .set(...auth(tokenA))
+        .send({ studentId: student.body.id, consentGivenBy: "self" })
+        .expect(400);
+
+      const updated = await request(app.getHttpServer())
+        .put("/organizations/me/biometric-policy")
+        .set(...auth(tokenA))
+        .send({ enabled: true, retentionDays: 180, matchConfidenceThreshold: 0.8 })
+        .expect(200);
+      expect(updated.body.enabled).toBe(true);
+      expect(updated.body.retentionDays).toBe(180);
+
+      const staffType = await request(app.getHttpServer())
+        .post("/organizations/me/staff-types")
+        .set(...auth(tokenA))
+        .send({ name: `Bio Staff Type ${run}`, code: `BST${run}` })
+        .expect(201);
+      const designation = await request(app.getHttpServer())
+        .post("/organizations/me/designations")
+        .set(...auth(tokenA))
+        .send({ name: `Bio Designation ${run}`, code: `BDS${run}` })
+        .expect(201);
+      const employee = await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(tokenA))
+        .send({
+          staffTypeId: staffType.body.id,
+          designationId: designation.body.id,
+          employeeCode: `BIO-EMP-${run}`,
+          firstName: "Bikash",
+          lastName: "Shrestha",
+          email: `bikash-${run}@bio-e2e.test`,
+          dateOfJoining: "2026-01-01",
+        })
+        .expect(201);
+
+      // Neither id, and both ids, are both rejected — exactly one required.
+      await request(app.getHttpServer())
+        .post("/organizations/me/biometric/enrollments")
+        .set(...auth(tokenA))
+        .send({ consentGivenBy: "self" })
+        .expect(400);
+      await request(app.getHttpServer())
+        .post("/organizations/me/biometric/enrollments")
+        .set(...auth(tokenA))
+        .send({ studentId: student.body.id, staffId: employee.body.id, consentGivenBy: "self" })
+        .expect(400);
+
+      const studentEnrollment = await request(app.getHttpServer())
+        .post("/organizations/me/biometric/enrollments")
+        .set(...auth(tokenA))
+        .send({ studentId: student.body.id, consentGivenBy: "Guardian: Sita Rai" })
+        .expect(201);
+      expect(studentEnrollment.body.status).toBe("ACTIVE");
+
+      const staffEnrollment = await request(app.getHttpServer())
+        .post("/organizations/me/biometric/enrollments")
+        .set(...auth(tokenA))
+        .send({ staffId: employee.body.id, consentGivenBy: "self" })
+        .expect(201);
+
+      const list = await request(app.getHttpServer())
+        .get("/organizations/me/biometric/enrollments")
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(list.body).toHaveLength(2);
+      const listedStudent = list.body.find((e: { id: string }) => e.id === studentEnrollment.body.id);
+      expect(listedStudent.student.firstName).toBe("Bina");
+
+      const withdrawn = await request(app.getHttpServer())
+        .post(`/organizations/me/biometric/enrollments/${staffEnrollment.body.id}/withdraw`)
+        .set(...auth(tokenA))
+        .expect(201);
+      expect(withdrawn.body.status).toBe("WITHDRAWN");
+
+      // Withdrawing a second time is a real conflict, not a silent no-op.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/biometric/enrollments/${staffEnrollment.body.id}/withdraw`)
+        .set(...auth(tokenA))
+        .expect(409);
+
+      const listB = await request(app.getHttpServer())
+        .get("/organizations/me/biometric/enrollments")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(listB.body).toEqual([]);
+    });
+
+    it("rejects reading/updating another tenant's policy having no effect, and withdrawing under another tenant's enrollment (404)", async () => {
+      await request(app.getHttpServer())
+        .put("/organizations/me/biometric-policy")
+        .set(...auth(tokenA))
+        .send({ enabled: true })
+        .expect(200);
+
+      const studentA = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({ studentCode: `BIO-X-${run}`, firstName: "Rohan", lastName: "Thapa", dateOfBirth: "2015-01-01" })
+        .expect(201);
+      const enrollment = await request(app.getHttpServer())
+        .post("/organizations/me/biometric/enrollments")
+        .set(...auth(tokenA))
+        .send({ studentId: studentA.body.id, consentGivenBy: "self" })
+        .expect(201);
+
+      // Org B's own policy is unaffected by org A's — RLS/app-scoping,
+      // not a shared row.
+      const policyB = await request(app.getHttpServer())
+        .get("/organizations/me/biometric-policy")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(policyB.body.enabled).toBe(false);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/biometric/enrollments/${enrollment.body.id}/withdraw`)
+        .set(...auth(tokenB))
         .expect(404);
     });
   });

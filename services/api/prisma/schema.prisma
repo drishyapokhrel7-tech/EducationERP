@@ -80,6 +80,8 @@ model Organization {
   grades                   Grade[]
   reportCards              ReportCard[]
   answers                  Answer[]
+  biometricPolicy          BiometricPolicy?
+  faceEnrollments          FaceEnrollment[]
 
   @@map("organizations")
 }
@@ -569,6 +571,7 @@ model Employee {
   teachingAssignments     TeachingAssignment[]
   classSchedulesAsTeacher ClassSchedule[]
   staffAttendances        StaffAttendance[]
+  faceEnrollments         FaceEnrollment[]
 
   @@unique([organizationId, employeeCode])
   @@unique([organizationId, email])
@@ -679,6 +682,7 @@ model Student {
   knowledgeCheckAttempts KnowledgeCheckAttempt[]
   examAttempts           ExamAttempt[]
   reportCards            ReportCard[]
+  faceEnrollments        FaceEnrollment[]
 
   @@unique([organizationId, studentCode])
   @@index([organizationId])
@@ -1059,6 +1063,71 @@ model StaffAttendance {
   @@unique([employeeId, date])
   @@index([organizationId])
   @@map("staff_attendance")
+}
+
+// ── CCTV / Biometric — privacy & consent foundation (plan §6/§11/§12 —
+// Phase 6 slice 6a) ──────────────────────────────────────────────────────
+// This slice is deliberately capability-free: no face image, embedding,
+// camera, or matching model exists yet (those are slices 6b/6c, once the
+// pipeline that would populate them actually exists — same "don't build
+// unused schema" reasoning as Answer being deferred until slice 4f).
+// What's here is the privacy/consent boundary that has to exist *before*
+// any of that: an org-wide disable switch (BiometricPolicy, absent-by-
+// default so "off" is the fail-safe with zero setup) and a per-person
+// consent record (FaceEnrollment) — no student or staff member is ever
+// enrolled by the institution-level toggle alone, only by their own (or a
+// guardian's) explicit recorded consent.
+
+model BiometricPolicy {
+  id                       String   @id @default(uuid())
+  organizationId           String   @unique
+  enabled                  Boolean  @default(false)
+  retentionDays            Int      @default(365)
+  matchConfidenceThreshold Float    @default(0.75)
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@map("biometric_policies")
+}
+
+enum FaceEnrollmentStatus {
+  ACTIVE
+  WITHDRAWN
+}
+
+model FaceEnrollment {
+  id             String                @id @default(uuid())
+  organizationId String
+  // Exactly one of these two is set — the plan's ERD names one shared
+  // face_enrollments table (unlike this project's own Attendance
+  // precedent, which splits Student/Staff into separate tables), so a
+  // single table is followed here, but via two typed nullable FKs rather
+  // than an untyped personId+personType pair, keeping real FK integrity.
+  // The XOR is enforced at the service layer, the same way this project
+  // already enforces "exactly one" invariants that Postgres constraints
+  // don't conveniently express.
+  studentId          String?
+  staffId            String?
+  status             FaceEnrollmentStatus @default(ACTIVE)
+  consentGivenAt     DateTime
+  // Who actually gave consent — "self" or a guardian's name — not just
+  // that consent exists, since that's what an audit of this data would
+  // need to answer.
+  consentGivenBy     String
+  consentWithdrawnAt DateTime?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  student      Student?     @relation(fields: [studentId], references: [id])
+  staff        Employee?    @relation(fields: [staffId], references: [id])
+
+  @@index([organizationId])
+  @@index([studentId])
+  @@index([staffId])
+  @@map("face_enrollments")
 }
 
 // ── Syllabus & Lesson Plans (plan §6 "Teaching & Learning" — Phase 3
