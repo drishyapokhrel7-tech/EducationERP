@@ -27,6 +27,14 @@ import { CameraEventsModule } from "./modules/camera-events/camera-events.module
 import { QueueModule } from "./queue/queue.module";
 import { HealthController } from "./common/health.controller";
 
+// QueueModule (BullMQ/ioredis) only backs the /queue/health diagnostic
+// endpoint today — no real domain feature depends on it yet (see
+// queue.controller.ts). On serverless (Vercel), there's no REDIS_URL
+// and no persistent process for a worker to run in anyway, so it's
+// left out entirely rather than letting ioredis retry-loop against an
+// unreachable localhost:6379 inside a request-scoped function.
+const queueModuleImports = process.env.REDIS_URL ? [QueueModule] : [];
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -54,7 +62,7 @@ import { HealthController } from "./common/health.controller";
     BiometricPolicyModule,
     AiGatewayModule,
     CameraEventsModule,
-    QueueModule,
+    ...queueModuleImports,
   ],
   controllers: [HealthController],
 })
