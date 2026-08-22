@@ -1441,6 +1441,11 @@ export interface CameraRecord {
   location: string | null;
   adapterType: CameraAdapterType;
   status: CameraStatus;
+  // Set on every successful capture (ingestEvent), regardless of
+  // whether a face was detected — the natural heartbeat for "is this
+  // camera actually online," independent of the CameraStatus admin
+  // toggle. Null until the camera's first capture ever arrives.
+  lastSeenAt: string | null;
   createdAt: string;
   updatedAt: string;
 }

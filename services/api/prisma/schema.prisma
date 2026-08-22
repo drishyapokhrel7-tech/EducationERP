@@ -1174,6 +1174,13 @@ model Camera {
   // belongs to a future client (slice 6e), not this table.
   adapterType    CameraAdapterType @default(SIMULATED)
   status         CameraStatus      @default(ACTIVE)
+  // Camera health (slice 6e): set on every successful ingestEvent
+  // write, regardless of whether a face was detected — a capture
+  // client posts on its regular interval either way, so this is a
+  // natural heartbeat with no separate endpoint needed. "Healthy" vs
+  // "stale" is computed on read (client-side), not stored, same
+  // reasoning already applied to syllabus_progress elsewhere.
+  lastSeenAt     DateTime?
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
 

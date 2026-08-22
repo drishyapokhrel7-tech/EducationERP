@@ -500,3 +500,137 @@ attendance-event feed, plus the biometric/RFID/barcode/printer
 hardware-adapter surface the plan folds into that same client; nothing
 in 6c/6d depends on it, the ingestion endpoint is adapter-agnostic by
 design. Needs its own go-ahead.
+
+## Slice 6e — `apps/cctv-client` (Electron), closing Phase 6's core pipeline
+
+User said "go-ahead." The plan's spec for this client (docx §12:
+"Camera monitoring, camera health, attendance events, local inference
+and gate operations") is as terse as 4g's own Secure Examination
+Client spec was, so this went through the same `EnterPlanMode` +
+`AskUserQuestion` treatment rather than guessing. Investigation before
+planning (mirroring 6b-6d's "verify before planning" practice) found
+the actual gap: the existing `apps/web` cameras page is a manual-
+upload *simulator*, zero real device access; "camera health" is named
+three times across the docs but completely unbuilt anywhere; RFID/
+barcode/printer are named only in the plan's general capability list,
+never in Phase 6's own scope sentence, with zero existing schema/
+vendor/use case; and the refresh-token mechanism (30-day rolling TTL)
+was verified directly to support an unattended client staying logged
+in indefinitely, but needed a scheduler + single-flight guard that
+doesn't exist anywhere yet (confirmed: `apps/web` never calls
+`/auth/refresh` at all).
+
+User confirmed all three recommended options: **real capture via
+`getUserMedia`** (no RTSP native dependency, nothing to test it
+against here), **RFID/barcode/printer deferred entirely** (not even a
+stub), **camera health added this slice**.
+
+## What shipped
+
+**Backend**: `Camera.lastSeenAt DateTime?` — one additive migration,
+no new endpoint. `ingestEvent` already runs on every capture regardless
+of face detection, so it's the natural heartbeat: set on every
+successful write, independent of whether biometric capture is actually
+enabled for the org (device-online and capture-enabled are separate
+facts). Freshness ("healthy" vs "stale") is computed on read, not
+stored — the existing `apps/web` cameras page got a small addition
+(a `CameraHealthBadge`) to surface it too.
+
+**`apps/cctv-client`** — this project's second Electron app, same
+electron-vite three-target layout and toolchain pins as
+`apps/exam-client` (`electron-vite@^5`, `vite@^7.1.10`,
+`@vitejs/plugin-react@^5.2.0`, same `@education-erp/api-client`
+exclusion from `externalizeDepsPlugin` for the same raw-`.ts`-shipping
+reason). Considered extracting shared preload/IPC scaffolding into a
+`packages/electron-shared` now that a second client exists (4g's own
+notes named this as the trigger point) — the actual overlap turned out
+to be a handful of `contextBridge` lines while the substantive parts
+(IPC channels, token-persistence model, lockdown rationale) differ
+enough that duplicating once more was the better call than a premature
+abstraction.
+
+**Auth deliberately diverges from exam-client's in-memory-only
+model**: exam-client's choice was justified by "shared exam-lab
+machine, re-login each session is fine." This client runs unattended
+at a fixed camera/gate station, so the refresh token (not the access
+token) is persisted to disk via Electron's `safeStorage` (OS-level
+encryption, no new dependency, fails closed — never written
+unencrypted if encryption isn't available on the machine) so the app
+can silently resume a session across restarts. A `RefreshScheduler`
+fires ~2 minutes before each access-token expiry and collapses
+concurrent triggers into one in-flight promise — required because the
+refresh endpoint rotates on every use, and two overlapping calls with
+the same token can otherwise race (confirmed directly against the real
+auth service before writing the plan, not assumed).
+
+Nine narrow `ipcMain.handle` channels (`auth:tryResume`, `auth:login`,
+`auth:logout`, `cameras:list`, `cameras:register`,
+`capture:submitFrame`, `events:listRecent`, `events:review`,
+`events:getImage`) — the renderer captures a frame via
+`getUserMedia`+canvas (only the renderer has browser media APIs) and
+sends the raw bytes across IPC as an `ArrayBuffer`; the main process
+reconstructs a real `File` and calls the exact same
+`apiClient.ingestCameraEvent` a manual web-dashboard upload uses.
+`window.ts` allows the `media` permission specifically (camera access,
+this client's actual purpose) while denying everything else, unlike
+exam-client's blanket deny — and, unlike exam-client's anti-cheat-
+motivated forced-fullscreen kiosk, this window is a normal resizable
+one, since an ops-desk monitoring app (preview + feed + review queue
+at once) needs the space more than it needs kiosk lockdown.
+
+Renderer: Login/Resume → Setup (pick or register this station's
+camera; capture interval is a fixed 15s default, not an elaborate
+config surface) → Station (live local video preview, capture-loop
+status, last classification result, a recent-events feed, and a
+review-queue section reusing the same admin-gated confirm/reject
+action the web dashboard already has — no new RBAC role, this client
+logs in as the same Super Admin/Organization Admin the API already
+requires). Plain React, no Tailwind, same "a narrow app doesn't
+justify a second heavy UI toolchain" call as exam-client.
+
+## Verified
+
+- `pnpm -r typecheck` / `lint` / `build` clean across all six packages.
+- `RefreshScheduler` unit tests (5/5, fake timers, mirroring
+  `retryQueue.spec.ts`'s isolation pattern — `./apiClient` mocked
+  entirely since it touches real Electron modules that don't exist
+  outside a running Electron process): proactive refresh fires at the
+  right margin and reschedules itself from the new expiry; concurrent
+  `refreshNow()` calls collapse into one network request; an invalid
+  refresh token clears state and returns false; no refresh token is a
+  no-op.
+- An integration test (mirroring `examFlow.integration.spec.ts`,
+  exercising this app's own `apiClient.ts` directly against a real
+  running dev API server, not through Electron IPC/`getUserMedia`
+  since neither can run headless here): registered a camera, confirmed
+  `lastSeenAt` starts null, submitted a real on-disk test image
+  through the exact `apiClient.ingestCameraEvent` call path
+  `capture:submitFrame` uses, confirmed `IDENTIFIED` against a
+  pre-enrolled student, confirmed the event appears via
+  `listFaceMatchEvents`, and confirmed `lastSeenAt` updated. All data
+  lived under one freshly-registered disposable org, cleaned up via a
+  one-off script afterward.
+- Confirmed the packaged app boots cleanly: `npx electron .` produced
+  a full legitimate process tree (main, GPU helper, sandboxed network
+  utility, sandboxed renderer) and logged `[cctv-client] window
+  loaded` with no uncaught exception.
+- Stated plainly, same as 4g's own precedent: the actual `getUserMedia`
+  webcam capture and the live UI **could not be verified in this
+  environment** — no GUI-automation tool for a desktop Electron
+  window, and this dev machine has no attached webcam to grant OS
+  camera permission to in any case. The process-boot check above is
+  the closest available verification.
+
+## Next step (as of slice 6e)
+
+Slice 6e done, stopped per plan §21 step 17. **This closes Phase 6's
+core biometric/attendance pipeline (6a-6e)** — consent, embedding
+service, camera capture/matching, attendance reconciliation, and the
+Electron capture/monitoring client are all shipped. Explicitly
+deferred, available if a real need surfaces later: RTSP decode, RFID/
+barcode/printer hardware adapters (even stubbed), code signing/
+auto-update (still an open ADR per `PHASE_0_ARCHITECTURE.md` §8), and
+a shared `packages/electron-shared` extraction. If the user asks
+"what's left" for this project overall: Phase 5 (general AI Gateway,
+skipped in favor of going straight to Phase 6's biometric work) and
+Phases 7-8 per the plan docx remain, not yet re-scoped into slices.

@@ -32,6 +32,36 @@ async function submitAction(action: () => Promise<unknown>, onSuccess: () => voi
   }
 }
 
+// A camera is "healthy" if it's posted a capture recently — generous
+// enough to tolerate any real capture client's interval (the Electron
+// station's own default is 15s) with slack, while still meaning
+// something. Computed on read, not stored — same reasoning as
+// syllabus_progress.
+const HEALTHY_WITHIN_MS = 2 * 60 * 1000;
+
+// Date.now() can't be called directly in a component body (an impure
+// read during render) — this hook is the pure way to let a component
+// react to "the current time" by keeping it in state, updated on an
+// interval rather than read fresh on every render.
+function useNow(intervalMs: number): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), intervalMs);
+    return () => clearInterval(id);
+  }, [intervalMs]);
+  return now;
+}
+
+function CameraHealthBadge({ lastSeenAt, now }: { lastSeenAt: string | null; now: number }) {
+  if (!lastSeenAt) return <Badge variant="secondary">Never seen</Badge>;
+  const healthy = now - new Date(lastSeenAt).getTime() < HEALTHY_WITHIN_MS;
+  return healthy ? (
+    <Badge variant="success">Online</Badge>
+  ) : (
+    <Badge variant="warning">Stale — last seen {new Date(lastSeenAt).toLocaleString()}</Badge>
+  );
+}
+
 function MatchSummary({ m }: { m: CameraEventResult["matches"][number] }) {
   const who = m.matchedEnrollment?.student
     ? `${m.matchedEnrollment.student.firstName} ${m.matchedEnrollment.student.lastName}`
@@ -77,6 +107,7 @@ function MatchImage({ matchId }: { matchId: string }) {
 export default function CamerasPage() {
   const cameras = useSWR("cameras", () => api.listCameras());
   const matchEvents = useSWR("face-match-events", () => api.listFaceMatchEvents());
+  const now = useNow(30_000);
 
   const [cameraForm, setCameraForm] = useState({ name: "", location: "" });
   const [captureCameraId, setCaptureCameraId] = useState("");
@@ -102,11 +133,12 @@ export default function CamerasPage() {
           {!cameras.data || cameras.data.length === 0 ? (
             <p className="text-muted-foreground text-sm">No cameras registered yet.</p>
           ) : (
-            <ul className="text-sm">
+            <ul className="space-y-1 text-sm">
               {cameras.data.map((c) => (
-                <li key={c.id}>
+                <li key={c.id} className="flex flex-wrap items-center gap-2">
                   {c.name}
                   {c.location ? ` — ${c.location}` : ""} ({c.adapterType})
+                  <CameraHealthBadge lastSeenAt={c.lastSeenAt} now={now} />
                 </li>
               ))}
             </ul>

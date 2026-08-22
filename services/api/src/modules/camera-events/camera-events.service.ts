@@ -58,6 +58,12 @@ export class CameraEventsService {
       const camera = await tx.camera.findUnique({ where: { id: cameraId } });
       if (!camera) throw new NotFoundException("Camera not found");
 
+      // Camera health (slice 6e): the device reached the server, so
+      // it's alive — recorded regardless of whether biometric capture
+      // is actually enabled, since "is this camera online" and "is
+      // capture enabled for this org" are independent facts.
+      await tx.camera.update({ where: { id: cameraId }, data: { lastSeenAt: new Date() } });
+
       const policy = await tx.biometricPolicy.findUnique({ where: { organizationId } });
       if (!policy?.enabled) {
         throw new BadRequestException("Biometric capture is disabled for this organization");

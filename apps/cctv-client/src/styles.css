@@ -1,0 +1,189 @@
+:root {
+  color-scheme: light;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #f5f5f4;
+  color: #1c1917;
+}
+
+.screen {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.screen.centered {
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.card {
+  background: white;
+  border: 1px solid #e7e5e4;
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.card h1 {
+  margin: 0;
+}
+
+.card h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+input[type="text"],
+input[type="password"] {
+  padding: 0.625rem;
+  border: 1px solid #d6d3d1;
+  border-radius: 0.5rem;
+  font-size: 1rem;
+}
+
+button {
+  padding: 0.625rem 1.25rem;
+  border: none;
+  border-radius: 0.5rem;
+  background: #6d28d9;
+  color: white;
+  font-size: 0.95rem;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.link-button {
+  background: none;
+  color: #6d28d9;
+  padding: 0.25rem 0;
+  font-size: 0.85rem;
+  text-decoration: underline;
+}
+
+.muted {
+  color: #78716c;
+  font-size: 0.85rem;
+  margin: 0.125rem 0 0;
+}
+
+.error {
+  color: #b91c1c;
+  font-size: 0.85rem;
+}
+
+.camera-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.camera-list button {
+  background: #f5f3ff;
+  color: #4c1d95;
+  width: 100%;
+  text-align: left;
+}
+
+/* Station screen */
+.station header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  background: white;
+  border-bottom: 1px solid #e7e5e4;
+}
+
+.station header h1 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.header-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 1rem;
+}
+
+.station-grid {
+  flex: 1;
+  padding: 1.5rem;
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+video {
+  width: 100%;
+  border-radius: 0.5rem;
+  background: #0c0a09;
+}
+
+.result-list,
+.event-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.review-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #e7e5e4;
+}
+
+.review-item img {
+  width: 100%;
+  max-width: 160px;
+  border-radius: 0.5rem;
+  object-fit: cover;
+}
+
+.review-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.review-actions button {
+  padding: 0.4rem 0.9rem;
+  font-size: 0.85rem;
+}
+
+.review-actions button:last-child {
+  background: #f5f3ff;
+  color: #4c1d95;
+}
