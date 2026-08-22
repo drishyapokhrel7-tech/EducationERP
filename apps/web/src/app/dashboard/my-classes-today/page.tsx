@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import useSWR from "swr";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -10,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
+import { statusVariant } from "@/lib/status-variant";
 
 const DAYS = ["", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -119,8 +121,8 @@ export default function MyClassesTodayPage() {
             <CardTitle>
               Class session
               {activeSession.data ? (
-                <span className="text-muted-foreground ml-2 text-sm font-normal">
-                  {activeSession.data.status} ·{" "}
+                <span className="text-muted-foreground ml-2 inline-flex items-center gap-2 text-sm font-normal">
+                  <Badge variant={statusVariant(activeSession.data.status)}>{activeSession.data.status}</Badge>
                   {activeSession.data.actualSyllabusNode?.name ?? "no topic recorded yet"}
                 </span>
               ) : null}

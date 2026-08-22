@@ -1,15 +1,18 @@
 "use client";
 
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useState, type FormEvent } from "react";
 import useSWR from "swr";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
+import { EntityCard } from "@/components/dashboard/entity-card";
 import { api } from "@/lib/api";
+import { statusVariant } from "@/lib/status-variant";
 import type { SubmissionType } from "@education-erp/api-client";
 
 const SUBMISSION_TYPE_OPTIONS: { value: SubmissionType; label: string }[] = [
@@ -30,43 +33,6 @@ function errorMessage(err: unknown, fallback: string) {
       ? ((err as { body?: { message?: string } }).body?.message ?? null)
       : null;
   return typeof message === "string" ? message : fallback;
-}
-
-function EntityCard({
-  title,
-  emptyLabel,
-  items,
-  renderItem,
-  children,
-}: {
-  title: string;
-  emptyLabel: string;
-  items: unknown[] | undefined;
-  renderItem: (item: never) => ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {!items || items.length === 0 ? (
-          <p className="text-muted-foreground text-sm">{emptyLabel}</p>
-        ) : (
-          <ul className="divide-y">
-            {items.map((item, i) => (
-              <li key={i} className="py-2 text-sm">
-                {renderItem(item as never)}
-              </li>
-            ))}
-          </ul>
-        )}
-        <Separator />
-        {children}
-      </CardContent>
-    </Card>
-  );
 }
 
 export default function AssignmentsPage() {
@@ -233,12 +199,12 @@ export default function AssignmentsPage() {
                 {activeAssignment.data.submissions.map((s) => (
                   <li key={s.id} className="py-2 text-sm">
                     <div className="flex items-center justify-between gap-3">
-                      <span>
-                        {s.student.firstName} {s.student.lastName}{" "}
-                        <span className="text-muted-foreground">
-                          {s.status}
-                          {s.score !== null ? ` · ${s.score}` : ""}
-                        </span>
+                      <span className="flex items-center gap-2">
+                        {s.student.firstName} {s.student.lastName}
+                        <Badge variant={statusVariant(s.status)}>{s.status}</Badge>
+                        {s.score !== null ? (
+                          <span className="text-muted-foreground">{s.score}</span>
+                        ) : null}
                       </span>
                       <Button type="button" variant="outline" className="h-7" onClick={() => {
                         setGradeTarget(gradeTarget === s.studentId ? null : s.studentId);

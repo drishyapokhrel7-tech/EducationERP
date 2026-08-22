@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import useSWR from "swr";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -10,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
+import { statusVariant } from "@/lib/status-variant";
 import type { AdmissionStatus } from "@education-erp/api-client";
 
 const REVIEW_STATUSES: AdmissionStatus[] = [
@@ -79,12 +81,13 @@ export default function AdmissionsPage() {
                 return (
                   <li key={app.id} className="space-y-2 pt-4 first:pt-0">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="text-sm">
+                      <span className="flex items-center gap-2 text-sm">
                         {app.applicantFirstName} {app.applicantLastName}{" "}
                         <span className="text-muted-foreground">
-                          · {app.program.name} · {app.status}
+                          · {app.program.name}
                           {app.score != null ? ` · score ${app.score}` : ""}
                         </span>
+                        <Badge variant={statusVariant(app.status)}>{app.status}</Badge>
                       </span>
                     </div>
 

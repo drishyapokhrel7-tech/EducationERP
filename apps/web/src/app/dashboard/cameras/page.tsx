@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import useSWR from "swr";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -10,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
+import { statusVariant } from "@/lib/status-variant";
 import type { CameraEventResult } from "@education-erp/api-client";
 
 function errorMessage(err: unknown, fallback: string) {
@@ -30,13 +32,25 @@ async function submitAction(action: () => Promise<unknown>, onSuccess: () => voi
   }
 }
 
-function matchLabel(m: CameraEventResult["matches"][number]) {
+function MatchSummary({ m }: { m: CameraEventResult["matches"][number] }) {
   const who = m.matchedEnrollment?.student
     ? `${m.matchedEnrollment.student.firstName} ${m.matchedEnrollment.student.lastName}`
     : m.matchedEnrollment?.staff
       ? `${m.matchedEnrollment.staff.firstName} ${m.matchedEnrollment.staff.lastName}`
       : "unknown person";
-  return `${m.result} — ${who} (${(m.confidence * 100).toFixed(1)}%)`;
+  const reconciled = m.reconciledStudentAttendanceId
+    ? "→ attendance marked"
+    : m.reconciledStaffAttendanceId
+      ? "→ staff attendance marked"
+      : null;
+  return (
+    <span className="flex flex-wrap items-center gap-2">
+      <Badge variant={statusVariant(m.result)}>{m.result}</Badge>
+      <span>
+        {who} ({(m.confidence * 100).toFixed(1)}%){reconciled ? ` ${reconciled}` : ""}
+      </span>
+    </span>
+  );
 }
 
 function MatchImage({ matchId }: { matchId: string }) {
@@ -178,9 +192,11 @@ export default function CamerasPage() {
               {captureResult.matches.length === 0 ? (
                 <p className="text-muted-foreground">No faces detected in that image.</p>
               ) : (
-                <ul>
+                <ul className="space-y-1">
                   {captureResult.matches.map((m) => (
-                    <li key={m.id}>{matchLabel(m)}</li>
+                    <li key={m.id}>
+                      <MatchSummary m={m} />
+                    </li>
                   ))}
                 </ul>
               )}
@@ -201,7 +217,7 @@ export default function CamerasPage() {
               {pendingReview.map((m) => (
                 <li key={m.id} className="flex items-center gap-3 text-sm">
                   <MatchImage matchId={m.id} />
-                  <span>{matchLabel(m)}</span>
+                  <MatchSummary m={m} />
                   <div className="flex gap-2">
                     <Button
                       type="button"

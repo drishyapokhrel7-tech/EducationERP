@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import useSWR from "swr";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -129,11 +130,17 @@ export default function BiometricPolicyPage() {
             <ul className="space-y-2 text-sm">
               {enrollments.data.map((e) => (
                 <li key={e.id} className="flex flex-wrap items-center justify-between gap-2">
-                  <span>
+                  <span className="flex flex-wrap items-center gap-2">
                     {e.student ? `${e.student.firstName} ${e.student.lastName} (student)` : null}
                     {e.staff ? `${e.staff.firstName} ${e.staff.lastName} (staff)` : null}
                     {` — consented by ${e.consentGivenBy} on ${new Date(e.consentGivenAt).toLocaleDateString()}`}
-                    {e.status === "WITHDRAWN" ? " — withdrawn" : e.faceEmbedding ? " — photo captured" : " — no photo yet"}
+                    {e.status === "WITHDRAWN" ? (
+                      <Badge variant="destructive">Withdrawn</Badge>
+                    ) : e.faceEmbedding ? (
+                      <Badge variant="success">Photo captured</Badge>
+                    ) : (
+                      <Badge variant="warning">No photo yet</Badge>
+                    )}
                   </span>
                   {e.status === "ACTIVE" ? (
                     <div className="flex items-center gap-2">

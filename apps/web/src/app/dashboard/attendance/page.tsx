@@ -1,15 +1,17 @@
 "use client";
 
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useState, type FormEvent } from "react";
 import useSWR from "swr";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
-import { Separator } from "@/components/ui/separator";
+import { EntityCard } from "@/components/dashboard/entity-card";
 import { api } from "@/lib/api";
+import { statusVariant } from "@/lib/status-variant";
 import type { AttendanceStatus, StaffAttendanceStatus } from "@education-erp/api-client";
 
 const DAYS = ["", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -28,43 +30,6 @@ const STAFF_STATUS_OPTIONS: { value: StaffAttendanceStatus; label: string }[] = 
   { value: "ON_LEAVE", label: "On leave" },
   { value: "HALF_DAY", label: "Half day" },
 ];
-
-function EntityCard({
-  title,
-  emptyLabel,
-  items,
-  renderItem,
-  children,
-}: {
-  title: string;
-  emptyLabel: string;
-  items: unknown[] | undefined;
-  renderItem: (item: never) => ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {!items || items.length === 0 ? (
-          <p className="text-muted-foreground text-sm">{emptyLabel}</p>
-        ) : (
-          <ul className="divide-y">
-            {items.map((item, i) => (
-              <li key={i} className="py-2 text-sm">
-                {renderItem(item as never)}
-              </li>
-            ))}
-          </ul>
-        )}
-        <Separator />
-        {children}
-      </CardContent>
-    </Card>
-  );
-}
 
 export default function AttendancePage() {
   const sessions = useSWR("attendance-sessions", () => api.listAttendanceSessions());
@@ -222,6 +187,7 @@ export default function AttendancePage() {
                           <span className="text-muted-foreground">{student.studentCode}</span>
                         </span>
                         <div className="flex items-center gap-2">
+                          {existing ? <Badge variant={statusVariant(existing.status)}>{existing.status}</Badge> : null}
                           <NativeSelect
                             className="w-32"
                             placeholder="Status"
@@ -327,11 +293,10 @@ export default function AttendancePage() {
         emptyLabel="No staff attendance recorded yet."
         items={staffAttendance.data}
         renderItem={(a: { employee: { firstName: string; lastName: string }; date: string; status: string }) => (
-          <span>
+          <span className="flex items-center gap-2">
             {a.employee.firstName} {a.employee.lastName} —{" "}
-            <span className="text-muted-foreground">
-              {new Date(a.date).toLocaleDateString()} · {a.status}
-            </span>
+            <span className="text-muted-foreground">{new Date(a.date).toLocaleDateString()}</span>
+            <Badge variant={statusVariant(a.status)}>{a.status}</Badge>
           </span>
         )}
       >

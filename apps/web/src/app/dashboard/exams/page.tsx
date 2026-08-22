@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import useSWR from "swr";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -10,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
+import { statusVariant } from "@/lib/status-variant";
 import type { AttendanceStatus, Student } from "@education-erp/api-client";
 
 const ATTEMPT_STATUSES: AttendanceStatus[] = ["PRESENT", "ABSENT", "LATE", "EXCUSED"];
@@ -81,8 +83,9 @@ function ExamSubjectAttempts({
           {attempts.data.map((a) => {
             const canHaveMarks = a.status === "PRESENT" || a.status === "LATE";
             return (
-              <li key={a.id}>
-                {a.student.firstName} {a.student.lastName} — {a.status}
+              <li key={a.id} className="flex flex-wrap items-center gap-2">
+                {a.student.firstName} {a.student.lastName}
+                <Badge variant={statusVariant(a.status)}>{a.status}</Badge>
                 {a.startedAt ? (
                   <Button
                     type="button"

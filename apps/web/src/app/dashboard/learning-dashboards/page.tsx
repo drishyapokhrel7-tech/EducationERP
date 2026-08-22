@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import useSWR from "swr";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
+import { statusVariant } from "@/lib/status-variant";
 import { DAYS, StudentSummary } from "@/components/student-summary";
 
 export default function LearningDashboardsPage() {
@@ -105,9 +107,11 @@ export default function LearningDashboardsPage() {
                     <ul className="text-muted-foreground list-disc pl-5">
                       {teacherDashboard.data.recentClassSessions.map((c) => (
                         <li key={c.id}>
-                          {new Date(c.date).toLocaleDateString()} · {c.section.name} —{" "}
-                          {c.status}
-                          {c.actualSyllabusNode ? ` (${c.actualSyllabusNode.name})` : ""}
+                          <span className="inline-flex flex-wrap items-center gap-2">
+                            {new Date(c.date).toLocaleDateString()} · {c.section.name}
+                            <Badge variant={statusVariant(c.status)}>{c.status}</Badge>
+                            {c.actualSyllabusNode ? c.actualSyllabusNode.name : ""}
+                          </span>
                         </li>
                       ))}
                     </ul>

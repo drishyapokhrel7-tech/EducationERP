@@ -1,15 +1,18 @@
 "use client";
 
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useState, type FormEvent } from "react";
 import useSWR from "swr";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
+import { EntityCard } from "@/components/dashboard/entity-card";
 import { api } from "@/lib/api";
+import { statusVariant } from "@/lib/status-variant";
 
 function errorMessage(err: unknown, fallback: string) {
   const message =
@@ -17,43 +20,6 @@ function errorMessage(err: unknown, fallback: string) {
       ? ((err as { body?: { message?: string } }).body?.message ?? null)
       : null;
   return typeof message === "string" ? message : fallback;
-}
-
-function EntityCard({
-  title,
-  emptyLabel,
-  items,
-  renderItem,
-  children,
-}: {
-  title: string;
-  emptyLabel: string;
-  items: unknown[] | undefined;
-  renderItem: (item: never) => ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {!items || items.length === 0 ? (
-          <p className="text-muted-foreground text-sm">{emptyLabel}</p>
-        ) : (
-          <ul className="divide-y">
-            {items.map((item, i) => (
-              <li key={i} className="py-2 text-sm">
-                {renderItem(item as never)}
-              </li>
-            ))}
-          </ul>
-        )}
-        <Separator />
-        {children}
-      </CardContent>
-    </Card>
-  );
 }
 
 export default function KnowledgeChecksPage() {
@@ -112,10 +78,15 @@ export default function KnowledgeChecksPage() {
           questions: unknown[];
           attempts: unknown[];
         }) => (
-          <button type="button" className="hover:text-primary text-left" onClick={() => setActiveCheckId(c.id)}>
-            {c.title} — {c.teachingAssignment.subject.name} for {c.teachingAssignment.section.name}{" "}
+          <button
+            type="button"
+            className="hover:text-primary flex flex-wrap items-center gap-2 text-left"
+            onClick={() => setActiveCheckId(c.id)}
+          >
+            {c.title} — {c.teachingAssignment.subject.name} for {c.teachingAssignment.section.name}
+            <Badge variant={statusVariant(c.status)}>{c.status}</Badge>
             <span className="text-muted-foreground">
-              ({c.status} · {c.questions.length} questions · {c.attempts.length} attempts)
+              ({c.questions.length} questions · {c.attempts.length} attempts)
             </span>
           </button>
         )}
@@ -173,8 +144,15 @@ export default function KnowledgeChecksPage() {
       {activeCheckId ? (
         <Card>
           <CardHeader>
-            <CardTitle>
-              {activeCheck.data ? `${activeCheck.data.title} — ${activeCheck.data.status}` : "Loading…"}
+            <CardTitle className="flex items-center gap-2">
+              {activeCheck.data ? (
+                <>
+                  {activeCheck.data.title}
+                  <Badge variant={statusVariant(activeCheck.data.status)}>{activeCheck.data.status}</Badge>
+                </>
+              ) : (
+                "Loading…"
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">

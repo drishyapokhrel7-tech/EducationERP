@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useState, type FormEvent } from "react";
 import useSWR from "swr";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
+import { EntityCard } from "@/components/dashboard/entity-card";
 import { api } from "@/lib/api";
 import type { GradeBand, QuestionType } from "@education-erp/api-client";
 
@@ -18,43 +19,6 @@ function errorMessage(err: unknown, fallback: string) {
       ? ((err as { body?: { message?: string } }).body?.message ?? null)
       : null;
   return typeof message === "string" ? message : fallback;
-}
-
-function EntityCard({
-  title,
-  emptyLabel,
-  items,
-  renderItem,
-  children,
-}: {
-  title: string;
-  emptyLabel: string;
-  items: unknown[] | undefined;
-  renderItem: (item: never) => ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {!items || items.length === 0 ? (
-          <p className="text-muted-foreground text-sm">{emptyLabel}</p>
-        ) : (
-          <ul className="divide-y">
-            {items.map((item, i) => (
-              <li key={i} className="py-2 text-sm">
-                {renderItem(item as never)}
-              </li>
-            ))}
-          </ul>
-        )}
-        <Separator />
-        {children}
-      </CardContent>
-    </Card>
-  );
 }
 
 const emptyBand: GradeBand = { minPercentage: 0, maxPercentage: 0, grade: "" };

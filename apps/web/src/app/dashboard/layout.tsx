@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   BookOpen,
@@ -51,6 +51,7 @@ const NAV = [
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   // On a cold full-page load, useSyncExternalStore's client snapshot isn't
   // guaranteed to have replaced the (always-null) server snapshot before
   // this component's effects run — observed in practice as a real bug:
@@ -81,26 +82,35 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen flex-1">
-      <aside className="bg-sidebar text-sidebar-foreground flex w-64 flex-col border-r p-4">
+      <aside className="bg-sidebar text-sidebar-foreground border-sidebar-border flex w-64 flex-col border-r p-4">
         <div className="mb-6 flex items-center gap-2 px-2">
-          <Building2 className="size-5" />
-          <span className="font-semibold">Education ERP</span>
+          <div className="bg-primary text-primary-foreground flex size-7 items-center justify-center rounded-lg">
+            <Building2 className="size-4" />
+          </div>
+          <span className="font-heading font-semibold">Education ERP</span>
         </div>
         <nav className="flex flex-1 flex-col gap-1">
-          {NAV.map(({ href, label, icon: Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              className="hover:bg-sidebar-accent flex items-center gap-2 rounded-md px-2 py-2 text-sm"
-            >
-              <Icon className="size-4" />
-              {label}
-            </Link>
-          ))}
+          {NAV.map(({ href, label, icon: Icon }) => {
+            const isActive = href === "/dashboard" ? pathname === href : pathname === href || pathname?.startsWith(`${href}/`);
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={
+                  isActive
+                    ? "bg-sidebar-primary text-sidebar-primary-foreground flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium shadow-sm"
+                    : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground text-sidebar-foreground/80 flex items-center gap-2 rounded-full px-3 py-2 text-sm"
+                }
+              >
+                <Icon className="size-4" />
+                {label}
+              </Link>
+            );
+          })}
         </nav>
-        <div className="flex items-center gap-2 border-t pt-4">
+        <div className="border-sidebar-border flex items-center gap-2 border-t pt-4">
           <Avatar className="size-8">
-            <AvatarFallback>{initials}</AvatarFallback>
+            <AvatarFallback className="bg-primary/10 text-primary">{initials}</AvatarFallback>
           </Avatar>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">

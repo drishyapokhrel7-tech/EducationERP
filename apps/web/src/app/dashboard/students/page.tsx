@@ -1,53 +1,19 @@
 "use client";
 
-import { useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import useSWR from "swr";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
+import { EntityCard } from "@/components/dashboard/entity-card";
 import { api } from "@/lib/api";
+import { statusVariant } from "@/lib/status-variant";
 import type { ImportResult } from "@education-erp/api-client";
-
-function EntityCard({
-  title,
-  emptyLabel,
-  items,
-  renderItem,
-  children,
-}: {
-  title: string;
-  emptyLabel: string;
-  items: unknown[] | undefined;
-  renderItem: (item: never) => ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {!items || items.length === 0 ? (
-          <p className="text-muted-foreground text-sm">{emptyLabel}</p>
-        ) : (
-          <ul className="divide-y">
-            {items.map((item, i) => (
-              <li key={i} className="py-2 text-sm">
-                {renderItem(item as never)}
-              </li>
-            ))}
-          </ul>
-        )}
-        <Separator />
-        {children}
-      </CardContent>
-    </Card>
-  );
-}
 
 export default function StudentsPage() {
   const students = useSWR("students", () => api.listStudents());
@@ -219,11 +185,10 @@ export default function StudentsPage() {
           guardians: { relationship: string; guardian: { firstName: string; lastName: string } }[];
         }) => (
           <div>
-            <span>
+            <span className="flex items-center gap-2">
               {s.firstName} {s.lastName}{" "}
-              <span className="text-muted-foreground">
-                {s.studentCode} · {s.status}
-              </span>
+              <span className="text-muted-foreground">{s.studentCode}</span>
+              <Badge variant={statusVariant(s.status)}>{s.status}</Badge>
             </span>
             {s.guardians.length > 0 ? (
               <p className="text-muted-foreground mt-1 text-xs">
