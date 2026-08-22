@@ -140,7 +140,7 @@ process, not a real regression, not token TTL, not ambient Neon
 noise** — an earlier follow-up task suggesting a token-TTL fix was
 dismissed as based on a misdiagnosis once the real cause was found.
 
-## Next step
+## Next step (as of slice 6a)
 
 Slice 6a done, stopped per plan §21 step 17. Next up per the confirmed
 roadmap: **6b, `services/ai`** — the project's first Python service,
@@ -153,3 +153,83 @@ no GUI-automation tool for it (same limitation already hit for
 `apps/exam-client` in slice 4g — likely an integration-test-only
 verification story again here, stated plainly rather than claiming a
 browser-style pass that isn't possible).
+
+## Slice 6b — `services/ai` (face detection/embedding, standalone)
+
+User said "go-ahead." This is the project's first Python service.
+Before writing any plan, the actual technical risk was verified
+directly rather than assumed: a throwaway venv installed `insightface`
++ `onnxruntime` + `fastapi` + `opencv-python-headless` against this
+machine's real Python 3.13, and ran a full real detection+embedding
+pass — model auto-downloaded from InsightFace's own GitHub release
+hosting, 6 faces detected in a bundled test image, a real 512-dim
+embedding extracted, `CoreMLExecutionProvider` available on top of
+CPU. `EnterPlanMode` was still used (first Python service, genuinely
+new tooling territory) but no `AskUserQuestion` was needed — every
+fork resolved via precedent or the already-de-risked research.
+
+## What shipped
+
+New `services/ai/` — plain `venv` + `requirements.txt` (no poetry/uv;
+nothing in this repo established either convention, and flat
+`requirements.txt` is the lowest-friction choice for a first Python
+service). Not added to `pnpm-workspace.yaml`/`turbo.json` — different
+language ecosystem; `services/*` already globs it textually and pnpm
+correctly skips a directory with no `package.json`.
+
+One route: `POST /v1/face/embed` — multipart image in, every detected
+face's bounding box + detection confidence + 512-dim embedding out.
+Auth via a shared-secret `Authorization: Bearer <AI_SERVICE_API_KEY>`
+header (fails closed — 500, not silently-open, if the server-side
+secret itself isn't configured), matching this project's existing
+internal-trust pattern (e.g. the `app_runtime` DB credential) rather
+than inventing heavier internal auth infra for a same-network internal
+call. **Deliberately does not decide what counts as "a good enrollment
+photo"** (one clear face, high confidence) — that policy belongs to
+whoever calls this in slice 6c, not this service; it returns every
+face it finds and lets the caller judge. Model name is config
+(`FACE_MODEL_NAME`, default `buffalo_l`), not code, per Phase 0's
+explicit rule — `buffalo_s` (the model actually exercised during
+research) remains available as a lighter override. Nothing is
+persisted or logged beyond one request's transient in-memory
+processing — no image or embedding storage exists in this slice.
+
+Test fixture: no photo was added to this repo. Tests load the sample
+image directly from the already-installed `insightface` package's own
+bundled demo asset (`t1.jpg`), avoiding both a named real individual's
+photo and adding any new image asset to the project.
+
+**Explicitly not in this slice**: any NestJS integration/proxying
+(6c, once `FaceEmbedding` exists to store a result in), any
+persistence of images or embeddings, camera adapters, the simulated
+camera source, matching logic, and `mypy`/static Python typing
+(Pydantic + FastAPI's own request/response validation covers the
+practical risk for a service this small).
+
+## Verified
+
+- `pytest` (4/4, ~88s including the real `buffalo_l` model download on
+  first run): auth rejected with no key and with a wrong key, a real
+  end-to-end call against the bundled test image returning 6 detected
+  faces each with a proper 512-length embedding and a plausible
+  confidence score, and a malformed-image upload correctly 400s
+  instead of crashing.
+- Manually booted the server (`uvicorn app.main:app`) and hit it over
+  **real HTTP** (not just FastAPI's test client) with `curl`: `/health`
+  responds, an authenticated multipart request against the same
+  bundled test image returns 6 faces with 512-dim embeddings and a
+  0.92 confidence score, and both an unauthenticated and a
+  wrong-key request correctly 401. No GUI-automation tool exists in
+  this environment for a backend service (same limitation already
+  hit for `apps/exam-client` in slice 4g) — this direct-HTTP check is
+  the actual verification, not a browser-style pass, stated plainly.
+
+## Next step
+
+Slice 6b done, stopped per plan §21 step 17. Next up per the roadmap:
+**6c** — camera adapters, the plan's explicit simulated camera source,
+`face_embeddings` (pgvector, only ever populated for a consented
+`FaceEnrollment` from 6a via this slice's endpoint), `face_match_events`,
+and the three-way match result (identified/possible-match/unknown).
+This is where NestJS actually starts calling `services/ai` for the
+first time. Needs its own go-ahead.

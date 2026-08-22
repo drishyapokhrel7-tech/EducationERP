@@ -12,3 +12,6 @@ out/
 coverage/
 .pnpm-store/
 dump.rdb
+__pycache__/
+*.pyc
+.venv/
