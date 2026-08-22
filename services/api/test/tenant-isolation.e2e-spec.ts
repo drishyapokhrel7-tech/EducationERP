@@ -206,7 +206,7 @@ describe("Tenant isolation (e2e)", () => {
       await prisma.organization.deleteMany({ where: { id: { in: [orgAId, orgBId] } } });
     }
     await app.close();
-  }, 90000);
+  }, 180000);
 
   it("rejects requests with no token", async () => {
     await request(app.getHttpServer()).get("/organizations/me").expect(401);
@@ -3948,5 +3948,347 @@ describe("Tenant isolation (e2e)", () => {
         .attach("image", enrollmentFace)
         .expect(404);
     }, 30000);
+  });
+
+  describe("attendance reconciliation (Phase 6 slice 6d — biometric identification marks existing attendance, never overwrites)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+    const fixturesDir =
+      "/private/tmp/claude-501/-Users-nepalpolicemac5-website/87a26d71-4b2c-4aaf-b1d1-16be580a0359/scratchpad";
+    const enrollmentFace = `${fixturesDir}/enrollment-face.jpg`;
+    const differentFace = `${fixturesDir}/different-face.jpg`;
+    // A third single-face crop from the same InsightFace bundled demo
+    // image used by 6b/6c — kept distinct from enrollmentFace/
+    // differentFace so a student's and a staff member's enrollments
+    // never share an embedding within the same org (which would make
+    // the vector search's "closest match" ambiguous between them).
+    const staffFace = `${fixturesDir}/staff-face.jpg`;
+
+    // Anchored to the real test-run date/time throughout, not a fixed
+    // fixture date like every other describe block's 2099 dates — a
+    // camera capture's timestamp is always server "now" (never
+    // client-suppliable, by design), so the fixture has to bracket
+    // whatever "now" actually is when the suite runs. Computed in UTC
+    // to match AttendanceReconciliationService's own UTC convention.
+    const now = new Date();
+    const ymd = (d: Date) => d.toISOString().slice(0, 10);
+    const todayStr = ymd(now);
+    const isoWeekday = now.getUTCDay() === 0 ? 7 : now.getUTCDay();
+
+    async function buildReconciliationTarget(token: string, suffix: string) {
+      const campus = await request(app.getHttpServer())
+        .post("/organizations/me/campuses")
+        .set(...auth(token))
+        .send({ name: `Reconciliation Campus ${suffix}`, code: `RCCAMP${suffix}` })
+        .expect(201);
+      const faculty = await request(app.getHttpServer())
+        .post("/organizations/me/faculties")
+        .set(...auth(token))
+        .send({ campusId: campus.body.id, name: `Reconciliation Faculty ${suffix}`, code: `RCFAC${suffix}` })
+        .expect(201);
+      const department = await request(app.getHttpServer())
+        .post("/organizations/me/departments")
+        .set(...auth(token))
+        .send({ facultyId: faculty.body.id, name: `Reconciliation Dept ${suffix}`, code: `RCDEP${suffix}` })
+        .expect(201);
+      const program = await request(app.getHttpServer())
+        .post("/organizations/me/programs")
+        .set(...auth(token))
+        .send({ departmentId: department.body.id, name: `Reconciliation Program ${suffix}`, code: `RCPROG${suffix}` })
+        .expect(201);
+      const year = await request(app.getHttpServer())
+        .post("/organizations/me/academic-years")
+        .set(...auth(token))
+        .send({ name: `Reconciliation Year ${suffix}`, startDate: "2020-01-01", endDate: "2035-12-31" })
+        .expect(201);
+      // startDate/endDate bracket real "now" with a wide margin — this
+      // is what AttendanceReconciliationService actually checks
+      // (term.startDate <= capturedAt <= term.endDate) to disambiguate
+      // which of a student's ACTIVE enrollments is current.
+      const term = await request(app.getHttpServer())
+        .post("/organizations/me/terms")
+        .set(...auth(token))
+        .send({
+          academicYearId: year.body.id,
+          name: `Reconciliation Term ${suffix}`,
+          code: `RCT${suffix}`,
+          sequence: 1,
+          startDate: "2020-01-01",
+          endDate: "2035-12-31",
+        })
+        .expect(201);
+      const section = await request(app.getHttpServer())
+        .post("/organizations/me/sections")
+        .set(...auth(token))
+        .send({ programId: program.body.id, termId: term.body.id, name: `Reconciliation Section ${suffix}`, code: `RS${suffix}` })
+        .expect(201);
+      const staffType = await request(app.getHttpServer())
+        .post("/organizations/me/staff-types")
+        .set(...auth(token))
+        .send({ name: `Reconciliation Staff Type ${suffix}`, code: `RST${suffix}` })
+        .expect(201);
+      const designation = await request(app.getHttpServer())
+        .post("/organizations/me/designations")
+        .set(...auth(token))
+        .send({ name: `Reconciliation Designation ${suffix}`, code: `RDS${suffix}` })
+        .expect(201);
+      const employee = await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(token))
+        .send({
+          staffTypeId: staffType.body.id,
+          designationId: designation.body.id,
+          employeeCode: `RCEMP-${suffix}`,
+          firstName: "Reconciliation",
+          lastName: `Teacher${suffix}`,
+          email: `rcteacher-${suffix}-${run}@rls-e2e.test`,
+          dateOfJoining: "2020-01-01",
+        })
+        .expect(201);
+      const subject = await request(app.getHttpServer())
+        .post("/organizations/me/subjects")
+        .set(...auth(token))
+        .send({ name: `Reconciliation Subject ${suffix}`, code: `RCSUB${suffix}` })
+        .expect(201);
+      const room = await request(app.getHttpServer())
+        .post("/organizations/me/rooms")
+        .set(...auth(token))
+        .send({ campusId: campus.body.id, name: `Reconciliation Room ${suffix}`, code: `RRM${suffix}` })
+        .expect(201);
+      // Spans the whole day so the fixture never depends on the actual
+      // wall-clock time the suite happens to run at.
+      const period = await request(app.getHttpServer())
+        .post("/organizations/me/periods")
+        .set(...auth(token))
+        .send({ name: `Reconciliation Period ${suffix}`, code: `RP${suffix}`, sequence: 1, startTime: "00:00", endTime: "23:59" })
+        .expect(201);
+      const assignment = await request(app.getHttpServer())
+        .post("/organizations/me/teaching-assignments")
+        .set(...auth(token))
+        .send({ employeeId: employee.body.id, subjectId: subject.body.id, sectionId: section.body.id, termId: term.body.id })
+        .expect(201);
+      const classSchedule = await request(app.getHttpServer())
+        .post("/organizations/me/class-schedules")
+        .set(...auth(token))
+        .send({ teachingAssignmentId: assignment.body.id, roomId: room.body.id, periodId: period.body.id, dayOfWeek: isoWeekday })
+        .expect(201);
+
+      return {
+        programId: program.body.id,
+        sectionId: section.body.id,
+        termId: term.body.id,
+        classScheduleId: classSchedule.body.id,
+        employeeId: employee.body.id,
+      };
+    }
+
+    it("marks a student's attendance for the currently-scheduled period on IDENTIFIED, marks it only once, and never overwrites an existing manual mark", async () => {
+      const t = await buildReconciliationTarget(tokenA, `REC${run}`);
+
+      await request(app.getHttpServer())
+        .put("/organizations/me/biometric-policy")
+        .set(...auth(tokenA))
+        .send({ enabled: true })
+        .expect(200);
+
+      const student1 = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({ studentCode: `REC-STU1-${run}`, firstName: "Reko", lastName: "Nissi", dateOfBirth: "2015-01-01" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/students/${student1.body.id}/enrollments`)
+        .set(...auth(tokenA))
+        .send({ programId: t.programId, sectionId: t.sectionId, termId: t.termId, enrollmentDate: "2020-01-01" })
+        .expect(201);
+
+      const enrollment1 = await request(app.getHttpServer())
+        .post("/organizations/me/biometric/enrollments")
+        .set(...auth(tokenA))
+        .send({ studentId: student1.body.id, consentGivenBy: "self" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/biometric/enrollments/${enrollment1.body.id}/photo`)
+        .set(...auth(tokenA))
+        .attach("image", enrollmentFace)
+        .expect(201);
+
+      const camera = await request(app.getHttpServer())
+        .post("/organizations/me/cameras")
+        .set(...auth(tokenA))
+        .send({ name: `Reconciliation Camera ${run}` })
+        .expect(201);
+
+      const capture1 = await request(app.getHttpServer())
+        .post(`/organizations/me/cameras/${camera.body.id}/events`)
+        .set(...auth(tokenA))
+        .attach("image", enrollmentFace)
+        .expect(201);
+      expect(capture1.body.matches[0].result).toBe("IDENTIFIED");
+      expect(capture1.body.matches[0].reconciledStudentAttendanceId).toBeTruthy();
+
+      const sessionsAfterFirst = await request(app.getHttpServer())
+        .get("/organizations/me/attendance-sessions")
+        .set(...auth(tokenA))
+        .expect(200);
+      const mySession = sessionsAfterFirst.body.find(
+        (s: { classScheduleId: string }) => s.classScheduleId === t.classScheduleId,
+      );
+      expect(mySession).toBeTruthy();
+      expect(mySession.date.slice(0, 10)).toBe(todayStr);
+      expect(mySession.studentAttendance).toHaveLength(1);
+      expect(mySession.studentAttendance[0].studentId).toBe(student1.body.id);
+      expect(mySession.studentAttendance[0].status).toBe("PRESENT");
+      expect(mySession.studentAttendance[0].remarks).toContain("biometric");
+
+      // A second capture of the same person must not create a second
+      // row, or touch the one that already exists.
+      const capture2 = await request(app.getHttpServer())
+        .post(`/organizations/me/cameras/${camera.body.id}/events`)
+        .set(...auth(tokenA))
+        .attach("image", enrollmentFace)
+        .expect(201);
+      expect(capture2.body.matches[0].reconciledStudentAttendanceId).toBeFalsy();
+
+      const sessionsAfterSecond = await request(app.getHttpServer())
+        .get("/organizations/me/attendance-sessions")
+        .set(...auth(tokenA))
+        .expect(200);
+      const mySessionAgain = sessionsAfterSecond.body.find(
+        (s: { classScheduleId: string }) => s.classScheduleId === t.classScheduleId,
+      );
+      expect(mySessionAgain.studentAttendance).toHaveLength(1);
+
+      // A second, separately-enrolled student, manually marked ABSENT
+      // in the same session before ever being biometrically identified
+      // — "augments, never replaces" means that manual mark must
+      // survive an identification, not be silently upgraded.
+      const student2 = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({ studentCode: `REC-STU2-${run}`, firstName: "Reko", lastName: "Dossi", dateOfBirth: "2015-01-01" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/students/${student2.body.id}/enrollments`)
+        .set(...auth(tokenA))
+        .send({ programId: t.programId, sectionId: t.sectionId, termId: t.termId, enrollmentDate: "2020-01-01" })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/attendance-sessions/${mySession.id}/mark`)
+        .set(...auth(tokenA))
+        .send({ entries: [{ studentId: student2.body.id, status: "ABSENT", remarks: "Marked absent by teacher" }] })
+        .expect(201);
+
+      const enrollment2 = await request(app.getHttpServer())
+        .post("/organizations/me/biometric/enrollments")
+        .set(...auth(tokenA))
+        .send({ studentId: student2.body.id, consentGivenBy: "self" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/biometric/enrollments/${enrollment2.body.id}/photo`)
+        .set(...auth(tokenA))
+        .attach("image", differentFace)
+        .expect(201);
+
+      const capture3 = await request(app.getHttpServer())
+        .post(`/organizations/me/cameras/${camera.body.id}/events`)
+        .set(...auth(tokenA))
+        .attach("image", differentFace)
+        .expect(201);
+      expect(capture3.body.matches[0].result).toBe("IDENTIFIED");
+      expect(capture3.body.matches[0].matchedEnrollmentId).toBe(enrollment2.body.id);
+      // The manual mark already existed — reconciliation must not have
+      // created (or touched) anything.
+      expect(capture3.body.matches[0].reconciledStudentAttendanceId).toBeFalsy();
+
+      const finalSession = await request(app.getHttpServer())
+        .get(`/organizations/me/attendance-sessions/${mySession.id}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      const student2Row = finalSession.body.studentAttendance.find(
+        (a: { studentId: string }) => a.studentId === student2.body.id,
+      );
+      expect(student2Row.status).toBe("ABSENT");
+      expect(student2Row.remarks).toBe("Marked absent by teacher");
+    }, 120000);
+
+    it("marks staff attendance once via biometric identification, never overwrites an existing mark, and stays tenant-scoped", async () => {
+      const t = await buildReconciliationTarget(tokenA, `RECSTAFF${run}`);
+
+      await request(app.getHttpServer())
+        .put("/organizations/me/biometric-policy")
+        .set(...auth(tokenA))
+        .send({ enabled: true })
+        .expect(200);
+
+      const enrollment = await request(app.getHttpServer())
+        .post("/organizations/me/biometric/enrollments")
+        .set(...auth(tokenA))
+        .send({ staffId: t.employeeId, consentGivenBy: "self" })
+        .expect(201);
+      // Deliberately a different face than the student test above:
+      // both tests share the same org, so reusing enrollmentFace here
+      // would create a second FaceEnrollment with an identical
+      // embedding, making the pgvector nearest-match ambiguous between
+      // this staff enrollment and the earlier student one.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/biometric/enrollments/${enrollment.body.id}/photo`)
+        .set(...auth(tokenA))
+        .attach("image", staffFace)
+        .expect(201);
+
+      const camera = await request(app.getHttpServer())
+        .post("/organizations/me/cameras")
+        .set(...auth(tokenA))
+        .send({ name: `Staff Reconciliation Camera ${run}` })
+        .expect(201);
+
+      const capture1 = await request(app.getHttpServer())
+        .post(`/organizations/me/cameras/${camera.body.id}/events`)
+        .set(...auth(tokenA))
+        .attach("image", staffFace)
+        .expect(201);
+      expect(capture1.body.matches[0].result).toBe("IDENTIFIED");
+      expect(capture1.body.matches[0].matchedEnrollmentId).toBe(enrollment.body.id);
+      expect(capture1.body.matches[0].reconciledStaffAttendanceId).toBeTruthy();
+
+      const staffListA = await request(app.getHttpServer())
+        .get("/organizations/me/staff-attendance")
+        .set(...auth(tokenA))
+        .expect(200);
+      const myRecord = staffListA.body.find((a: { employeeId: string }) => a.employeeId === t.employeeId);
+      expect(myRecord).toBeTruthy();
+      expect(myRecord.date.slice(0, 10)).toBe(todayStr);
+      expect(myRecord.status).toBe("PRESENT");
+      expect(myRecord.remarks).toContain("biometric");
+
+      // A second capture the same day must not create a duplicate or
+      // touch the existing record.
+      const capture2 = await request(app.getHttpServer())
+        .post(`/organizations/me/cameras/${camera.body.id}/events`)
+        .set(...auth(tokenA))
+        .attach("image", staffFace)
+        .expect(201);
+      expect(capture2.body.matches[0].reconciledStaffAttendanceId).toBeFalsy();
+
+      const staffListAfter = await request(app.getHttpServer())
+        .get("/organizations/me/staff-attendance")
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(staffListAfter.body.filter((a: { employeeId: string }) => a.employeeId === t.employeeId)).toHaveLength(1);
+
+      // Cross-tenant: none of org A's reconciled attendance is visible
+      // to org B.
+      const sessionsB = await request(app.getHttpServer())
+        .get("/organizations/me/attendance-sessions")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(sessionsB.body.find((s: { classScheduleId: string }) => s.classScheduleId === t.classScheduleId)).toBeUndefined();
+      const staffListB = await request(app.getHttpServer())
+        .get("/organizations/me/staff-attendance")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(staffListB.body.find((a: { employeeId: string }) => a.employeeId === t.employeeId)).toBeUndefined();
+    }, 90000);
   });
 });

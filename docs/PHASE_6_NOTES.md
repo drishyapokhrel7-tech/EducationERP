@@ -366,3 +366,137 @@ Slice 6c done, stopped per plan §21 step 17. Next up per the roadmap:
 the existing `AttendanceSession`/`StudentAttendance`/`StaffAttendance`
 models from slice 3b (already flagged there as deferred to here).
 Needs its own go-ahead.
+
+## Slice 6d — attendance reconciliation
+
+User said "go-ahead." This closes the loop the architecture doc's own
+CCTV flow diagram describes (`... → Confidence Threshold → Attendance
+Event → ERP`) by wiring a confirmed biometric identification into the
+*existing* attendance models from slice 3b. Two constraints were
+already settled by `PHASE_0_ARCHITECTURE.md` §10 — no `AskUserQuestion`
+round was needed this slice, both real forks resolved directly from
+that language: reconciliation only ever acts on an `IDENTIFIED` result
+or a `POSSIBLE_MATCH` **after** a human `CONFIRMED` it ("human review
+required for possible match"), and it only ever **fills in** an
+attendance record that doesn't exist yet, never overwrites one already
+there — manual or otherwise ("the CCTV pipeline augments, never
+replaces, the attendance system").
+
+## What shipped
+
+The one genuinely new piece of logic in this slice: mapping a face
+match to a specific class period. For a matched student, find their
+active `StudentEnrollment` **as of the capture date** (`status:
+ACTIVE` filtered by the enrollment's `Term.startDate/endDate`
+bracketing `capturedAt` — a student can hold `ACTIVE` rows across
+multiple terms, so the term's own date range is what disambiguates
+"now"), then look up `ClassSchedule` rows for that section+term on the
+capture's ISO weekday, and pick the one whose `Period.startTime`–
+`endTime` window contains the capture's time. No match (e.g. an
+entrance-camera capture outside any scheduled period) is a normal
+outcome, not an error — the identification is recorded, no attendance
+action taken. For a matched staff member, no period logic is
+needed — `StaffAttendance` is a flat `(employeeId, date)` upsert.
+
+New `AttendanceReconciliationService` (new `attendance-reconciliation`
+module, imported into `CameraEventsModule`), given the **same Prisma
+tx** `camera-events.service.ts` is already running inside — the
+face-match write and any resulting attendance write commit atomically
+together. Deliberately does **not** call the existing
+`markAttendance`/`markStaffAttendance` service methods, since both
+unconditionally `upsert` (overwrite) — exactly the "replaces" behavior
+ruled out above; this is new, guarded, create-only logic instead, with
+`P2002` unique-constraint races (two concurrent captures landing in
+the same period) swallowed as "someone else already handled it," not
+a real error — the face-match write itself must never fail because
+reconciliation lost a race.
+
+Two nullable columns added directly to `FaceMatchEvent`:
+`reconciledStudentAttendanceId`/`reconciledStaffAttendanceId`, set
+only when reconciliation actually created a row this call — the audit
+trail for "which biometric event caused this attendance record."
+Deliberately not a new `attendance_events`/`entry_exit_records` table
+(named in the architecture doc's data list) — `CameraEvent`/
+`FaceMatchEvent` already **are** that record, same "don't add a second
+source of truth" reasoning already applied elsewhere in this project.
+No new endpoints, no new RBAC resource — this is a side effect of the
+already-permissioned 6c routes; `ingestEvent`/`reviewFaceMatch`/
+`listFaceMatchEvents` just gained the two new nullable fields. Web UI:
+`/dashboard/cameras`' match display now shows "→ attendance marked"
+when reconciliation created a record.
+
+Deliberately **not** in this slice: a configurable grace window around
+a period's start/end (exact window only, a fixed simplification
+matching `POSSIBLE_MATCH_BAND`'s own precedent); a new
+`attendance_events` table; letting reconciliation upgrade an
+already-marked record; any change to `apps/cctv-client` (6e, and
+nothing here depends on it).
+
+## Verified
+
+- `pnpm -r typecheck` / `lint` / `build` clean across all packages.
+- `services/api` e2e: extended the Phase 6 describe blocks with two new
+  tests — a student flow (build a same-day, whole-day-period fixture
+  computed from the real test-run date to avoid clock/weekday
+  flakiness; capture the enrolled photo → `IDENTIFIED` → a
+  `StudentAttendance` row is created once with the auto-marked remark;
+  capture again → no duplicate; a second, separately-enrolled student
+  manually marked `ABSENT` first, then captured → the manual mark is
+  confirmed untouched) and a staff flow (capture → `StaffAttendance`
+  created once, untouched on a second capture; cross-tenant guard).
+  Full suite: 53/53 (2 new, zero regressions).
+- Full browser pass (via direct API calls, same hybrid approach as
+  6c, since the browser tool can't drive a native file picker):
+  simulated a capture during the fixture's period window and confirmed
+  the created `StudentAttendance` row and its auto-marked remark.
+
+**A real, fixed bug in the test fixtures, not the product code**:
+the staff-reconciliation test initially reused the *same* face photo
+as the student test earlier in the same file run. Since both tests
+share one org, that created two `FaceEnrollment` rows with **identical
+embeddings** — the pgvector nearest-match query legitimately can't
+distinguish them, and picked the older (student) enrollment for a
+capture meant to identify the newer (staff) one. Fixed by using three
+mutually distinct face crops across the describe block (confirmed via
+a fresh crop-and-verify pass against the *actual saved JPEG* through
+the real AI service — the first version of the third crop had been
+verified against the pre-compression in-memory array instead, which
+turned out to detect differently than the same content read back after
+JPEG compression at a small crop size). **Lesson: when multiple
+enrollments exist in the same org across a test file, each needs a
+genuinely distinct face — and any fixture-image verification must go
+through the exact same read/decode path the real code will use, not a
+shortcut that happens to detect successfully at generation time.**
+
+**Also reconfirmed the standing "leaked jest process" lesson yet
+again**, and its downstream effects were more varied than seen before:
+a `jest` process from an earlier successful run of this file's own new
+tests didn't exit, held a stuck connection pool, and caused the *next*
+run's `afterAll` to itself fail on a `P2028` — which then left that
+run's org data uncleaned, which combined with growing table count to
+also require raising the `afterAll` hook's own explicit timeout
+(90000 → 180000ms, same class of fix as slice 3c's identical bump for
+the same reason: more tables accumulated, cleanup costs more).
+Diagnosed and fixed via the exact established protocol (`ps aux` for
+strays, time a direct query, retry) before touching any test code.
+
+**A full-suite run also reconfirmed the known token-TTL-vs-runtime
+flakiness class** (documented since slice 4f): the file now takes over
+1000s end to end, comfortably exceeding the 900s JWT TTL, so a late
+cluster of tests (student portal, online exam-taking, and — for the
+first time — the Phase 6 blocks) 401'd on a full run while passing
+individually when filtered. Confirmed every single full-run failure
+was a 401 (no other status code appeared) before concluding this,
+rather than assuming. Flagged as a background task
+(`task_25655efd`) to actually fix now that it's recurred twice and the
+suite keeps growing — not fixed inline, since it's pre-existing infra
+debt this slice merely re-exposed, not caused.
+
+## Next step (as of slice 6d)
+
+Slice 6d done, stopped per plan §21 step 17. Next up per the roadmap:
+**6e, `apps/cctv-client`** (Electron) — camera monitoring/health, the
+attendance-event feed, plus the biometric/RFID/barcode/printer
+hardware-adapter surface the plan folds into that same client; nothing
+in 6c/6d depends on it, the ingestion endpoint is adapter-agnostic by
+design. Needs its own go-ahead.

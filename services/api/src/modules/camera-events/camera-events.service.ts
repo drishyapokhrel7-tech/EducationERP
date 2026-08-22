@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { FaceMatchResult } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AiGatewayService } from "../ai-gateway/ai-gateway.service";
+import { AttendanceReconciliationService } from "../attendance-reconciliation/attendance-reconciliation.service";
 import { CreateCameraDto } from "./dto/create-camera.dto";
 import { ReviewFaceMatchDto } from "./dto/review-face-match.dto";
 
@@ -31,6 +32,7 @@ export class CameraEventsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly aiGateway: AiGatewayService,
+    private readonly attendanceReconciliation: AttendanceReconciliationService,
   ) {}
 
   createCamera(organizationId: string, dto: CreateCameraDto) {
@@ -97,7 +99,7 @@ export class CameraEventsService {
           anyUncertain = true;
         }
 
-        const match = await tx.faceMatchEvent.create({
+        let match = await tx.faceMatchEvent.create({
           data: {
             organizationId,
             cameraEventId: cameraEvent.id,
@@ -107,6 +109,29 @@ export class CameraEventsService {
           },
           include: { matchedEnrollment: { include: { student: true, staff: true } } },
         });
+
+        // Attendance reconciliation (Phase 6 slice 6d) — only ever for a
+        // confident IDENTIFIED match here; a POSSIBLE_MATCH is
+        // reconciled separately, only once a human CONFIRMS it.
+        if (matchResult === FaceMatchResult.IDENTIFIED && match.matchedEnrollment) {
+          const reconciled = await this.attendanceReconciliation.reconcile(
+            tx,
+            organizationId,
+            cameraEvent.capturedAt,
+            match.matchedEnrollment,
+          );
+          if (reconciled.studentAttendanceId || reconciled.staffAttendanceId) {
+            match = await tx.faceMatchEvent.update({
+              where: { id: match.id },
+              data: {
+                reconciledStudentAttendanceId: reconciled.studentAttendanceId,
+                reconciledStaffAttendanceId: reconciled.staffAttendanceId,
+              },
+              include: { matchedEnrollment: { include: { student: true, staff: true } } },
+            });
+          }
+        }
+
         matches.push(match);
       }
 
@@ -155,7 +180,10 @@ export class CameraEventsService {
 
   async reviewFaceMatch(organizationId: string, userId: string, id: string, dto: ReviewFaceMatchDto) {
     return this.prisma.withTenant(organizationId, async (tx) => {
-      const match = await tx.faceMatchEvent.findUnique({ where: { id } });
+      const match = await tx.faceMatchEvent.findUnique({
+        where: { id },
+        include: { cameraEvent: true, matchedEnrollment: true },
+      });
       if (!match) throw new NotFoundException("Match event not found");
       if (match.result !== FaceMatchResult.POSSIBLE_MATCH) {
         throw new BadRequestException("Only a possible-match event can be reviewed");
@@ -164,10 +192,33 @@ export class CameraEventsService {
         throw new ConflictException("This match has already been reviewed");
       }
 
-      const updated = await tx.faceMatchEvent.update({
+      let updated = await tx.faceMatchEvent.update({
         where: { id },
         data: { reviewedAt: new Date(), reviewedBy: userId, reviewDecision: dto.decision },
       });
+
+      // Attendance reconciliation (Phase 6 slice 6d) — a POSSIBLE_MATCH
+      // only ever counts once a human has CONFIRMED it, per the
+      // architecture doc's "human review required" requirement. Uses
+      // the capture's original time, not the review time — the person
+      // was physically present then, not now.
+      if (dto.decision === "CONFIRMED" && match.matchedEnrollment) {
+        const reconciled = await this.attendanceReconciliation.reconcile(
+          tx,
+          organizationId,
+          match.cameraEvent.capturedAt,
+          match.matchedEnrollment,
+        );
+        if (reconciled.studentAttendanceId || reconciled.staffAttendanceId) {
+          updated = await tx.faceMatchEvent.update({
+            where: { id },
+            data: {
+              reconciledStudentAttendanceId: reconciled.studentAttendanceId,
+              reconciledStaffAttendanceId: reconciled.staffAttendanceId,
+            },
+          });
+        }
+      }
 
       await tx.auditLog.create({
         data: {

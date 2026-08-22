@@ -1014,10 +1014,11 @@ model StudentAttendance {
   createdAt           DateTime         @default(now())
   updatedAt           DateTime         @updatedAt
 
-  organization Organization          @relation(fields: [organizationId], references: [id])
-  session      AttendanceSession     @relation(fields: [attendanceSessionId], references: [id])
-  student      Student               @relation(fields: [studentId], references: [id])
-  exceptions   AttendanceException[]
+  organization        Organization          @relation(fields: [organizationId], references: [id])
+  session             AttendanceSession     @relation(fields: [attendanceSessionId], references: [id])
+  student             Student               @relation(fields: [studentId], references: [id])
+  exceptions          AttendanceException[]
+  reconciledFromEvents FaceMatchEvent[]
 
   @@unique([attendanceSessionId, studentId])
   @@index([organizationId])
@@ -1062,8 +1063,9 @@ model StaffAttendance {
   createdAt      DateTime              @default(now())
   updatedAt      DateTime              @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
-  employee     Employee     @relation(fields: [employeeId], references: [id])
+  organization         Organization     @relation(fields: [organizationId], references: [id])
+  employee             Employee         @relation(fields: [employeeId], references: [id])
+  reconciledFromEvents FaceMatchEvent[]
 
   @@unique([employeeId, date])
   @@index([organizationId])
@@ -1248,12 +1250,23 @@ model FaceMatchEvent {
   reviewedAt          DateTime?
   reviewedBy          String?
   reviewDecision      FaceMatchReviewDecision?
-  createdAt           DateTime                 @default(now())
+  // Attendance reconciliation (Phase 6 slice 6d) — set only when this
+  // exact match event is what caused a StudentAttendance/StaffAttendance
+  // row to be created (never on a row that already existed; "augments,
+  // never replaces" per the architecture doc). Mutually exclusive,
+  // mirroring FaceEnrollment's own studentId/staffId XOR. Deliberately
+  // no separate attendance_events/entry_exit_records table — this row
+  // already is that record.
+  reconciledStudentAttendanceId String?
+  reconciledStaffAttendanceId   String?
+  createdAt                     DateTime @default(now())
 
-  organization      Organization    @relation(fields: [organizationId], references: [id])
-  cameraEvent       CameraEvent     @relation(fields: [cameraEventId], references: [id])
-  matchedEnrollment FaceEnrollment? @relation(fields: [matchedEnrollmentId], references: [id])
-  reviewer          User?           @relation(fields: [reviewedBy], references: [id])
+  organization                Organization       @relation(fields: [organizationId], references: [id])
+  cameraEvent                 CameraEvent        @relation(fields: [cameraEventId], references: [id])
+  matchedEnrollment           FaceEnrollment?    @relation(fields: [matchedEnrollmentId], references: [id])
+  reviewer                    User?              @relation(fields: [reviewedBy], references: [id])
+  reconciledStudentAttendance StudentAttendance? @relation(fields: [reconciledStudentAttendanceId], references: [id])
+  reconciledStaffAttendance   StaffAttendance?   @relation(fields: [reconciledStaffAttendanceId], references: [id])
 
   @@index([organizationId])
   @@index([cameraEventId])

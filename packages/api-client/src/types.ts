@@ -1458,6 +1458,11 @@ export interface FaceMatchEventRecord {
   reviewedAt: string | null;
   reviewedBy: string | null;
   reviewDecision: FaceMatchReviewDecision | null;
+  // Set only when this exact match event is what caused a
+  // StudentAttendance/StaffAttendance row to be created (Phase 6 slice
+  // 6d) — never when one already existed ("augments, never replaces").
+  reconciledStudentAttendanceId: string | null;
+  reconciledStaffAttendanceId: string | null;
   createdAt: string;
 }
 
