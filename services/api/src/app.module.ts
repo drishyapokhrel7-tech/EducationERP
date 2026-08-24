@@ -24,6 +24,7 @@ import { ExamTakingModule } from "./modules/exam-taking/exam-taking.module";
 import { BiometricPolicyModule } from "./modules/biometric-policy/biometric-policy.module";
 import { AiGatewayModule } from "./modules/ai-gateway/ai-gateway.module";
 import { CameraEventsModule } from "./modules/camera-events/camera-events.module";
+import { FinanceModule } from "./modules/finance/finance.module";
 import { QueueModule } from "./queue/queue.module";
 import { HealthController } from "./common/health.controller";
 
@@ -62,6 +63,7 @@ const queueModuleImports = process.env.REDIS_URL ? [QueueModule] : [];
     BiometricPolicyModule,
     AiGatewayModule,
     CameraEventsModule,
+    FinanceModule,
     ...queueModuleImports,
   ],
   controllers: [HealthController],

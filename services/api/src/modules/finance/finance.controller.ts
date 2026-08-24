@@ -1,0 +1,123 @@
+import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
+import { FinanceService } from "./finance.service";
+import { CreateFeeCategoryDto } from "./dto/create-fee-category.dto";
+import { CreateFeeStructureDto } from "./dto/create-fee-structure.dto";
+import { AssignFeeStructureDto, AssignFeeStructureBulkDto } from "./dto/assign-fee-structure.dto";
+import { RecordPaymentDto } from "./dto/record-payment.dto";
+import { ApplyDiscountDto } from "./dto/apply-discount.dto";
+import { IssueRefundDto } from "./dto/issue-refund.dto";
+import { CreateScholarshipDto } from "./dto/create-scholarship.dto";
+import { AssignScholarshipDto } from "./dto/assign-scholarship.dto";
+import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
+import { PermissionsGuard } from "../../common/auth/permissions.guard";
+import { RequirePermissions } from "../../common/auth/permissions.decorator";
+import { CurrentUser } from "../../common/auth/current-user.decorator";
+import { JwtPayload } from "../../common/auth/jwt-payload";
+
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@Controller("organizations/me")
+export class FinanceController {
+  constructor(private readonly finance: FinanceService) {}
+
+  @Post("fee-categories")
+  @RequirePermissions("fee_category:create")
+  createFeeCategory(@CurrentUser() user: JwtPayload, @Body() dto: CreateFeeCategoryDto) {
+    return this.finance.createFeeCategory(user.organizationId, dto);
+  }
+
+  @Get("fee-categories")
+  @RequirePermissions("fee_category:view")
+  listFeeCategories(@CurrentUser() user: JwtPayload) {
+    return this.finance.listFeeCategories(user.organizationId);
+  }
+
+  @Post("fee-structures")
+  @RequirePermissions("fee_structure:create")
+  createFeeStructure(@CurrentUser() user: JwtPayload, @Body() dto: CreateFeeStructureDto) {
+    return this.finance.createFeeStructure(user.organizationId, dto);
+  }
+
+  @Get("fee-structures")
+  @RequirePermissions("fee_structure:view")
+  listFeeStructures(@CurrentUser() user: JwtPayload) {
+    return this.finance.listFeeStructures(user.organizationId);
+  }
+
+  @Post("fee-structures/:id/assign")
+  @RequirePermissions("student_fee_assignment:create")
+  assignFeeStructure(
+    @CurrentUser() user: JwtPayload,
+    @Param("id") id: string,
+    @Body() dto: AssignFeeStructureDto,
+  ) {
+    return this.finance.assignFeeStructure(user.organizationId, id, user.sub, dto);
+  }
+
+  @Post("fee-structures/:id/assign-bulk")
+  @RequirePermissions("student_fee_assignment:create")
+  assignFeeStructureBulk(
+    @CurrentUser() user: JwtPayload,
+    @Param("id") id: string,
+    @Body() dto: AssignFeeStructureBulkDto,
+  ) {
+    return this.finance.assignFeeStructureBulk(user.organizationId, id, user.sub, dto);
+  }
+
+  @Get("invoices")
+  @RequirePermissions("invoice:view")
+  listInvoices(@CurrentUser() user: JwtPayload) {
+    return this.finance.listInvoices(user.organizationId);
+  }
+
+  @Get("invoices/:id")
+  @RequirePermissions("invoice:view")
+  getInvoice(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.finance.getInvoice(user.organizationId, id);
+  }
+
+  @Post("invoices/:id/payments")
+  @RequirePermissions("payment:create")
+  recordPayment(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: RecordPaymentDto) {
+    return this.finance.recordPayment(user.organizationId, id, user.sub, dto);
+  }
+
+  @Post("invoices/:id/discounts")
+  @RequirePermissions("discount:create")
+  applyDiscount(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: ApplyDiscountDto) {
+    return this.finance.applyDiscount(user.organizationId, id, user.sub, dto);
+  }
+
+  @Post("payments/:id/refunds")
+  @RequirePermissions("refund:create")
+  issueRefund(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: IssueRefundDto) {
+    return this.finance.issueRefund(user.organizationId, id, user.sub, dto);
+  }
+
+  // Folded under invoice:view rather than a new RBAC resource — the
+  // ledger is a cross-cutting audit trail over Invoice/Payment/
+  // Discount/Refund, not its own owned entity, matching how e.g.
+  // curriculum_subjects folds into the curriculum resource.
+  @Get("financial-transactions")
+  @RequirePermissions("invoice:view")
+  listFinancialTransactions(@CurrentUser() user: JwtPayload) {
+    return this.finance.listFinancialTransactions(user.organizationId);
+  }
+
+  @Post("scholarships")
+  @RequirePermissions("scholarship:create")
+  createScholarship(@CurrentUser() user: JwtPayload, @Body() dto: CreateScholarshipDto) {
+    return this.finance.createScholarship(user.organizationId, dto);
+  }
+
+  @Get("scholarships")
+  @RequirePermissions("scholarship:view")
+  listScholarships(@CurrentUser() user: JwtPayload) {
+    return this.finance.listScholarships(user.organizationId);
+  }
+
+  @Post("students/:id/scholarships")
+  @RequirePermissions("scholarship:manage")
+  assignScholarship(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: AssignScholarshipDto) {
+    return this.finance.assignScholarship(user.organizationId, id, dto);
+  }
+}

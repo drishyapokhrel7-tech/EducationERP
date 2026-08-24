@@ -86,6 +86,18 @@ model Organization {
   cameraEvents             CameraEvent[]
   faceEmbeddings           FaceEmbedding[]
   faceMatchEvents          FaceMatchEvent[]
+  feeCategories            FeeCategory[]
+  feeStructures            FeeStructure[]
+  feeStructureItems        FeeStructureItem[]
+  studentFeeAssignments    StudentFeeAssignment[]
+  invoices                 Invoice[]
+  invoiceItems             InvoiceItem[]
+  payments                 Payment[]
+  scholarships             Scholarship[]
+  studentScholarships      StudentScholarship[]
+  discounts                Discount[]
+  refunds                  Refund[]
+  financialTransactions    FinancialTransaction[]
 
   @@map("organizations")
 }
@@ -176,6 +188,7 @@ model Program {
   curricula             Curriculum[]
   studentEnrollments    StudentEnrollment[]
   admissionApplications AdmissionApplication[]
+  feeStructures         FeeStructure[]
 
   @@unique([departmentId, code])
   @@index([organizationId])
@@ -285,6 +298,7 @@ model Term {
   classSchedules      ClassSchedule[]
   syllabi             Syllabus[]
   exams               Exam[]
+  feeStructures       FeeStructure[]
 
   @@unique([academicYearId, code])
   @@index([organizationId])
@@ -343,7 +357,7 @@ model User {
   updatedAt      DateTime   @updatedAt
   deletedAt      DateTime?
 
-  organization     Organization     @relation(fields: [organizationId], references: [id])
+  organization     Organization           @relation(fields: [organizationId], references: [id])
   userRoles        UserRole[]
   sessions         Session[]
   loginEvents      LoginEvent[]
@@ -351,6 +365,10 @@ model User {
   employee         Employee?
   student          Student?
   faceMatchReviews FaceMatchEvent[]
+  feeAssignments   StudentFeeAssignment[]
+  paymentsRecorded Payment[]
+  discountsApplied Discount[]
+  refundsProcessed Refund[]
 
   @@index([organizationId])
   @@map("users")
@@ -688,6 +706,8 @@ model Student {
   examAttempts           ExamAttempt[]
   reportCards            ReportCard[]
   faceEnrollments        FaceEnrollment[]
+  invoices               Invoice[]
+  scholarships           StudentScholarship[]
 
   @@unique([organizationId, studentCode])
   @@index([organizationId])
@@ -750,11 +770,13 @@ model StudentEnrollment {
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
-  student      Student      @relation(fields: [studentId], references: [id])
-  program      Program      @relation(fields: [programId], references: [id])
-  section      Section      @relation(fields: [sectionId], references: [id])
-  term         Term         @relation(fields: [termId], references: [id])
+  organization   Organization           @relation(fields: [organizationId], references: [id])
+  student        Student                @relation(fields: [studentId], references: [id])
+  program        Program                @relation(fields: [programId], references: [id])
+  section        Section                @relation(fields: [sectionId], references: [id])
+  term           Term                   @relation(fields: [termId], references: [id])
+  invoices       Invoice[]
+  feeAssignments StudentFeeAssignment[]
 
   @@unique([studentId, termId])
   @@index([organizationId])
@@ -1014,10 +1036,10 @@ model StudentAttendance {
   createdAt           DateTime         @default(now())
   updatedAt           DateTime         @updatedAt
 
-  organization        Organization          @relation(fields: [organizationId], references: [id])
-  session             AttendanceSession     @relation(fields: [attendanceSessionId], references: [id])
-  student             Student               @relation(fields: [studentId], references: [id])
-  exceptions          AttendanceException[]
+  organization         Organization          @relation(fields: [organizationId], references: [id])
+  session              AttendanceSession     @relation(fields: [attendanceSessionId], references: [id])
+  student              Student               @relation(fields: [studentId], references: [id])
+  exceptions           AttendanceException[]
   reconciledFromEvents FaceMatchEvent[]
 
   @@unique([attendanceSessionId, studentId])
@@ -1246,17 +1268,17 @@ enum FaceMatchReviewDecision {
 }
 
 model FaceMatchEvent {
-  id                  String                   @id @default(uuid())
-  organizationId      String
-  cameraEventId       String
-  matchedEnrollmentId String?
-  confidence          Float
-  result              FaceMatchResult
+  id                            String                   @id @default(uuid())
+  organizationId                String
+  cameraEventId                 String
+  matchedEnrollmentId           String?
+  confidence                    Float
+  result                        FaceMatchResult
   // The architecture doc's explicit "human review for uncertain
   // matches" requirement — only ever set for a POSSIBLE_MATCH.
-  reviewedAt          DateTime?
-  reviewedBy          String?
-  reviewDecision      FaceMatchReviewDecision?
+  reviewedAt                    DateTime?
+  reviewedBy                    String?
+  reviewDecision                FaceMatchReviewDecision?
   // Attendance reconciliation (Phase 6 slice 6d) — set only when this
   // exact match event is what caused a StudentAttendance/StaffAttendance
   // row to be created (never on a row that already existed; "augments,
@@ -1266,7 +1288,7 @@ model FaceMatchEvent {
   // already is that record.
   reconciledStudentAttendanceId String?
   reconciledStaffAttendanceId   String?
-  createdAt                     DateTime @default(now())
+  createdAt                     DateTime                 @default(now())
 
   organization                Organization       @relation(fields: [organizationId], references: [id])
   cameraEvent                 CameraEvent        @relation(fields: [cameraEventId], references: [id])
@@ -1968,4 +1990,298 @@ model Answer {
   @@unique([examAttemptId, questionId])
   @@index([organizationId])
   @@map("answers")
+}
+
+// ── Finance (plan §6/§20 — Phase 7 slice 7a-1) ──────────────────────────
+// Fee structures, invoicing, and manual payment recording (cash/bank
+// transfer/cheque). Online payment (eSewa) is slice 7a-2, layered on top
+// of Invoice/Payment once they exist — a gateway integration needs real
+// invoices to attach to. Decimal is used for every money field — no
+// monetary type existed anywhere in this schema before this slice (only
+// Float, for academic scores, which is not safe for money). NPR is the
+// only currency the plan specifies; no multi-currency scope.
+
+model FeeCategory {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  code           String
+  description    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization      Organization       @relation(fields: [organizationId], references: [id])
+  feeStructureItems FeeStructureItem[]
+  invoiceItems      InvoiceItem[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+  @@map("fee_categories")
+}
+
+model FeeStructure {
+  id             String   @id @default(uuid())
+  organizationId String
+  programId      String
+  termId         String
+  name           String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization           @relation(fields: [organizationId], references: [id])
+  program      Program                @relation(fields: [programId], references: [id])
+  term         Term                   @relation(fields: [termId], references: [id])
+  items        FeeStructureItem[]
+  assignments  StudentFeeAssignment[]
+
+  @@unique([programId, termId, name])
+  @@index([organizationId])
+  @@map("fee_structures")
+}
+
+model FeeStructureItem {
+  id             String  @id @default(uuid())
+  organizationId String
+  feeStructureId String
+  feeCategoryId  String
+  amount         Decimal @db.Decimal(12, 2)
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  feeStructure FeeStructure @relation(fields: [feeStructureId], references: [id])
+  feeCategory  FeeCategory  @relation(fields: [feeCategoryId], references: [id])
+
+  @@unique([feeStructureId, feeCategoryId])
+  @@index([organizationId])
+  @@map("fee_structure_items")
+}
+
+// Assignment *is* invoicing — creating this row creates the Invoice in
+// the same transaction, no separate "generate" step, matching how
+// enrollment itself is a single action rather than drafted-then-confirmed.
+model StudentFeeAssignment {
+  id                  String   @id @default(uuid())
+  organizationId      String
+  studentEnrollmentId String
+  feeStructureId      String
+  invoiceId           String   @unique
+  assignedAt          DateTime @default(now())
+  assignedBy          String?
+
+  organization      Organization      @relation(fields: [organizationId], references: [id])
+  studentEnrollment StudentEnrollment @relation(fields: [studentEnrollmentId], references: [id])
+  feeStructure      FeeStructure      @relation(fields: [feeStructureId], references: [id])
+  invoice           Invoice           @relation(fields: [invoiceId], references: [id])
+  assigner          User?             @relation(fields: [assignedBy], references: [id])
+
+  @@unique([studentEnrollmentId, feeStructureId])
+  @@index([organizationId])
+  @@map("student_fee_assignments")
+}
+
+enum InvoiceStatus {
+  PENDING
+  PARTIALLY_PAID
+  PAID
+  CANCELLED
+}
+
+// totalAmount is the gross snapshot at creation time (sum of items,
+// before any discount) — immutable, same reasoning as Grade staying
+// stable after its GradingScheme might later change. The amount
+// actually owed (totalAmount minus discounts minus payments) and
+// whether it's overdue (dueDate vs now) are both computed on read, not
+// stored — avoids a background job just to flip a status over time.
+model Invoice {
+  id                  String        @id @default(uuid())
+  organizationId      String
+  studentId           String
+  studentEnrollmentId String
+  totalAmount         Decimal       @db.Decimal(12, 2)
+  dueDate             DateTime
+  status              InvoiceStatus @default(PENDING)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  organization      Organization           @relation(fields: [organizationId], references: [id])
+  student           Student                @relation(fields: [studentId], references: [id])
+  studentEnrollment StudentEnrollment      @relation(fields: [studentEnrollmentId], references: [id])
+  items             InvoiceItem[]
+  payments          Payment[]
+  discounts         Discount[]
+  feeAssignment     StudentFeeAssignment?
+  transactions      FinancialTransaction[]
+
+  @@index([organizationId])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id             String  @id @default(uuid())
+  organizationId String
+  invoiceId      String
+  feeCategoryId  String
+  description    String?
+  amount         Decimal @db.Decimal(12, 2)
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  invoice      Invoice      @relation(fields: [invoiceId], references: [id])
+  feeCategory  FeeCategory  @relation(fields: [feeCategoryId], references: [id])
+
+  @@index([organizationId])
+  @@map("invoice_items")
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CHEQUE
+  // Added in slice 7a-2 (not used yet, defined now so the enum doesn't
+  // need a later migration touching every existing row).
+  ESEWA
+}
+
+// Partial payments allowed — an invoice can be paid across several rows,
+// matching real institutional practice.
+model Payment {
+  id             String        @id @default(uuid())
+  organizationId String
+  invoiceId      String
+  amount         Decimal       @db.Decimal(12, 2)
+  method         PaymentMethod
+  // Cheque/bank-transfer reference number this slice; will carry the
+  // gateway transaction id for ESEWA payments once 7a-2 adds them.
+  reference      String?
+  recordedBy     String?
+  paidAt         DateTime      @default(now())
+  createdAt      DateTime      @default(now())
+
+  organization Organization           @relation(fields: [organizationId], references: [id])
+  invoice      Invoice                @relation(fields: [invoiceId], references: [id])
+  recorder     User?                  @relation(fields: [recordedBy], references: [id])
+  refunds      Refund[]
+  transactions FinancialTransaction[]
+
+  @@index([organizationId])
+  @@index([invoiceId])
+  @@map("payments")
+}
+
+// A reusable, ongoing catalog entry — StudentScholarship assigns one to
+// a student, and it's auto-applied (as a Discount, see below) the next
+// time an invoice is generated for them. Exactly one of
+// percentage/amount is expected to be set (enforced at the service
+// layer, same XOR pattern as FaceEnrollment's studentId/staffId).
+model Scholarship {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  description    String?
+  percentage     Float?
+  amount         Decimal? @db.Decimal(12, 2)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization         @relation(fields: [organizationId], references: [id])
+  assignments  StudentScholarship[]
+  discounts    Discount[]
+
+  @@index([organizationId])
+  @@map("scholarships")
+}
+
+model StudentScholarship {
+  id             String   @id @default(uuid())
+  organizationId String
+  studentId      String
+  scholarshipId  String
+  assignedAt     DateTime @default(now())
+  active         Boolean  @default(true)
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  student      Student      @relation(fields: [studentId], references: [id])
+  scholarship  Scholarship  @relation(fields: [scholarshipId], references: [id])
+
+  @@unique([studentId, scholarshipId])
+  @@index([organizationId])
+  @@map("student_scholarships")
+}
+
+// Reduces one specific invoice's payable total. scholarshipId is set
+// only when this row was auto-created from a StudentScholarship at
+// invoice-generation time (appliedBy null in that case); an ad-hoc
+// admin-applied discount has scholarshipId null and a real appliedBy.
+// Both cases share one mechanism rather than inventing a parallel
+// "invoice.scholarshipDiscountAmount" field.
+model Discount {
+  id             String   @id @default(uuid())
+  organizationId String
+  invoiceId      String
+  scholarshipId  String?
+  amount         Decimal  @db.Decimal(12, 2)
+  reason         String
+  appliedBy      String?
+  createdAt      DateTime @default(now())
+
+  organization Organization           @relation(fields: [organizationId], references: [id])
+  invoice      Invoice                @relation(fields: [invoiceId], references: [id])
+  scholarship  Scholarship?           @relation(fields: [scholarshipId], references: [id])
+  applier      User?                  @relation(fields: [appliedBy], references: [id])
+  transactions FinancialTransaction[]
+
+  @@index([organizationId])
+  @@map("discounts")
+}
+
+// A ledger fact only — this slice (and 7a-2) never attempts to move
+// money back out through a gateway programmatically; a real refund-API
+// integration is its own, separately-scoped follow-up if ever needed.
+model Refund {
+  id             String   @id @default(uuid())
+  organizationId String
+  paymentId      String
+  amount         Decimal  @db.Decimal(12, 2)
+  reason         String
+  processedBy    String?
+  createdAt      DateTime @default(now())
+
+  organization Organization           @relation(fields: [organizationId], references: [id])
+  payment      Payment                @relation(fields: [paymentId], references: [id])
+  processor    User?                  @relation(fields: [processedBy], references: [id])
+  transactions FinancialTransaction[]
+
+  @@index([organizationId])
+  @@map("refunds")
+}
+
+enum FinancialTransactionType {
+  INVOICE_CREATED
+  PAYMENT_RECORDED
+  DISCOUNT_APPLIED
+  SCHOLARSHIP_APPLIED
+  REFUND_ISSUED
+}
+
+// Append-only audit trail — unlike syllabus_progress (computed, not
+// stored, cheap to recompute, no audit requirement), money needs an
+// immutable history. Invoice/Payment stay the live queryable state;
+// this is the ledger, never itself a source of truth for current status.
+model FinancialTransaction {
+  id             String                   @id @default(uuid())
+  organizationId String
+  type           FinancialTransactionType
+  amount         Decimal                  @db.Decimal(12, 2)
+  invoiceId      String?
+  paymentId      String?
+  discountId     String?
+  refundId       String?
+  createdAt      DateTime                 @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  invoice      Invoice?     @relation(fields: [invoiceId], references: [id])
+  payment      Payment?     @relation(fields: [paymentId], references: [id])
+  discount     Discount?    @relation(fields: [discountId], references: [id])
+  refund       Refund?      @relation(fields: [refundId], references: [id])
+
+  @@index([organizationId])
+  @@map("financial_transactions")
 }

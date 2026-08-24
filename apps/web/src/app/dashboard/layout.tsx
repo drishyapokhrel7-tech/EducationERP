@@ -23,6 +23,7 @@ import {
   Network,
   NotebookText,
   Users,
+  Wallet,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,7 @@ const NAV = [
   { href: "/dashboard/academics", label: "Academics", icon: BookOpen },
   { href: "/dashboard/students", label: "Students", icon: GraduationCap },
   { href: "/dashboard/admissions", label: "Admissions", icon: ClipboardList },
+  { href: "/dashboard/finance", label: "Finance", icon: Wallet },
   { href: "/dashboard/timetable", label: "Timetable", icon: CalendarClock },
   { href: "/dashboard/attendance", label: "Attendance", icon: CalendarCheck },
   { href: "/dashboard/syllabus", label: "Syllabus", icon: NotebookText },

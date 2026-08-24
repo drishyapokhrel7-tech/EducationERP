@@ -1,0 +1,398 @@
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { FinancialTransactionType, InvoiceStatus, Prisma, PrismaClient } from "@prisma/client";
+import { PrismaService } from "../../prisma/prisma.service";
+import { CreateFeeCategoryDto } from "./dto/create-fee-category.dto";
+import { CreateFeeStructureDto } from "./dto/create-fee-structure.dto";
+import { AssignFeeStructureDto, AssignFeeStructureBulkDto } from "./dto/assign-fee-structure.dto";
+import { RecordPaymentDto } from "./dto/record-payment.dto";
+import { ApplyDiscountDto } from "./dto/apply-discount.dto";
+import { IssueRefundDto } from "./dto/issue-refund.dto";
+import { CreateScholarshipDto } from "./dto/create-scholarship.dto";
+import { AssignScholarshipDto } from "./dto/assign-scholarship.dto";
+
+function toNumber(value: Prisma.Decimal | number): number {
+  return typeof value === "number" ? value : value.toNumber();
+}
+
+@Injectable()
+export class FinanceService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  // ── Fee categories ──────────────────────────────────────────────────
+
+  createFeeCategory(organizationId: string, dto: CreateFeeCategoryDto) {
+    return this.prisma.withTenant(organizationId, (tx) =>
+      tx.feeCategory.create({ data: { organizationId, ...dto } }),
+    );
+  }
+
+  listFeeCategories(organizationId: string) {
+    return this.prisma.withTenant(organizationId, (tx) =>
+      tx.feeCategory.findMany({ where: { organizationId }, orderBy: { name: "asc" } }),
+    );
+  }
+
+  // ── Fee structures ──────────────────────────────────────────────────
+
+  async createFeeStructure(organizationId: string, dto: CreateFeeStructureDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      // FK-vs-RLS-parent-guard: program/term/categories must actually
+      // be visible to this org, not just any row with a matching id.
+      const program = await tx.program.findUnique({ where: { id: dto.programId } });
+      if (!program) throw new NotFoundException("Program not found");
+      const term = await tx.term.findUnique({ where: { id: dto.termId } });
+      if (!term) throw new NotFoundException("Term not found");
+      for (const item of dto.items) {
+        const category = await tx.feeCategory.findUnique({ where: { id: item.feeCategoryId } });
+        if (!category) throw new NotFoundException(`Fee category ${item.feeCategoryId} not found`);
+      }
+
+      return tx.feeStructure.create({
+        data: {
+          organizationId,
+          programId: dto.programId,
+          termId: dto.termId,
+          name: dto.name,
+          items: {
+            create: dto.items.map((item) => ({
+              organizationId,
+              feeCategoryId: item.feeCategoryId,
+              amount: item.amount,
+            })),
+          },
+        },
+        include: { items: { include: { feeCategory: true } } },
+      });
+    });
+  }
+
+  listFeeStructures(organizationId: string) {
+    return this.prisma.withTenant(organizationId, (tx) =>
+      tx.feeStructure.findMany({
+        where: { organizationId },
+        include: { program: true, term: true, items: { include: { feeCategory: true } } },
+        orderBy: { createdAt: "desc" },
+      }),
+    );
+  }
+
+  // ── Assignment + invoicing ──────────────────────────────────────────
+
+  async assignFeeStructure(organizationId: string, feeStructureId: string, userId: string, dto: AssignFeeStructureDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const feeStructure = await this.loadFeeStructure(tx, feeStructureId);
+      const enrollment = await tx.studentEnrollment.findUnique({ where: { id: dto.studentEnrollmentId } });
+      if (!enrollment) throw new NotFoundException("Student enrollment not found");
+      return this.createAssignmentAndInvoice(tx, organizationId, userId, feeStructure, enrollment, dto.dueDate);
+    });
+  }
+
+  async assignFeeStructureBulk(
+    organizationId: string,
+    feeStructureId: string,
+    userId: string,
+    dto: AssignFeeStructureBulkDto,
+  ) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const feeStructure = await this.loadFeeStructure(tx, feeStructureId);
+      const enrollments = await tx.studentEnrollment.findMany({
+        where: { organizationId, programId: feeStructure.programId, termId: feeStructure.termId, status: "ACTIVE" },
+      });
+
+      const assigned: string[] = [];
+      const skipped: { studentEnrollmentId: string; reason: string }[] = [];
+      for (const enrollment of enrollments) {
+        const existing = await tx.studentFeeAssignment.findUnique({
+          where: { studentEnrollmentId_feeStructureId: { studentEnrollmentId: enrollment.id, feeStructureId } },
+        });
+        if (existing) {
+          skipped.push({ studentEnrollmentId: enrollment.id, reason: "Already assigned" });
+          continue;
+        }
+        await this.createAssignmentAndInvoice(tx, organizationId, userId, feeStructure, enrollment, dto.dueDate);
+        assigned.push(enrollment.id);
+      }
+      return { assigned, skipped };
+    });
+  }
+
+  private async loadFeeStructure(tx: PrismaClient, feeStructureId: string) {
+    const feeStructure = await tx.feeStructure.findUnique({
+      where: { id: feeStructureId },
+      include: { items: true },
+    });
+    if (!feeStructure) throw new NotFoundException("Fee structure not found");
+    return feeStructure;
+  }
+
+  private async createAssignmentAndInvoice(
+    tx: PrismaClient,
+    organizationId: string,
+    userId: string,
+    feeStructure: Prisma.FeeStructureGetPayload<{ include: { items: true } }>,
+    enrollment: { id: string; studentId: string; programId: string; termId: string },
+    dueDate: string,
+  ) {
+    if (enrollment.programId !== feeStructure.programId || enrollment.termId !== feeStructure.termId) {
+      throw new BadRequestException("This enrollment's program/term does not match the fee structure's");
+    }
+    const existing = await tx.studentFeeAssignment.findUnique({
+      where: {
+        studentEnrollmentId_feeStructureId: { studentEnrollmentId: enrollment.id, feeStructureId: feeStructure.id },
+      },
+    });
+    if (existing) throw new ConflictException("This fee structure is already assigned to this enrollment");
+
+    const totalAmount = feeStructure.items.reduce((sum, item) => sum + toNumber(item.amount), 0);
+
+    const invoice = await tx.invoice.create({
+      data: {
+        organizationId,
+        studentId: enrollment.studentId,
+        studentEnrollmentId: enrollment.id,
+        totalAmount,
+        dueDate: new Date(dueDate),
+        items: {
+          create: feeStructure.items.map((item) => ({
+            organizationId,
+            feeCategoryId: item.feeCategoryId,
+            amount: item.amount,
+          })),
+        },
+      },
+    });
+    await tx.studentFeeAssignment.create({
+      data: {
+        organizationId,
+        studentEnrollmentId: enrollment.id,
+        feeStructureId: feeStructure.id,
+        invoiceId: invoice.id,
+        assignedBy: userId,
+      },
+    });
+    await tx.financialTransaction.create({
+      data: { organizationId, type: FinancialTransactionType.INVOICE_CREATED, amount: totalAmount, invoiceId: invoice.id },
+    });
+
+    // Scholarships are auto-applied as Discount rows at the moment the
+    // invoice is created — a snapshot, not a live reference, so a
+    // scholarship change later never silently alters an already-issued
+    // invoice.
+    const activeScholarships = await tx.studentScholarship.findMany({
+      where: { organizationId, studentId: enrollment.studentId, active: true },
+      include: { scholarship: true },
+    });
+    for (const holding of activeScholarships) {
+      const s = holding.scholarship;
+      const reduction = s.percentage != null ? (totalAmount * s.percentage) / 100 : toNumber(s.amount ?? 0);
+      if (reduction <= 0) continue;
+      const discount = await tx.discount.create({
+        data: {
+          organizationId,
+          invoiceId: invoice.id,
+          scholarshipId: s.id,
+          amount: reduction,
+          reason: `Scholarship: ${s.name}`,
+        },
+      });
+      await tx.financialTransaction.create({
+        data: {
+          organizationId,
+          type: FinancialTransactionType.SCHOLARSHIP_APPLIED,
+          amount: reduction,
+          invoiceId: invoice.id,
+          discountId: discount.id,
+        },
+      });
+    }
+
+    await this.recomputeInvoiceStatus(tx, organizationId, invoice.id);
+    return tx.invoice.findUniqueOrThrow({
+      where: { id: invoice.id },
+      include: { items: { include: { feeCategory: true } }, discounts: true, payments: true },
+    });
+  }
+
+  // ── Invoices, payments, discounts, refunds ──────────────────────────
+
+  listInvoices(organizationId: string) {
+    return this.prisma.withTenant(organizationId, (tx) =>
+      tx.invoice.findMany({
+        where: { organizationId },
+        include: {
+          student: true,
+          items: { include: { feeCategory: true } },
+          payments: true,
+          discounts: true,
+        },
+        orderBy: { createdAt: "desc" },
+      }),
+    );
+  }
+
+  async getInvoice(organizationId: string, id: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const invoice = await tx.invoice.findUnique({
+        where: { id },
+        include: {
+          student: true,
+          items: { include: { feeCategory: true } },
+          payments: true,
+          discounts: true,
+        },
+      });
+      if (!invoice) throw new NotFoundException("Invoice not found");
+      return invoice;
+    });
+  }
+
+  async recordPayment(organizationId: string, invoiceId: string, userId: string, dto: RecordPaymentDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const invoice = await tx.invoice.findUnique({ where: { id: invoiceId } });
+      if (!invoice) throw new NotFoundException("Invoice not found");
+      if (invoice.status === InvoiceStatus.CANCELLED) {
+        throw new BadRequestException("Cannot record a payment against a cancelled invoice");
+      }
+
+      const payment = await tx.payment.create({
+        data: {
+          organizationId,
+          invoiceId,
+          amount: dto.amount,
+          method: dto.method,
+          reference: dto.reference,
+          recordedBy: userId,
+          paidAt: dto.paidAt ? new Date(dto.paidAt) : new Date(),
+        },
+      });
+      await tx.financialTransaction.create({
+        data: { organizationId, type: FinancialTransactionType.PAYMENT_RECORDED, amount: dto.amount, invoiceId, paymentId: payment.id },
+      });
+      await this.recomputeInvoiceStatus(tx, organizationId, invoiceId);
+      return payment;
+    });
+  }
+
+  async applyDiscount(organizationId: string, invoiceId: string, userId: string, dto: ApplyDiscountDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const invoice = await tx.invoice.findUnique({ where: { id: invoiceId }, include: { discounts: true } });
+      if (!invoice) throw new NotFoundException("Invoice not found");
+      const currentDiscounts = invoice.discounts.reduce((sum, d) => sum + toNumber(d.amount), 0);
+      const outstanding = toNumber(invoice.totalAmount) - currentDiscounts;
+      if (dto.amount > outstanding) {
+        throw new BadRequestException("Discount amount exceeds the invoice's outstanding balance");
+      }
+
+      const discount = await tx.discount.create({
+        data: { organizationId, invoiceId, amount: dto.amount, reason: dto.reason, appliedBy: userId },
+      });
+      await tx.financialTransaction.create({
+        data: { organizationId, type: FinancialTransactionType.DISCOUNT_APPLIED, amount: dto.amount, invoiceId, discountId: discount.id },
+      });
+      await this.recomputeInvoiceStatus(tx, organizationId, invoiceId);
+      return discount;
+    });
+  }
+
+  async issueRefund(organizationId: string, paymentId: string, userId: string, dto: IssueRefundDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const payment = await tx.payment.findUnique({ where: { id: paymentId }, include: { refunds: true } });
+      if (!payment) throw new NotFoundException("Payment not found");
+      const alreadyRefunded = payment.refunds.reduce((sum, r) => sum + toNumber(r.amount), 0);
+      if (dto.amount > toNumber(payment.amount) - alreadyRefunded) {
+        throw new BadRequestException("Refund amount exceeds the amount still refundable on this payment");
+      }
+
+      const refund = await tx.refund.create({
+        data: { organizationId, paymentId, amount: dto.amount, reason: dto.reason, processedBy: userId },
+      });
+      await tx.financialTransaction.create({
+        data: {
+          organizationId,
+          type: FinancialTransactionType.REFUND_ISSUED,
+          amount: dto.amount,
+          invoiceId: payment.invoiceId,
+          paymentId: payment.id,
+          refundId: refund.id,
+        },
+      });
+      await this.recomputeInvoiceStatus(tx, organizationId, payment.invoiceId);
+      return refund;
+    });
+  }
+
+  private async recomputeInvoiceStatus(tx: PrismaClient, organizationId: string, invoiceId: string) {
+    const invoice = await tx.invoice.findUniqueOrThrow({
+      where: { id: invoiceId },
+      include: { payments: { include: { refunds: true } }, discounts: true },
+    });
+    if (invoice.status === InvoiceStatus.CANCELLED) return;
+
+    const netPayable = toNumber(invoice.totalAmount) - invoice.discounts.reduce((sum, d) => sum + toNumber(d.amount), 0);
+    const netPaid = invoice.payments.reduce((sum, p) => {
+      const refunded = p.refunds.reduce((rs, r) => rs + toNumber(r.amount), 0);
+      return sum + toNumber(p.amount) - refunded;
+    }, 0);
+
+    const status =
+      netPayable <= 0 || netPaid >= netPayable
+        ? InvoiceStatus.PAID
+        : netPaid > 0
+          ? InvoiceStatus.PARTIALLY_PAID
+          : InvoiceStatus.PENDING;
+
+    if (status !== invoice.status) {
+      await tx.invoice.update({ where: { id: invoiceId }, data: { status } });
+    }
+  }
+
+  listFinancialTransactions(organizationId: string) {
+    return this.prisma.withTenant(organizationId, (tx) =>
+      tx.financialTransaction.findMany({ where: { organizationId }, orderBy: { createdAt: "desc" } }),
+    );
+  }
+
+  // ── Scholarships ─────────────────────────────────────────────────────
+
+  createScholarship(organizationId: string, dto: CreateScholarshipDto) {
+    if (!dto.percentage === !dto.amount) {
+      throw new BadRequestException("Provide exactly one of percentage or amount");
+    }
+    return this.prisma.withTenant(organizationId, (tx) =>
+      tx.scholarship.create({
+        data: {
+          organizationId,
+          name: dto.name,
+          description: dto.description,
+          percentage: dto.percentage,
+          amount: dto.amount,
+        },
+      }),
+    );
+  }
+
+  listScholarships(organizationId: string) {
+    return this.prisma.withTenant(organizationId, (tx) =>
+      tx.scholarship.findMany({ where: { organizationId }, orderBy: { name: "asc" } }),
+    );
+  }
+
+  async assignScholarship(organizationId: string, studentId: string, dto: AssignScholarshipDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const student = await tx.student.findUnique({ where: { id: studentId } });
+      if (!student) throw new NotFoundException("Student not found");
+      const scholarship = await tx.scholarship.findUnique({ where: { id: dto.scholarshipId } });
+      if (!scholarship) throw new NotFoundException("Scholarship not found");
+
+      const existing = await tx.studentScholarship.findUnique({
+        where: { studentId_scholarshipId: { studentId, scholarshipId: dto.scholarshipId } },
+      });
+      if (existing) throw new ConflictException("This scholarship is already assigned to this student");
+
+      return tx.studentScholarship.create({
+        data: { organizationId, studentId, scholarshipId: dto.scholarshipId },
+        include: { scholarship: true },
+      });
+    });
+  }
+}

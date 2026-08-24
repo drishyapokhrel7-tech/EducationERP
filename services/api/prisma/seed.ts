@@ -109,6 +109,21 @@ const RESOURCES = [
   // Super-Admin/Organization-Admin-only reasoning as 6a's two.
   "camera",
   "face_match_event",
+  // Phase 7 slice 7a-1 added the Finance domain — one resource per
+  // domain concept (child/junction tables like fee_structure_items or
+  // invoice_items fold into their parent, matching the granularity
+  // established for curriculum_subjects/exam_subjects). Super
+  // Admin/Organization Admin only, same as every resource so far — a
+  // dedicated Accountant role is a future refinement, not implied by
+  // this slice.
+  "fee_category",
+  "fee_structure",
+  "student_fee_assignment",
+  "invoice",
+  "payment",
+  "scholarship",
+  "discount",
+  "refund",
 ];
 const ACTIONS = Object.values(PermissionAction);
 

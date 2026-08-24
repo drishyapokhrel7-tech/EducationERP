@@ -1492,3 +1492,198 @@ export interface FaceMatchEvent extends FaceMatchEventRecord {
 export interface ReviewFaceMatchInput {
   decision: FaceMatchReviewDecision;
 }
+
+// ── Finance (Phase 7 slice 7a-1) ────────────────────────────────────────
+// Every money field is a Prisma Decimal server-side, which serializes to
+// JSON as a string (Decimal's own toJSON()) — typed as `string` here to
+// match the actual wire format, not `number`. Format/parse at the UI
+// layer, don't assume it's already numeric.
+
+export interface FeeCategoryRecord {
+  id: string;
+  organizationId: string;
+  name: string;
+  code: string;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateFeeCategoryInput {
+  name: string;
+  code: string;
+  description?: string;
+}
+
+export interface FeeStructureItemRecord {
+  id: string;
+  organizationId: string;
+  feeStructureId: string;
+  feeCategoryId: string;
+  amount: string;
+  feeCategory: FeeCategoryRecord;
+}
+
+export interface FeeStructureRecord {
+  id: string;
+  organizationId: string;
+  programId: string;
+  termId: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  program: Program;
+  term: Term;
+  items: FeeStructureItemRecord[];
+}
+
+export interface CreateFeeStructureInput {
+  programId: string;
+  termId: string;
+  name: string;
+  items: { feeCategoryId: string; amount: number }[];
+}
+
+export interface AssignFeeStructureInput {
+  studentEnrollmentId: string;
+  dueDate: string;
+}
+
+export interface AssignFeeStructureBulkInput {
+  dueDate: string;
+}
+
+export interface AssignFeeStructureBulkResult {
+  assigned: string[];
+  skipped: { studentEnrollmentId: string; reason: string }[];
+}
+
+export type InvoiceStatus = "PENDING" | "PARTIALLY_PAID" | "PAID" | "CANCELLED";
+export type PaymentMethod = "CASH" | "BANK_TRANSFER" | "CHEQUE" | "ESEWA";
+
+export interface InvoiceItemRecord {
+  id: string;
+  organizationId: string;
+  invoiceId: string;
+  feeCategoryId: string;
+  description: string | null;
+  amount: string;
+  feeCategory: FeeCategoryRecord;
+}
+
+export interface PaymentRecord {
+  id: string;
+  organizationId: string;
+  invoiceId: string;
+  amount: string;
+  method: PaymentMethod;
+  reference: string | null;
+  recordedBy: string | null;
+  paidAt: string;
+  createdAt: string;
+}
+
+export interface DiscountRecord {
+  id: string;
+  organizationId: string;
+  invoiceId: string;
+  scholarshipId: string | null;
+  amount: string;
+  reason: string;
+  appliedBy: string | null;
+  createdAt: string;
+}
+
+export interface InvoiceRecord {
+  id: string;
+  organizationId: string;
+  studentId: string;
+  studentEnrollmentId: string;
+  totalAmount: string;
+  dueDate: string;
+  status: InvoiceStatus;
+  createdAt: string;
+  updatedAt: string;
+  student: StudentSummary;
+  items: InvoiceItemRecord[];
+  payments: PaymentRecord[];
+  discounts: DiscountRecord[];
+}
+
+export interface RecordPaymentInput {
+  amount: number;
+  method: PaymentMethod;
+  reference?: string;
+  paidAt?: string;
+}
+
+export interface ApplyDiscountInput {
+  amount: number;
+  reason: string;
+}
+
+export interface IssueRefundInput {
+  amount: number;
+  reason: string;
+}
+
+export interface RefundRecord {
+  id: string;
+  organizationId: string;
+  paymentId: string;
+  amount: string;
+  reason: string;
+  processedBy: string | null;
+  createdAt: string;
+}
+
+export interface ScholarshipRecord {
+  id: string;
+  organizationId: string;
+  name: string;
+  description: string | null;
+  percentage: number | null;
+  amount: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateScholarshipInput {
+  name: string;
+  description?: string;
+  percentage?: number;
+  amount?: number;
+}
+
+export interface AssignScholarshipInput {
+  scholarshipId: string;
+}
+
+export type FinancialTransactionType =
+  | "INVOICE_CREATED"
+  | "PAYMENT_RECORDED"
+  | "DISCOUNT_APPLIED"
+  | "SCHOLARSHIP_APPLIED"
+  | "REFUND_ISSUED";
+
+export interface FinancialTransactionRecord {
+  id: string;
+  organizationId: string;
+  type: FinancialTransactionType;
+  amount: string;
+  invoiceId: string | null;
+  paymentId: string | null;
+  discountId: string | null;
+  refundId: string | null;
+  createdAt: string;
+}
+
+export interface StudentScholarshipRecord {
+  id: string;
+  organizationId: string;
+  studentId: string;
+  scholarshipId: string;
+  assignedAt: string;
+  active: boolean;
+  scholarship: ScholarshipRecord;
+}

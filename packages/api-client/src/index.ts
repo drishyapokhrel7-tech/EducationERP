@@ -145,6 +145,25 @@ import type {
   FaceMatchEvent,
   FaceMatchEventRecord,
   ReviewFaceMatchInput,
+  FeeCategoryRecord,
+  CreateFeeCategoryInput,
+  FeeStructureRecord,
+  CreateFeeStructureInput,
+  AssignFeeStructureInput,
+  AssignFeeStructureBulkInput,
+  AssignFeeStructureBulkResult,
+  InvoiceRecord,
+  RecordPaymentInput,
+  PaymentRecord,
+  ApplyDiscountInput,
+  DiscountRecord,
+  IssueRefundInput,
+  RefundRecord,
+  ScholarshipRecord,
+  CreateScholarshipInput,
+  AssignScholarshipInput,
+  StudentScholarshipRecord,
+  FinancialTransactionRecord,
 } from "./types";
 
 export class ApiError extends Error {
@@ -669,6 +688,51 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         body: JSON.stringify(input),
       }),
     getFaceMatchImage: (id: string) => requestBlob(`/organizations/me/face-match-events/${id}/image`),
+
+    // Finance (Phase 7 slice 7a-1).
+    createFeeCategory: (input: CreateFeeCategoryInput) =>
+      request<FeeCategoryRecord>("/organizations/me/fee-categories", { method: "POST", body: JSON.stringify(input) }),
+    listFeeCategories: () => request<FeeCategoryRecord[]>("/organizations/me/fee-categories"),
+    createFeeStructure: (input: CreateFeeStructureInput) =>
+      request<FeeStructureRecord>("/organizations/me/fee-structures", { method: "POST", body: JSON.stringify(input) }),
+    listFeeStructures: () => request<FeeStructureRecord[]>("/organizations/me/fee-structures"),
+    assignFeeStructure: (id: string, input: AssignFeeStructureInput) =>
+      request<InvoiceRecord>(`/organizations/me/fee-structures/${id}/assign`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    assignFeeStructureBulk: (id: string, input: AssignFeeStructureBulkInput) =>
+      request<AssignFeeStructureBulkResult>(`/organizations/me/fee-structures/${id}/assign-bulk`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    listInvoices: () => request<InvoiceRecord[]>("/organizations/me/invoices"),
+    getInvoice: (id: string) => request<InvoiceRecord>(`/organizations/me/invoices/${id}`),
+    recordPayment: (invoiceId: string, input: RecordPaymentInput) =>
+      request<PaymentRecord>(`/organizations/me/invoices/${invoiceId}/payments`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    applyDiscount: (invoiceId: string, input: ApplyDiscountInput) =>
+      request<DiscountRecord>(`/organizations/me/invoices/${invoiceId}/discounts`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    issueRefund: (paymentId: string, input: IssueRefundInput) =>
+      request<RefundRecord>(`/organizations/me/payments/${paymentId}/refunds`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    listFinancialTransactions: () =>
+      request<FinancialTransactionRecord[]>("/organizations/me/financial-transactions"),
+    createScholarship: (input: CreateScholarshipInput) =>
+      request<ScholarshipRecord>("/organizations/me/scholarships", { method: "POST", body: JSON.stringify(input) }),
+    listScholarships: () => request<ScholarshipRecord[]>("/organizations/me/scholarships"),
+    assignScholarship: (studentId: string, input: AssignScholarshipInput) =>
+      request<StudentScholarshipRecord>(`/organizations/me/students/${studentId}/scholarships`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
   };
 }
 

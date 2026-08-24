@@ -159,6 +159,29 @@ describe("Tenant isolation (e2e)", () => {
         "employee",
         "staffType",
         "designation",
+        // Finance (Phase 7 slice 7a-1) — financialTransaction references
+        // invoice/payment/discount/refund, so it leads all four;
+        // refund/discount/payment/studentFeeAssignment/invoiceItem all
+        // reference invoice (or payment), so they precede invoice itself;
+        // studentFeeAssignment also references studentEnrollment and
+        // feeStructure, and invoice references student/studentEnrollment,
+        // so the whole block must go before those — well ahead of the
+        // student/program/term deletes below. studentScholarship/
+        // scholarship and feeStructureItem/feeStructure/feeCategory are
+        // otherwise self-contained but placed here too since discount can
+        // reference scholarship.
+        "financialTransaction",
+        "refund",
+        "discount",
+        "payment",
+        "studentFeeAssignment",
+        "invoiceItem",
+        "invoice",
+        "studentScholarship",
+        "scholarship",
+        "feeStructureItem",
+        "feeStructure",
+        "feeCategory",
         // admission_applications.enrolledStudentId FKs to Student, so
         // these must go before the student delete.
         "admissionStatusHistory",
@@ -4289,6 +4312,325 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(tokenB))
         .expect(200);
       expect(staffListB.body.find((a: { employeeId: string }) => a.employeeId === t.employeeId)).toBeUndefined();
+    }, 90000);
+  });
+
+  describe("finance (fee structures, invoicing, manual payments — Phase 7 slice 7a-1)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    async function buildFinanceTarget(token: string, suffix: string) {
+      const campus = await request(app.getHttpServer())
+        .post("/organizations/me/campuses")
+        .set(...auth(token))
+        .send({ name: `Finance Campus ${suffix}`, code: `FNCAMP${suffix}` })
+        .expect(201);
+      const faculty = await request(app.getHttpServer())
+        .post("/organizations/me/faculties")
+        .set(...auth(token))
+        .send({ campusId: campus.body.id, name: `Finance Faculty ${suffix}`, code: `FNFAC${suffix}` })
+        .expect(201);
+      const department = await request(app.getHttpServer())
+        .post("/organizations/me/departments")
+        .set(...auth(token))
+        .send({ facultyId: faculty.body.id, name: `Finance Dept ${suffix}`, code: `FNDEP${suffix}` })
+        .expect(201);
+      const program = await request(app.getHttpServer())
+        .post("/organizations/me/programs")
+        .set(...auth(token))
+        .send({ departmentId: department.body.id, name: `Finance Program ${suffix}`, code: `FNPROG${suffix}` })
+        .expect(201);
+      const year = await request(app.getHttpServer())
+        .post("/organizations/me/academic-years")
+        .set(...auth(token))
+        .send({ name: `Finance Year ${suffix}`, startDate: "2099-01-01", endDate: "2099-12-31" })
+        .expect(201);
+      const term = await request(app.getHttpServer())
+        .post("/organizations/me/terms")
+        .set(...auth(token))
+        .send({
+          academicYearId: year.body.id,
+          name: `Finance Term ${suffix}`,
+          code: `FNT${suffix}`,
+          sequence: 1,
+          startDate: "2099-01-01",
+          endDate: "2099-06-30",
+        })
+        .expect(201);
+      const section = await request(app.getHttpServer())
+        .post("/organizations/me/sections")
+        .set(...auth(token))
+        .send({ programId: program.body.id, termId: term.body.id, name: `Finance Section ${suffix}`, code: `FNS${suffix}` })
+        .expect(201);
+
+      const studentIds: string[] = [];
+      const enrollmentIds: string[] = [];
+      for (const n of [1, 2]) {
+        const student = await request(app.getHttpServer())
+          .post("/organizations/me/students")
+          .set(...auth(token))
+          .send({
+            studentCode: `FN-STU-${suffix}-${n}`,
+            firstName: `Fin${n}`,
+            lastName: suffix,
+            dateOfBirth: "2015-01-01",
+          })
+          .expect(201);
+        const enrollment = await request(app.getHttpServer())
+          .post(`/organizations/me/students/${student.body.id}/enrollments`)
+          .set(...auth(token))
+          .send({
+            programId: program.body.id,
+            sectionId: section.body.id,
+            termId: term.body.id,
+            enrollmentDate: "2099-01-01",
+          })
+          .expect(201);
+        studentIds.push(student.body.id);
+        enrollmentIds.push(enrollment.body.id);
+      }
+
+      return { programId: program.body.id, termId: term.body.id, studentIds, enrollmentIds };
+    }
+
+    it("assigns a fee structure (single and bulk), snapshots invoice items, tracks payments to PAID, applies a discount, and stays tenant-scoped", async () => {
+      const t = await buildFinanceTarget(tokenA, `FIN${run}`);
+
+      const tuition = await request(app.getHttpServer())
+        .post("/organizations/me/fee-categories")
+        .set(...auth(tokenA))
+        .send({ name: `Tuition ${run}`, code: `TUI${run}` })
+        .expect(201);
+      const library = await request(app.getHttpServer())
+        .post("/organizations/me/fee-categories")
+        .set(...auth(tokenA))
+        .send({ name: `Library ${run}`, code: `LIB${run}` })
+        .expect(201);
+
+      const structure = await request(app.getHttpServer())
+        .post("/organizations/me/fee-structures")
+        .set(...auth(tokenA))
+        .send({
+          programId: t.programId,
+          termId: t.termId,
+          name: `Term 1 Fees ${run}`,
+          items: [
+            { feeCategoryId: tuition.body.id, amount: 5000 },
+            { feeCategoryId: library.body.id, amount: 500 },
+          ],
+        })
+        .expect(201);
+      expect(structure.body.items).toHaveLength(2);
+
+      const invoice1 = await request(app.getHttpServer())
+        .post(`/organizations/me/fee-structures/${structure.body.id}/assign`)
+        .set(...auth(tokenA))
+        .send({ studentEnrollmentId: t.enrollmentIds[0], dueDate: "2099-02-01" })
+        .expect(201);
+      expect(invoice1.body.totalAmount).toBe("5500");
+      expect(invoice1.body.items).toHaveLength(2);
+      expect(invoice1.body.status).toBe("PENDING");
+
+      // Assigning the same structure to the same enrollment twice is a
+      // real conflict, not a silent no-op.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/fee-structures/${structure.body.id}/assign`)
+        .set(...auth(tokenA))
+        .send({ studentEnrollmentId: t.enrollmentIds[0], dueDate: "2099-02-01" })
+        .expect(409);
+
+      // Bulk assigns everyone else still enrolled for this program/term —
+      // student 1 is already assigned and gets skipped, not double-billed.
+      const bulk = await request(app.getHttpServer())
+        .post(`/organizations/me/fee-structures/${structure.body.id}/assign-bulk`)
+        .set(...auth(tokenA))
+        .send({ dueDate: "2099-02-01" })
+        .expect(201);
+      expect(bulk.body.assigned).toEqual([t.enrollmentIds[1]]);
+      expect(bulk.body.skipped).toEqual([{ studentEnrollmentId: t.enrollmentIds[0], reason: "Already assigned" }]);
+
+      const invoices = await request(app.getHttpServer())
+        .get("/organizations/me/invoices")
+        .set(...auth(tokenA))
+        .expect(200);
+      const invoice2 = invoices.body.find((i: { studentEnrollmentId: string }) => i.studentEnrollmentId === t.enrollmentIds[1]);
+      expect(invoice2).toBeDefined();
+
+      const payment1 = await request(app.getHttpServer())
+        .post(`/organizations/me/invoices/${invoice1.body.id}/payments`)
+        .set(...auth(tokenA))
+        .send({ amount: 2000, method: "CASH" })
+        .expect(201);
+      expect(payment1.body.amount).toBe("2000");
+
+      let refreshed = await request(app.getHttpServer())
+        .get(`/organizations/me/invoices/${invoice1.body.id}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(refreshed.body.status).toBe("PARTIALLY_PAID");
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/invoices/${invoice1.body.id}/payments`)
+        .set(...auth(tokenA))
+        .send({ amount: 3500, method: "BANK_TRANSFER", reference: `TXN-${run}` })
+        .expect(201);
+
+      refreshed = await request(app.getHttpServer())
+        .get(`/organizations/me/invoices/${invoice1.body.id}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(refreshed.body.status).toBe("PAID");
+
+      // A discount larger than the outstanding balance is rejected, not
+      // silently clamped.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/invoices/${invoice2.id}/discounts`)
+        .set(...auth(tokenA))
+        .send({ amount: 999999, reason: "Too large" })
+        .expect(400);
+
+      const discount = await request(app.getHttpServer())
+        .post(`/organizations/me/invoices/${invoice2.id}/discounts`)
+        .set(...auth(tokenA))
+        .send({ amount: 500, reason: "Sibling waiver" })
+        .expect(201);
+      expect(discount.body.amount).toBe("500");
+
+      const transactions = await request(app.getHttpServer())
+        .get("/organizations/me/financial-transactions")
+        .set(...auth(tokenA))
+        .expect(200);
+      const forInvoice1 = transactions.body.filter((tr: { invoiceId: string }) => tr.invoiceId === invoice1.body.id);
+      expect(forInvoice1.map((tr: { type: string }) => tr.type).sort()).toEqual(
+        ["INVOICE_CREATED", "PAYMENT_RECORDED", "PAYMENT_RECORDED"].sort(),
+      );
+
+      const invoicesB = await request(app.getHttpServer())
+        .get("/organizations/me/invoices")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(invoicesB.body).toEqual([]);
+      await request(app.getHttpServer())
+        .get(`/organizations/me/invoices/${invoice1.body.id}`)
+        .set(...auth(tokenB))
+        .expect(404);
+    }, 90000);
+
+    it("auto-applies an active scholarship only to invoices generated after it's assigned, and supports refunds", async () => {
+      const t = await buildFinanceTarget(tokenA, `FINSCH${run}`);
+
+      const examFee = await request(app.getHttpServer())
+        .post("/organizations/me/fee-categories")
+        .set(...auth(tokenA))
+        .send({ name: `Exam Fee ${run}`, code: `EXF${run}` })
+        .expect(201);
+
+      const structure1 = await request(app.getHttpServer())
+        .post("/organizations/me/fee-structures")
+        .set(...auth(tokenA))
+        .send({
+          programId: t.programId,
+          termId: t.termId,
+          name: `Tuition Only ${run}`,
+          items: [{ feeCategoryId: examFee.body.id, amount: 4000 }],
+        })
+        .expect(201);
+
+      const invoiceBefore = await request(app.getHttpServer())
+        .post(`/organizations/me/fee-structures/${structure1.body.id}/assign`)
+        .set(...auth(tokenA))
+        .send({ studentEnrollmentId: t.enrollmentIds[0], dueDate: "2099-02-01" })
+        .expect(201);
+      expect(invoiceBefore.body.discounts).toEqual([]);
+
+      // XOR: exactly one of percentage/amount, not both, not neither.
+      await request(app.getHttpServer())
+        .post("/organizations/me/scholarships")
+        .set(...auth(tokenA))
+        .send({ name: `Bad Scholarship ${run}`, percentage: 10, amount: 100 })
+        .expect(400);
+
+      const scholarship = await request(app.getHttpServer())
+        .post("/organizations/me/scholarships")
+        .set(...auth(tokenA))
+        .send({ name: `Merit Scholarship ${run}`, percentage: 25 })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/students/${t.studentIds[0]}/scholarships`)
+        .set(...auth(tokenA))
+        .send({ scholarshipId: scholarship.body.id })
+        .expect(201);
+
+      const structure2 = await request(app.getHttpServer())
+        .post("/organizations/me/fee-structures")
+        .set(...auth(tokenA))
+        .send({
+          programId: t.programId,
+          termId: t.termId,
+          name: `Exam Fees ${run}`,
+          items: [{ feeCategoryId: examFee.body.id, amount: 2000 }],
+        })
+        .expect(201);
+
+      const invoiceAfter = await request(app.getHttpServer())
+        .post(`/organizations/me/fee-structures/${structure2.body.id}/assign`)
+        .set(...auth(tokenA))
+        .send({ studentEnrollmentId: t.enrollmentIds[0], dueDate: "2099-02-01" })
+        .expect(201);
+      expect(invoiceAfter.body.discounts).toHaveLength(1);
+      expect(invoiceAfter.body.discounts[0].amount).toBe("500"); // 25% of 2000
+      expect(invoiceAfter.body.discounts[0].scholarshipId).toBe(scholarship.body.id);
+
+      // The earlier invoice, issued before the scholarship existed, is
+      // never retroactively touched.
+      const invoiceBeforeRefetched = await request(app.getHttpServer())
+        .get(`/organizations/me/invoices/${invoiceBefore.body.id}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(invoiceBeforeRefetched.body.discounts).toEqual([]);
+
+      // Net payable is 2000 - 500 = 1500; pay it in full.
+      const payment = await request(app.getHttpServer())
+        .post(`/organizations/me/invoices/${invoiceAfter.body.id}/payments`)
+        .set(...auth(tokenA))
+        .send({ amount: 1500, method: "CASH" })
+        .expect(201);
+
+      let refreshed = await request(app.getHttpServer())
+        .get(`/organizations/me/invoices/${invoiceAfter.body.id}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(refreshed.body.status).toBe("PAID");
+
+      // Refunding more than what's left refundable on the payment is
+      // rejected.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/payments/${payment.body.id}/refunds`)
+        .set(...auth(tokenA))
+        .send({ amount: 2000, reason: "Too much" })
+        .expect(400);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/payments/${payment.body.id}/refunds`)
+        .set(...auth(tokenA))
+        .send({ amount: 500, reason: "Partial refund" })
+        .expect(201);
+
+      refreshed = await request(app.getHttpServer())
+        .get(`/organizations/me/invoices/${invoiceAfter.body.id}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(refreshed.body.status).toBe("PARTIALLY_PAID");
+
+      const transactions = await request(app.getHttpServer())
+        .get("/organizations/me/financial-transactions")
+        .set(...auth(tokenA))
+        .expect(200);
+      const forInvoiceAfter = transactions.body.filter(
+        (tr: { invoiceId: string }) => tr.invoiceId === invoiceAfter.body.id,
+      );
+      expect(forInvoiceAfter.map((tr: { type: string }) => tr.type).sort()).toEqual(
+        ["INVOICE_CREATED", "SCHOLARSHIP_APPLIED", "PAYMENT_RECORDED", "REFUND_ISSUED"].sort(),
+      );
     }, 90000);
   });
 });
