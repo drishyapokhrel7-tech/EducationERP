@@ -1,6 +1,15 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { FinancialTransactionType, InvoiceStatus, Prisma, PrismaClient } from "@prisma/client";
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { randomUUID } from "crypto";
+import {
+  EsewaTransactionStatus,
+  FinancialTransactionType,
+  InvoiceStatus,
+  PaymentMethod,
+  Prisma,
+  PrismaClient,
+} from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
+import { EsewaGatewayService, EsewaRedirectPayload } from "./esewa-gateway.service";
 import { CreateFeeCategoryDto } from "./dto/create-fee-category.dto";
 import { CreateFeeStructureDto } from "./dto/create-fee-structure.dto";
 import { AssignFeeStructureDto, AssignFeeStructureBulkDto } from "./dto/assign-fee-structure.dto";
@@ -16,7 +25,12 @@ function toNumber(value: Prisma.Decimal | number): number {
 
 @Injectable()
 export class FinanceService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(FinanceService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly esewaGateway: EsewaGatewayService,
+  ) {}
 
   // ── Fee categories ──────────────────────────────────────────────────
 
@@ -230,6 +244,20 @@ export class FinanceService {
     );
   }
 
+  listInvoicesForStudent(organizationId: string, studentId: string) {
+    return this.prisma.withTenant(organizationId, (tx) =>
+      tx.invoice.findMany({
+        where: { organizationId, studentId },
+        include: {
+          items: { include: { feeCategory: true } },
+          payments: true,
+          discounts: true,
+        },
+        orderBy: { createdAt: "desc" },
+      }),
+    );
+  }
+
   async getInvoice(organizationId: string, id: string) {
     return this.prisma.withTenant(organizationId, async (tx) => {
       const invoice = await tx.invoice.findUnique({
@@ -270,6 +298,146 @@ export class FinanceService {
       });
       await this.recomputeInvoiceStatus(tx, organizationId, invoiceId);
       return payment;
+    });
+  }
+
+  // ── eSewa online payment (slice 7a-2) ────────────────────────────────
+
+  async initiateEsewaPayment(
+    organizationId: string,
+    invoiceId: string,
+    amount: number,
+    initiatedBy: string | null,
+    channel: "admin" | "portal",
+    // Set only for the portal path — IDOR-by-construction, same as
+    // every other self-service route: a student can only ever initiate
+    // a payment against their own invoice.
+    ownerStudentId?: string,
+  ) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const invoice = await tx.invoice.findUnique({ where: { id: invoiceId } });
+      if (!invoice) throw new NotFoundException("Invoice not found");
+      if (ownerStudentId && invoice.studentId !== ownerStudentId) {
+        throw new NotFoundException("Invoice not found");
+      }
+      if (invoice.status === InvoiceStatus.CANCELLED) {
+        throw new BadRequestException("Cannot pay a cancelled invoice");
+      }
+
+      const transactionUuid = randomUUID();
+      await tx.esewaTransaction.create({
+        data: {
+          organizationId,
+          invoiceId,
+          transactionUuid,
+          amount,
+          initiatedBy: initiatedBy ?? undefined,
+        },
+      });
+
+      // Both success and failure land on the same callback page for the
+      // channel that initiated — the page itself distinguishes outcome
+      // from whatever `data` param (if any) eSewa appends, rather than
+      // this service guessing which URLs actually carry a payload.
+      const webOrigin = process.env.CORS_ORIGIN ?? "http://localhost:3020";
+      const callbackPath = channel === "portal" ? "portal/esewa/callback" : "dashboard/finance/esewa/callback";
+      const callbackUrl = `${webOrigin}/${callbackPath}`;
+
+      return this.esewaGateway.buildPaymentForm({
+        amount,
+        transactionUuid,
+        successUrl: callbackUrl,
+        failureUrl: callbackUrl,
+      });
+    });
+  }
+
+  async confirmEsewaPayment(
+    organizationId: string,
+    encodedData: string,
+    // Set only for the portal path — same IDOR-by-construction guard as initiateEsewaPayment.
+    ownerStudentId?: string,
+  ) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      let payload: EsewaRedirectPayload;
+      try {
+        payload = JSON.parse(Buffer.from(encodedData, "base64").toString("utf-8")) as EsewaRedirectPayload;
+      } catch {
+        throw new BadRequestException("Malformed payment confirmation payload");
+      }
+      if (!payload.transaction_uuid) {
+        throw new BadRequestException("Malformed payment confirmation payload");
+      }
+
+      if (!this.esewaGateway.verifySignature(payload)) {
+        // Not a hard rejection — see EsewaGatewayService's class doc.
+        // The real gate below is a live checkStatus() call.
+        this.logger.warn(`eSewa redirect signature did not verify for transaction ${payload.transaction_uuid}`);
+      }
+
+      const esewaTx = await tx.esewaTransaction.findUnique({
+        where: { transactionUuid: payload.transaction_uuid },
+        include: { invoice: { select: { studentId: true } } },
+      });
+      if (!esewaTx || esewaTx.organizationId !== organizationId) {
+        throw new NotFoundException("Payment transaction not found");
+      }
+      if (ownerStudentId && esewaTx.invoice.studentId !== ownerStudentId) {
+        throw new NotFoundException("Payment transaction not found");
+      }
+
+      if (esewaTx.status === EsewaTransactionStatus.COMPLETE) {
+        // Idempotent replay — a reloaded callback page or a
+        // double-submitted click must never credit twice.
+        const payment = await tx.payment.findFirst({
+          where: { organizationId, invoiceId: esewaTx.invoiceId, reference: esewaTx.transactionUuid },
+        });
+        return { status: "COMPLETE" as const, invoiceId: esewaTx.invoiceId, payment };
+      }
+
+      const result = await this.esewaGateway.checkStatus({
+        transactionUuid: esewaTx.transactionUuid,
+        totalAmount: toNumber(esewaTx.amount),
+      });
+
+      if (result.status !== "COMPLETE") {
+        await tx.esewaTransaction.update({
+          where: { id: esewaTx.id },
+          data: {
+            status: result.status === "CANCELED" ? EsewaTransactionStatus.CANCELED : EsewaTransactionStatus.FAILED,
+            completedAt: new Date(),
+          },
+        });
+        throw new BadRequestException(`Payment was not completed (eSewa status: ${result.status})`);
+      }
+
+      const payment = await tx.payment.create({
+        data: {
+          organizationId,
+          invoiceId: esewaTx.invoiceId,
+          amount: esewaTx.amount,
+          method: PaymentMethod.ESEWA,
+          reference: esewaTx.transactionUuid,
+          recordedBy: null,
+          paidAt: new Date(),
+        },
+      });
+      await tx.financialTransaction.create({
+        data: {
+          organizationId,
+          type: FinancialTransactionType.PAYMENT_RECORDED,
+          amount: esewaTx.amount,
+          invoiceId: esewaTx.invoiceId,
+          paymentId: payment.id,
+        },
+      });
+      await tx.esewaTransaction.update({
+        where: { id: esewaTx.id },
+        data: { status: EsewaTransactionStatus.COMPLETE, esewaRefId: result.refId, completedAt: new Date() },
+      });
+      await this.recomputeInvoiceStatus(tx, organizationId, esewaTx.invoiceId);
+
+      return { status: "COMPLETE" as const, invoiceId: esewaTx.invoiceId, payment };
     });
   }
 

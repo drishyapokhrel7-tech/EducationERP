@@ -4,6 +4,8 @@ import { CreateFeeCategoryDto } from "./dto/create-fee-category.dto";
 import { CreateFeeStructureDto } from "./dto/create-fee-structure.dto";
 import { AssignFeeStructureDto, AssignFeeStructureBulkDto } from "./dto/assign-fee-structure.dto";
 import { RecordPaymentDto } from "./dto/record-payment.dto";
+import { InitiateEsewaPaymentDto } from "./dto/initiate-esewa-payment.dto";
+import { ConfirmEsewaPaymentDto } from "./dto/confirm-esewa-payment.dto";
 import { ApplyDiscountDto } from "./dto/apply-discount.dto";
 import { IssueRefundDto } from "./dto/issue-refund.dto";
 import { CreateScholarshipDto } from "./dto/create-scholarship.dto";
@@ -79,6 +81,21 @@ export class FinanceController {
   @RequirePermissions("payment:create")
   recordPayment(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: RecordPaymentDto) {
     return this.finance.recordPayment(user.organizationId, id, user.sub, dto);
+  }
+
+  // eSewa online payment (slice 7a-2) — same payment:create permission
+  // as manual payment recording, since a gateway-confirmed payment is
+  // still fundamentally "this invoice got paid."
+  @Post("invoices/:id/esewa/initiate")
+  @RequirePermissions("payment:create")
+  initiateEsewaPayment(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: InitiateEsewaPaymentDto) {
+    return this.finance.initiateEsewaPayment(user.organizationId, id, dto.amount, user.sub, "admin");
+  }
+
+  @Post("esewa/verify")
+  @RequirePermissions("payment:create")
+  confirmEsewaPayment(@CurrentUser() user: JwtPayload, @Body() dto: ConfirmEsewaPaymentDto) {
+    return this.finance.confirmEsewaPayment(user.organizationId, dto.data);
   }
 
   @Post("invoices/:id/discounts")

@@ -1,4 +1,5 @@
 import "reflect-metadata";
+import { createHmac } from "crypto";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import * as request from "supertest";
@@ -170,6 +171,9 @@ describe("Tenant isolation (e2e)", () => {
         // scholarship and feeStructureItem/feeStructure/feeCategory are
         // otherwise self-contained but placed here too since discount can
         // reference scholarship.
+        // esewaTransaction.invoiceId is RESTRICT (slice 7a-2) — must
+        // precede invoice, same as every other finance table here.
+        "esewaTransaction",
         "financialTransaction",
         "refund",
         "discount",
@@ -4632,5 +4636,227 @@ describe("Tenant isolation (e2e)", () => {
         ["INVOICE_CREATED", "SCHOLARSHIP_APPLIED", "PAYMENT_RECORDED", "REFUND_ISSUED"].sort(),
       );
     }, 90000);
+  });
+
+  describe("eSewa online payment (Phase 7 slice 7a-2 — real sandbox signing + status-check gating)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    async function buildEsewaInvoice(token: string, suffix: string) {
+      const campus = await request(app.getHttpServer())
+        .post("/organizations/me/campuses")
+        .set(...auth(token))
+        .send({ name: `Esewa Campus ${suffix}`, code: `ESCAMP${suffix}` })
+        .expect(201);
+      const faculty = await request(app.getHttpServer())
+        .post("/organizations/me/faculties")
+        .set(...auth(token))
+        .send({ campusId: campus.body.id, name: `Esewa Faculty ${suffix}`, code: `ESFAC${suffix}` })
+        .expect(201);
+      const department = await request(app.getHttpServer())
+        .post("/organizations/me/departments")
+        .set(...auth(token))
+        .send({ facultyId: faculty.body.id, name: `Esewa Dept ${suffix}`, code: `ESDEP${suffix}` })
+        .expect(201);
+      const program = await request(app.getHttpServer())
+        .post("/organizations/me/programs")
+        .set(...auth(token))
+        .send({ departmentId: department.body.id, name: `Esewa Program ${suffix}`, code: `ESPROG${suffix}` })
+        .expect(201);
+      const year = await request(app.getHttpServer())
+        .post("/organizations/me/academic-years")
+        .set(...auth(token))
+        .send({ name: `Esewa Year ${suffix}`, startDate: "2099-01-01", endDate: "2099-12-31" })
+        .expect(201);
+      const term = await request(app.getHttpServer())
+        .post("/organizations/me/terms")
+        .set(...auth(token))
+        .send({
+          academicYearId: year.body.id,
+          name: `Esewa Term ${suffix}`,
+          code: `EST${suffix}`,
+          sequence: 1,
+          startDate: "2099-01-01",
+          endDate: "2099-06-30",
+        })
+        .expect(201);
+      const section = await request(app.getHttpServer())
+        .post("/organizations/me/sections")
+        .set(...auth(token))
+        .send({ programId: program.body.id, termId: term.body.id, name: `Esewa Section ${suffix}`, code: `ESS${suffix}` })
+        .expect(201);
+      const student = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(token))
+        .send({ studentCode: `ES-STU-${suffix}`, firstName: "Esewa", lastName: suffix, dateOfBirth: "2015-01-01" })
+        .expect(201);
+      const enrollment = await request(app.getHttpServer())
+        .post(`/organizations/me/students/${student.body.id}/enrollments`)
+        .set(...auth(token))
+        .send({ programId: program.body.id, sectionId: section.body.id, termId: term.body.id, enrollmentDate: "2099-01-01" })
+        .expect(201);
+
+      const category = await request(app.getHttpServer())
+        .post("/organizations/me/fee-categories")
+        .set(...auth(token))
+        .send({ name: `Esewa Fee ${suffix}`, code: `ESF${suffix}` })
+        .expect(201);
+      const structure = await request(app.getHttpServer())
+        .post("/organizations/me/fee-structures")
+        .set(...auth(token))
+        .send({
+          programId: program.body.id,
+          termId: term.body.id,
+          name: `Esewa Fees ${suffix}`,
+          items: [{ feeCategoryId: category.body.id, amount: 1000 }],
+        })
+        .expect(201);
+      const invoice = await request(app.getHttpServer())
+        .post(`/organizations/me/fee-structures/${structure.body.id}/assign`)
+        .set(...auth(token))
+        .send({ studentEnrollmentId: enrollment.body.id, dueDate: "2099-02-01" })
+        .expect(201);
+
+      return { studentId: student.body.id, invoiceId: invoice.body.id };
+    }
+
+    it("initiates a correctly-signed eSewa form payload against the real sandbox, refuses to credit an unconfirmed transaction, rejects a malformed confirmation payload, and stays tenant-scoped", async () => {
+      const { invoiceId } = await buildEsewaInvoice(tokenA, `ESWA${run}`);
+
+      const initiated = await request(app.getHttpServer())
+        .post(`/organizations/me/invoices/${invoiceId}/esewa/initiate`)
+        .set(...auth(tokenA))
+        .send({ amount: 1000 })
+        .expect(201);
+      expect(initiated.body.actionUrl).toBe("https://rc-epay.esewa.com.np/api/epay/main/v2/form");
+      expect(initiated.body.fields.product_code).toBe("EPAYTEST");
+      expect(initiated.body.fields.total_amount).toBe("1000.00");
+      const transactionUuid = initiated.body.fields.transaction_uuid;
+
+      // Independently recompute the HMAC against eSewa's own published
+      // sandbox secret key and algorithm — confirms the signature is
+      // actually correct, not just present.
+      const expectedSignature = createHmac("sha256", "8gBm/:&EnhH.1/q")
+        .update(`total_amount=1000.00,transaction_uuid=${transactionUuid},product_code=EPAYTEST`)
+        .digest("base64");
+      expect(initiated.body.fields.signature).toBe(expectedSignature);
+
+      // This transaction was never actually paid on eSewa's side. A
+      // forged redirect payload claiming COMPLETE must not be trusted —
+      // confirmEsewaPayment's real gate is a live checkStatus() call
+      // back to eSewa's own sandbox, which correctly reports this
+      // transaction as not paid, so no Payment gets created.
+      const forgedPayload = Buffer.from(
+        JSON.stringify({
+          transaction_code: "FAKE",
+          status: "COMPLETE",
+          total_amount: 1000,
+          transaction_uuid: transactionUuid,
+          product_code: "EPAYTEST",
+          signed_field_names: "total_amount,transaction_uuid,product_code",
+          signature: "not-a-real-signature",
+        }),
+      ).toString("base64");
+      await request(app.getHttpServer())
+        .post("/organizations/me/esewa/verify")
+        .set(...auth(tokenA))
+        .send({ data: forgedPayload })
+        .expect(400);
+
+      const refreshed = await request(app.getHttpServer())
+        .get(`/organizations/me/invoices/${invoiceId}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(refreshed.body.status).toBe("PENDING");
+      expect(refreshed.body.payments).toEqual([]);
+
+      // A malformed (non-JSON) payload 400s cleanly, not a 500.
+      await request(app.getHttpServer())
+        .post("/organizations/me/esewa/verify")
+        .set(...auth(tokenA))
+        .send({ data: "not-valid-base64-json!!" })
+        .expect(400);
+
+      // A well-formed payload for a transaction_uuid that was never
+      // initiated 404s.
+      const unknownPayload = Buffer.from(
+        JSON.stringify({ transaction_uuid: "00000000-0000-0000-0000-000000000000", status: "COMPLETE" }),
+      ).toString("base64");
+      await request(app.getHttpServer())
+        .post("/organizations/me/esewa/verify")
+        .set(...auth(tokenA))
+        .send({ data: unknownPayload })
+        .expect(404);
+
+      // Cross-tenant: org B can't initiate a payment against org A's invoice.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/invoices/${invoiceId}/esewa/initiate`)
+        .set(...auth(tokenB))
+        .send({ amount: 1000 })
+        .expect(404);
+    }, 30000);
+
+    it("supports self-service payment initiation via the student portal, and rejects a student initiating or confirming a payment against another student's invoice (IDOR guard)", async () => {
+      const { studentId: ownerStudentId, invoiceId } = await buildEsewaInvoice(tokenA, `ESWP${run}`);
+      const { studentId: otherStudentId } = await buildEsewaInvoice(tokenA, `ESWP2${run}`);
+
+      const ownerLogin = await request(app.getHttpServer())
+        .post(`/organizations/me/students/${ownerStudentId}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "EsewaPass123" })
+        .expect(201);
+      const otherLogin = await request(app.getHttpServer())
+        .post(`/organizations/me/students/${otherStudentId}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "EsewaPass456" })
+        .expect(201);
+      const ownerSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: ownerLogin.body.username, password: "EsewaPass123" })
+        .expect(201);
+      const otherSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: otherLogin.body.username, password: "EsewaPass456" })
+        .expect(201);
+
+      // The owner sees their own invoice, with no `student` field
+      // leaked on the self-service list (the caller already knows who
+      // they are).
+      const ownInvoices = await request(app.getHttpServer())
+        .get("/organizations/me/portal/invoices")
+        .set(...auth(ownerSession.body.accessToken))
+        .expect(200);
+      expect(ownInvoices.body.map((i: { id: string }) => i.id)).toContain(invoiceId);
+      expect(ownInvoices.body[0]).not.toHaveProperty("student");
+
+      // The owner can initiate a real, correctly-signed eSewa payment
+      // for their own invoice through the portal.
+      const initiated = await request(app.getHttpServer())
+        .post(`/organizations/me/portal/invoices/${invoiceId}/esewa/initiate`)
+        .set(...auth(ownerSession.body.accessToken))
+        .send({ amount: 1000 })
+        .expect(201);
+      expect(initiated.body.fields.transaction_uuid).toEqual(expect.any(String));
+
+      // A different student cannot initiate a payment against this
+      // invoice — 404, not 403, same IDOR-by-construction guard as
+      // every other portal route.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/portal/invoices/${invoiceId}/esewa/initiate`)
+        .set(...auth(otherSession.body.accessToken))
+        .send({ amount: 1000 })
+        .expect(404);
+
+      // Nor can they confirm a payment against it, even naming a
+      // well-formed transaction_uuid that really was initiated for this
+      // invoice (by its owner).
+      const payload = Buffer.from(
+        JSON.stringify({ transaction_uuid: initiated.body.fields.transaction_uuid, status: "COMPLETE" }),
+      ).toString("base64");
+      await request(app.getHttpServer())
+        .post("/organizations/me/portal/esewa/verify")
+        .set(...auth(otherSession.body.accessToken))
+        .send({ data: payload })
+        .expect(404);
+    }, 30000);
   });
 });

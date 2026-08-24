@@ -1,8 +1,10 @@
-import { Controller, Get, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
 import { StudentPortalService } from "./student-portal.service";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtPayload } from "../../common/auth/jwt-payload";
+import { InitiateEsewaPaymentDto } from "../finance/dto/initiate-esewa-payment.dto";
+import { ConfirmEsewaPaymentDto } from "../finance/dto/confirm-esewa-payment.dto";
 
 // Deliberately JwtAuthGuard only — no PermissionsGuard/@RequirePermissions.
 // The existing resource:action permission model answers "can this role
@@ -19,5 +21,24 @@ export class StudentPortalController {
   @Get("dashboard")
   getDashboard(@CurrentUser() user: JwtPayload) {
     return this.studentPortal.getDashboard(user.organizationId, user.sub);
+  }
+
+  @Get("invoices")
+  getInvoices(@CurrentUser() user: JwtPayload) {
+    return this.studentPortal.getInvoices(user.organizationId, user.sub);
+  }
+
+  @Post("invoices/:id/esewa/initiate")
+  initiateEsewaPayment(
+    @CurrentUser() user: JwtPayload,
+    @Param("id") id: string,
+    @Body() dto: InitiateEsewaPaymentDto,
+  ) {
+    return this.studentPortal.initiateEsewaPayment(user.organizationId, user.sub, id, dto.amount);
+  }
+
+  @Post("esewa/verify")
+  confirmEsewaPayment(@CurrentUser() user: JwtPayload, @Body() dto: ConfirmEsewaPaymentDto) {
+    return this.studentPortal.confirmEsewaPayment(user.organizationId, user.sub, dto.data);
   }
 }

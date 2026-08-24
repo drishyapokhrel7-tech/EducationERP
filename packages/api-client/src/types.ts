@@ -1637,6 +1637,29 @@ export interface RefundRecord {
   createdAt: string;
 }
 
+// eSewa online payment (Phase 7 slice 7a-2).
+export interface InitiateEsewaPaymentInput {
+  amount: number;
+}
+
+// Fields for a real browser form-POST to eSewa's own gateway — never
+// call this with fetch/XHR, it's a genuine redirect. See
+// submitEsewaForm in apps/web/src/lib/esewa.ts.
+export interface EsewaFormPayload {
+  actionUrl: string;
+  fields: Record<string, string>;
+}
+
+export interface ConfirmEsewaPaymentResult {
+  status: "COMPLETE";
+  invoiceId: string;
+  payment: PaymentRecord | null;
+}
+
+// The portal's own invoice list omits `student` (the caller already
+// knows who they are) — everything else matches InvoiceRecord.
+export type PortalInvoiceRecord = Omit<InvoiceRecord, "student">;
+
 export interface ScholarshipRecord {
   id: string;
   organizationId: string;

@@ -13,6 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { EntityCard } from "@/components/dashboard/entity-card";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
+import { submitEsewaForm } from "@/lib/esewa";
 import type { PaymentMethod, StudentEnrollment } from "@education-erp/api-client";
 
 function errorMessage(err: unknown, fallback: string) {
@@ -83,8 +84,8 @@ export default function FinancePage() {
       <div>
         <h1 className="text-2xl font-semibold">Finance</h1>
         <p className="text-muted-foreground text-sm">
-          Fee structures, invoicing, and manual payment recording (cash, bank transfer, cheque). Online
-          payment is a separate, upcoming slice.
+          Fee structures, invoicing, manual payment recording (cash, bank transfer, cheque), and online
+          payment via eSewa.
         </p>
       </div>
 
@@ -640,6 +641,25 @@ export default function FinancePage() {
                     </div>
                     <Button type="submit" size="sm" className="h-8" disabled={!paymentForm.amount}>
                       Record payment
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8"
+                      disabled={!paymentForm.amount}
+                      onClick={async () => {
+                        try {
+                          const { actionUrl, fields } = await api.initiateEsewaPayment(activeInvoiceId, {
+                            amount: Number(paymentForm.amount),
+                          });
+                          submitEsewaForm(actionUrl, fields);
+                        } catch (err) {
+                          toast.error(errorMessage(err, "Could not start the eSewa payment"));
+                        }
+                      }}
+                    >
+                      Pay with eSewa
                     </Button>
                   </form>
 

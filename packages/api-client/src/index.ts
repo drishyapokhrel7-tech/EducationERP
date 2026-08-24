@@ -159,6 +159,10 @@ import type {
   DiscountRecord,
   IssueRefundInput,
   RefundRecord,
+  InitiateEsewaPaymentInput,
+  EsewaFormPayload,
+  ConfirmEsewaPaymentResult,
+  PortalInvoiceRecord,
   ScholarshipRecord,
   CreateScholarshipInput,
   AssignScholarshipInput,
@@ -647,6 +651,20 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
     submitMyExam: (examSubjectId: string) =>
       request<ExamAttemptRecord>(`/organizations/me/portal/exams/${examSubjectId}/submit`, { method: "POST" }),
 
+    // Self-service Finance / eSewa (Phase 7 slice 7a-2) — same
+    // "no studentId param" reasoning as the portal dashboard above.
+    getPortalInvoices: () => request<PortalInvoiceRecord[]>("/organizations/me/portal/invoices"),
+    initiatePortalEsewaPayment: (invoiceId: string, input: InitiateEsewaPaymentInput) =>
+      request<EsewaFormPayload>(`/organizations/me/portal/invoices/${invoiceId}/esewa/initiate`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    confirmPortalEsewaPayment: (data: string) =>
+      request<ConfirmEsewaPaymentResult>("/organizations/me/portal/esewa/verify", {
+        method: "POST",
+        body: JSON.stringify({ data }),
+      }),
+
     // CCTV/Biometric privacy & consent foundation (Phase 6 slice 6a) —
     // no capture/matching capability yet, see BiometricPolicyService.
     getBiometricPolicy: () => request<BiometricPolicyRecord>("/organizations/me/biometric-policy"),
@@ -712,6 +730,17 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       request<PaymentRecord>(`/organizations/me/invoices/${invoiceId}/payments`, {
         method: "POST",
         body: JSON.stringify(input),
+      }),
+    // eSewa online payment (Phase 7 slice 7a-2), staff-assisted channel.
+    initiateEsewaPayment: (invoiceId: string, input: InitiateEsewaPaymentInput) =>
+      request<EsewaFormPayload>(`/organizations/me/invoices/${invoiceId}/esewa/initiate`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    confirmEsewaPayment: (data: string) =>
+      request<ConfirmEsewaPaymentResult>("/organizations/me/esewa/verify", {
+        method: "POST",
+        body: JSON.stringify({ data }),
       }),
     applyDiscount: (invoiceId: string, input: ApplyDiscountInput) =>
       request<DiscountRecord>(`/organizations/me/invoices/${invoiceId}/discounts`, {

@@ -98,6 +98,7 @@ model Organization {
   discounts                Discount[]
   refunds                  Refund[]
   financialTransactions    FinancialTransaction[]
+  esewaTransactions        EsewaTransaction[]
 
   @@map("organizations")
 }
@@ -357,18 +358,19 @@ model User {
   updatedAt      DateTime   @updatedAt
   deletedAt      DateTime?
 
-  organization     Organization           @relation(fields: [organizationId], references: [id])
-  userRoles        UserRole[]
-  sessions         Session[]
-  loginEvents      LoginEvent[]
-  auditLogs        AuditLog[]
-  employee         Employee?
-  student          Student?
-  faceMatchReviews FaceMatchEvent[]
-  feeAssignments   StudentFeeAssignment[]
-  paymentsRecorded Payment[]
-  discountsApplied Discount[]
-  refundsProcessed Refund[]
+  organization               Organization           @relation(fields: [organizationId], references: [id])
+  userRoles                  UserRole[]
+  sessions                   Session[]
+  loginEvents                LoginEvent[]
+  auditLogs                  AuditLog[]
+  employee                   Employee?
+  student                    Student?
+  faceMatchReviews           FaceMatchEvent[]
+  feeAssignments             StudentFeeAssignment[]
+  paymentsRecorded           Payment[]
+  discountsApplied           Discount[]
+  refundsProcessed           Refund[]
+  esewaTransactionsInitiated EsewaTransaction[]
 
   @@index([organizationId])
   @@map("users")
@@ -2110,6 +2112,7 @@ model Invoice {
   discounts         Discount[]
   feeAssignment     StudentFeeAssignment?
   transactions      FinancialTransaction[]
+  esewaTransactions EsewaTransaction[]
 
   @@index([organizationId])
   @@map("invoices")
@@ -2284,4 +2287,43 @@ model FinancialTransaction {
 
   @@index([organizationId])
   @@map("financial_transactions")
+}
+
+enum EsewaTransactionStatus {
+  INITIATED
+  COMPLETE
+  FAILED
+  CANCELED
+}
+
+// One row per "pay with eSewa" attempt — deliberately separate from
+// Payment, same reasoning as ClassSession staying separate from
+// AttendanceSession: an initiated gateway attempt and money that
+// actually arrived are different owners with different lifecycles.
+// Only a COMPLETE row here ever produces a real Payment. transactionUuid
+// is the durable, unique anchor that makes confirmEsewaPayment
+// idempotent — a reloaded callback page or a double-submitted "pay"
+// click never double-credits.
+model EsewaTransaction {
+  id              String                 @id @default(uuid())
+  organizationId  String
+  invoiceId       String
+  transactionUuid String                 @unique
+  amount          Decimal                @db.Decimal(12, 2)
+  status          EsewaTransactionStatus @default(INITIATED)
+  // eSewa's own transaction_code, set once status is COMPLETE.
+  esewaRefId      String?
+  // Null for portal self-service (a student paying their own
+  // invoice) — no staff member initiated it in that case.
+  initiatedBy     String?
+  createdAt       DateTime               @default(now())
+  completedAt     DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  invoice      Invoice      @relation(fields: [invoiceId], references: [id])
+  initiator    User?        @relation(fields: [initiatedBy], references: [id])
+
+  @@index([organizationId])
+  @@index([invoiceId])
+  @@map("esewa_transactions")
 }

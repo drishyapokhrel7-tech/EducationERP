@@ -215,3 +215,159 @@ already scoped and sandbox-researched (see above), needs its own
 explicit go-ahead to start. After that: 7b HR & payroll, then 7c-7h
 per the breakdown above, each still needing its own go-ahead when
 reached.
+
+## Slice 7a-2 — real eSewa online payment integration
+
+User said "go-ahead." Re-confirmed the exact ePay v2 contract directly
+against eSewa's own developer docs before planning (form-POST
+endpoint, required field names, the HMAC-SHA256 signature's exact
+message format and base64 encoding, the redirect payload's shape, the
+status-check endpoint and its full set of possible statuses) and
+confirmed this environment has real outbound network access to both
+the sandbox form endpoint and the status-check endpoint — so this
+slice could be built and verified against the genuine sandbox, not a
+mock.
+
+Asked who should be able to trigger a payment — staff-assisted via the
+admin Finance UI, self-service via the student portal, or both. **User
+chose "both."** No parent/guardian login exists in this project, so
+portal self-service means the student's own account pays their own
+invoice; a guardian-facing portal remains a future extension.
+
+## What shipped
+
+**Schema**: one new model, `EsewaTransaction` (`transactionUuid`
+unique, `status`: `INITIATED`/`COMPLETE`/`FAILED`/`CANCELED`,
+`esewaRefId`, nullable `initiatedBy`). Deliberately kept separate from
+`Payment` — same reasoning as `ClassSession` staying separate from
+`AttendanceSession`: an initiated gateway attempt and money that
+actually arrived are different owners with different lifecycles. Only
+a `COMPLETE` row here ever produces a real `Payment`.
+`PaymentMethod.ESEWA` had already been reserved in 7a-1's own
+migration anticipating this slice, so no enum migration was needed
+here.
+
+**`EsewaGatewayService`** (new, alongside `FinanceService`) — a thin
+protocol wrapper mirroring `AiGatewayService`'s shape (plain
+`process.env.X ?? sandboxDefault`, no `ConfigService`/validation
+schema, matching this project's only existing precedent for an
+external-service client): builds the signed form payload
+(`buildPaymentForm`), verifies a redirect's signature
+(`verifySignature`), and performs the real server-to-server status
+check (`checkStatus`). Sandbox defaults (`EPAYTEST` + the published
+test secret key + both sandbox URLs) are baked in so this works out of
+the box; overridable via env once real merchant credentials exist.
+`success_url`/`failure_url` reuse the existing `CORS_ORIGIN` env var
+(the web app's already-known origin) rather than adding a new one.
+
+**The actual security design, stated explicitly since it's the part
+most likely to be gotten wrong in a real integration**:
+`verifySignature` is defense-in-depth, not the security boundary —
+eSewa's own JSON number formatting in the redirect payload isn't
+byte-for-bit guaranteed to reproduce what was originally signed, so a
+failed check is logged (`Logger.warn`) but never the sole reason to
+reject, and a passing one is never the sole reason to credit. The real
+gate is `checkStatus()` — a live call back to eSewa's own server keyed
+by `transaction_uuid`, which a forged or replayed redirect cannot
+fake. `FinanceService.confirmEsewaPayment` only ever creates a
+`Payment` when that live call reports `COMPLETE`, and is idempotent —
+a reloaded callback page or a double-submitted click looks up the
+existing `EsewaTransaction` by its unique `transactionUuid` and
+returns the already-recorded outcome instead of crediting twice.
+
+**RBAC / routing** — two thin controller surfaces over the same shared
+`FinanceService` methods: admin routes
+(`invoices/:id/esewa/initiate`, `esewa/verify`) reuse the existing
+`payment:create` permission, since a gateway-confirmed payment is
+still fundamentally "this invoice got paid" — no new RBAC resource.
+Portal routes (`portal/invoices`, `portal/invoices/:id/esewa/initiate`,
+`portal/esewa/verify`) extend the existing `student-portal` module's
+`JwtAuthGuard`-only self-service pattern; `FinanceModule` now exports
+`FinanceService` so `StudentPortalModule` can reuse it directly, same
+pattern as `DashboardsModule` exporting `DashboardsService` for the
+self-service dashboard. Both `initiateEsewaPayment` and
+`confirmEsewaPayment` take an optional `ownerStudentId` — set only on
+the portal path — and 404 (not 403, matching every other portal IDOR
+guard) if the invoice or transaction doesn't belong to the caller's
+own linked student.
+
+**Web UI**: `apps/web/src/lib/esewa.ts`'s `submitEsewaForm` builds a
+hidden form and calls `.submit()` — a genuine full-page browser
+redirect, not a fetch, since eSewa's own login/approval page is what
+the payer interacts with next. Admin: a "Pay with eSewa" action added
+next to the existing "Record payment"/"Apply discount" forms on
+`/dashboard/finance`, plus a new
+`/dashboard/finance/esewa/callback` page. Portal: a new
+`/portal/invoices` page (the student's own invoice list — the one
+piece of self-service scope this slice adds, since the portal had no
+Finance visibility before) with the same "Pay with eSewa" action, plus
+`/portal/esewa/callback`, and a new "My Invoices" nav entry in
+`portal/layout.tsx`.
+
+## Explicitly not in this slice
+
+- Khalti — unchanged reasoning from 7a-1 (needs your own
+  `test-admin.khalti.com` credentials).
+- A guardian/parent login — portal self-service pays through the
+  existing student account.
+- Programmatic refunds through eSewa's own refund API — refunds stay a
+  manual ledger record.
+- A background reconciliation job for abandoned `INITIATED`
+  transactions (payer closes the tab mid-flow) — this slice's
+  redirect+status-check flow is the primary path; a sweep/cron for
+  stragglers is a reasonable future add-on once this project has a
+  real scheduler, not before.
+
+## Verified
+
+- `pnpm -r typecheck` / `lint` / `build` clean across all six packages.
+- `services/api` e2e: two new tests, run against eSewa's **real**
+  sandbox (not mocked), both passing on every run, isolated and
+  alongside the full suite alike. First test: initiates a payment,
+  independently recomputes the HMAC signature against eSewa's own
+  published algorithm and confirms it matches exactly (not just that a
+  signature is present), confirms a forged redirect claiming
+  `COMPLETE` for a transaction that was never actually paid is
+  correctly rejected (proving `checkStatus`, not the redirect payload,
+  is the real gate) with the invoice provably left untouched, confirms
+  a malformed payload 400s cleanly and an unknown `transaction_uuid`
+  404s, and confirms cross-tenant isolation. Second test: the portal
+  self-service flow end to end (student sees only their own invoices,
+  no `student` field leaked on the self-service list, initiates a
+  real signed payment for their own invoice) and the IDOR guard — a
+  different student can neither initiate nor confirm a payment against
+  someone else's invoice, 404 either way.
+- Full e2e suite re-run clean after this slice (no regressions in any
+  earlier phase).
+- Full browser pass, both channels: as the demo admin, built a fresh
+  fee structure/invoice, opened it, clicked "Pay with eSewa," and
+  confirmed the browser genuinely redirected to eSewa's real sandbox
+  login page showing the exact correct amount (NPR 25.00) — proving
+  the whole initiate → sign → redirect chain is wired correctly
+  end-to-end through the real UI, not just the API. Repeated the same
+  check via the student portal (created a temporary login, confirmed
+  `/portal/invoices` rendered the real invoice and redirected to the
+  sandbox with the correct amount, NPR 30.00). **Could not complete an
+  actual sandbox payment** — eSewa's login page is gated by a real
+  reCAPTCHA, and solving CAPTCHAs is a prohibited action; this is a
+  genuine, stated tooling limitation, not a shortcut taken. The
+  automated e2e tests above cover the part that actually matters most
+  (a forged/incomplete transaction is correctly refused, never
+  silently trusted), and the browser pass confirms the entire chain up
+  to that same boundary works for real. All test fee
+  structures/invoices and the temporary student login created for this
+  pass were removed afterward via a one-off cleanup script, scoped
+  only to what this pass itself created — the user's own pre-existing
+  "Library Fine" test data was left untouched, per this project's
+  standing principle.
+
+## Next step (as of slice 7a-2)
+
+Slice 7a-2 done, stopped per plan §21 step 17. **This closes the
+originally-approved eSewa/Khalti online-payment scope** (Khalti
+explicitly deferred, see above) — Finance (7a) now supports the full
+fee lifecycle: catalog → structure → invoicing → manual or real online
+payment → discounts/scholarships/refunds → an audit ledger. Next up
+per the Phase 7 breakdown: **7b, HR & payroll**. Needs its own
+go-ahead; expect it to build on the existing `Employee`/staff model
+from Phase 2 the same way Finance built on `StudentEnrollment`.
