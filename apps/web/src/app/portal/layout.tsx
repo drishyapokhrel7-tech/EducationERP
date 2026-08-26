@@ -10,6 +10,7 @@ import { useAuth } from "@/lib/auth-context";
 
 const NAV = [
   { href: "/portal", label: "Dashboard" },
+  { href: "/portal/courses", label: "Courses" },
   { href: "/portal/exams", label: "My Exams" },
   { href: "/portal/invoices", label: "My Invoices" },
   { href: "/portal/library", label: "Library" },

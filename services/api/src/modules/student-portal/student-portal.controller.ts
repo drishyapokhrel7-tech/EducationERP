@@ -41,4 +41,19 @@ export class StudentPortalController {
   confirmEsewaPayment(@CurrentUser() user: JwtPayload, @Body() dto: ConfirmEsewaPaymentDto) {
     return this.studentPortal.confirmEsewaPayment(user.organizationId, user.sub, dto.data);
   }
+
+  @Get("courses")
+  listCourses(@CurrentUser() user: JwtPayload) {
+    return this.studentPortal.listCourses(user.organizationId, user.sub);
+  }
+
+  @Get("courses/:teachingAssignmentId/modules")
+  listModules(@CurrentUser() user: JwtPayload, @Param("teachingAssignmentId") teachingAssignmentId: string) {
+    return this.studentPortal.listModules(user.organizationId, user.sub, teachingAssignmentId);
+  }
+
+  @Post("module-items/:itemId/complete")
+  completeModuleItem(@CurrentUser() user: JwtPayload, @Param("itemId") itemId: string) {
+    return this.studentPortal.completeModuleItem(user.organizationId, user.sub, itemId);
+  }
 }

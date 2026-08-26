@@ -2119,3 +2119,73 @@ export interface TeacherPortalClassToday {
 // No learningObjectives include on this endpoint's query — narrower
 // than SyllabusNode, not lying about the shape.
 export type TeacherPortalSyllabusNode = Omit<SyllabusNode, "learningObjectives">;
+
+// Course modules & content (LMS discovery slice 2). "Course" =
+// TeachingAssignment — see docs/LMS_NOTES.md for why no separate
+// Course entity was introduced.
+export type CourseModuleItemType = "PAGE" | "LINK" | "VIDEO" | "DOCUMENT";
+
+export interface CourseModuleItemRecord {
+  id: string;
+  organizationId: string;
+  moduleId: string;
+  sequence: number;
+  title: string;
+  type: CourseModuleItemType;
+  content: string;
+  isPublished: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CourseModuleRecord {
+  id: string;
+  organizationId: string;
+  teachingAssignmentId: string;
+  title: string;
+  description: string | null;
+  sequence: number;
+  isPublished: boolean;
+  createdAt: string;
+  updatedAt: string;
+  items: CourseModuleItemRecord[];
+}
+
+export interface CreateCourseModuleInput {
+  teachingAssignmentId: string;
+  title: string;
+  description?: string;
+  sequence: number;
+}
+
+export interface UpdateCourseModuleInput {
+  title?: string;
+  description?: string;
+  sequence?: number;
+  isPublished?: boolean;
+}
+
+export interface CreateCourseModuleItemInput {
+  sequence: number;
+  title: string;
+  type: CourseModuleItemType;
+  content: string;
+}
+
+export interface UpdateCourseModuleItemInput {
+  title?: string;
+  content?: string;
+  sequence?: number;
+  isPublished?: boolean;
+}
+
+// Student-portal's own courses/modules views.
+export type StudentPortalCourse = TeachingAssignment;
+
+export interface StudentPortalModuleItem extends CourseModuleItemRecord {
+  completed: boolean;
+}
+
+export interface StudentPortalModule extends Omit<CourseModuleRecord, "items"> {
+  items: StudentPortalModuleItem[];
+}

@@ -5,6 +5,10 @@ import { DashboardsService } from "../dashboards/dashboards.service";
 import { CreateClassSessionDto } from "../class-sessions/dto/create-class-session.dto";
 import { RecordProgressDto } from "../class-sessions/dto/record-progress.dto";
 import { CreateClassMaterialDto } from "../class-sessions/dto/create-class-material.dto";
+import { CreateCourseModuleDto } from "./dto/create-course-module.dto";
+import { UpdateCourseModuleDto } from "./dto/update-course-module.dto";
+import { CreateCourseModuleItemDto } from "./dto/create-course-module-item.dto";
+import { UpdateCourseModuleItemDto } from "./dto/update-course-module-item.dto";
 
 const SESSION_INCLUDE = {
   classSchedule: {
@@ -15,6 +19,8 @@ const SESSION_INCLUDE = {
   actualSyllabusNode: true,
   materials: true,
 } as const;
+
+const MODULE_INCLUDE = { items: { orderBy: { sequence: "asc" as const } } };
 
 // Same weekday conversion as ClassSessionsService.myClassesToday — kept
 // in sync deliberately, not imported, since Prisma doesn't support
@@ -189,6 +195,107 @@ export class TeacherPortalService {
         include: SESSION_INCLUDE,
       });
     });
+  }
+
+  // ── Course modules & content (LMS discovery slice 2) ────────────────
+
+  async listModules(organizationId: string, userId: string, teachingAssignmentId: string) {
+    const employee = await this.getOwnEmployee(organizationId, userId);
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.assertOwnsTeachingAssignment(tx, employee.id, teachingAssignmentId);
+      return tx.courseModule.findMany({
+        where: { organizationId, teachingAssignmentId },
+        include: MODULE_INCLUDE,
+        orderBy: { sequence: "asc" },
+      });
+    });
+  }
+
+  async createModule(organizationId: string, userId: string, dto: CreateCourseModuleDto) {
+    const employee = await this.getOwnEmployee(organizationId, userId);
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.assertOwnsTeachingAssignment(tx, employee.id, dto.teachingAssignmentId);
+      return tx.courseModule.create({
+        data: {
+          organizationId,
+          teachingAssignmentId: dto.teachingAssignmentId,
+          title: dto.title,
+          description: dto.description,
+          sequence: dto.sequence,
+        },
+        include: MODULE_INCLUDE,
+      });
+    });
+  }
+
+  async updateModule(organizationId: string, userId: string, moduleId: string, dto: UpdateCourseModuleDto) {
+    const employee = await this.getOwnEmployee(organizationId, userId);
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadOwnModule(tx, employee.id, moduleId);
+      return tx.courseModule.update({
+        where: { id: moduleId },
+        data: { title: dto.title, description: dto.description, sequence: dto.sequence, isPublished: dto.isPublished },
+        include: MODULE_INCLUDE,
+      });
+    });
+  }
+
+  async addModuleItem(organizationId: string, userId: string, moduleId: string, dto: CreateCourseModuleItemDto) {
+    const employee = await this.getOwnEmployee(organizationId, userId);
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadOwnModule(tx, employee.id, moduleId);
+      return tx.courseModuleItem.create({
+        data: {
+          organizationId,
+          moduleId,
+          sequence: dto.sequence,
+          title: dto.title,
+          type: dto.type,
+          content: dto.content,
+        },
+      });
+    });
+  }
+
+  async updateModuleItem(organizationId: string, userId: string, itemId: string, dto: UpdateCourseModuleItemDto) {
+    const employee = await this.getOwnEmployee(organizationId, userId);
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadOwnModuleItem(tx, employee.id, itemId);
+      return tx.courseModuleItem.update({
+        where: { id: itemId },
+        data: { title: dto.title, content: dto.content, sequence: dto.sequence, isPublished: dto.isPublished },
+      });
+    });
+  }
+
+  private async assertOwnsTeachingAssignment(tx: PrismaClient, employeeId: string, teachingAssignmentId: string) {
+    const ta = await tx.teachingAssignment.findUnique({ where: { id: teachingAssignmentId } });
+    if (!ta || ta.employeeId !== employeeId) {
+      throw new NotFoundException("Teaching assignment not found");
+    }
+    return ta;
+  }
+
+  private async loadOwnModule(tx: PrismaClient, employeeId: string, moduleId: string) {
+    const module = await tx.courseModule.findUnique({
+      where: { id: moduleId },
+      include: { teachingAssignment: true },
+    });
+    if (!module || module.teachingAssignment.employeeId !== employeeId) {
+      throw new NotFoundException("Course module not found");
+    }
+    return module;
+  }
+
+  private async loadOwnModuleItem(tx: PrismaClient, employeeId: string, itemId: string) {
+    const item = await tx.courseModuleItem.findUnique({
+      where: { id: itemId },
+      include: { module: { include: { teachingAssignment: true } } },
+    });
+    if (!item || item.module.teachingAssignment.employeeId !== employeeId) {
+      throw new NotFoundException("Course module item not found");
+    }
+    return item;
   }
 
   // Full SESSION_INCLUDE, not just enough to check ownership — this is

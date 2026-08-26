@@ -112,6 +112,9 @@ model Organization {
   stops                       Stop[]
   studentTransportAssignments StudentTransportAssignment[]
   vehicleTrackingEvents       VehicleTrackingEvent[]
+  courseModules               CourseModule[]
+  courseModuleItems           CourseModuleItem[]
+  courseModuleItemCompletions CourseModuleItemCompletion[]
 
   @@map("organizations")
 }
@@ -721,20 +724,21 @@ model Student {
   updatedAt      DateTime      @updatedAt
   deletedAt      DateTime?
 
-  organization           Organization            @relation(fields: [organizationId], references: [id])
-  user                   User?                   @relation(fields: [userId], references: [id])
-  guardians              StudentGuardian[]
-  enrollments            StudentEnrollment[]
-  statusHistory          StudentStatusHistory[]
-  admissionApplication   AdmissionApplication?
-  attendanceRecords      StudentAttendance[]
-  assignmentSubmissions  AssignmentSubmission[]
-  knowledgeCheckAttempts KnowledgeCheckAttempt[]
-  examAttempts           ExamAttempt[]
-  reportCards            ReportCard[]
-  faceEnrollments        FaceEnrollment[]
-  invoices               Invoice[]
-  scholarships           StudentScholarship[]
+  organization                Organization                 @relation(fields: [organizationId], references: [id])
+  user                        User?                        @relation(fields: [userId], references: [id])
+  guardians                   StudentGuardian[]
+  enrollments                 StudentEnrollment[]
+  statusHistory               StudentStatusHistory[]
+  admissionApplication        AdmissionApplication?
+  attendanceRecords           StudentAttendance[]
+  assignmentSubmissions       AssignmentSubmission[]
+  knowledgeCheckAttempts      KnowledgeCheckAttempt[]
+  examAttempts                ExamAttempt[]
+  reportCards                 ReportCard[]
+  faceEnrollments             FaceEnrollment[]
+  invoices                    Invoice[]
+  scholarships                StudentScholarship[]
+  courseModuleItemCompletions CourseModuleItemCompletion[]
 
   @@unique([organizationId, studentCode])
   @@index([organizationId])
@@ -973,6 +977,7 @@ model TeachingAssignment {
   lessonPlans     LessonPlan[]
   assignments     Assignment[]
   knowledgeChecks KnowledgeCheck[]
+  courseModules   CourseModule[]
 
   // One teacher per subject+section+term — re-assigning means changing
   // this row, not stacking a second one alongside it.
@@ -2693,4 +2698,84 @@ model VehicleTrackingEvent {
   @@index([organizationId])
   @@index([vehicleId, recordedAt])
   @@map("vehicle_tracking_events")
+}
+
+// ── LMS: course modules & content (LMS discovery slice 2) ──────────
+// "Course" isn't a new concept — TeachingAssignment already is one
+// (subject+section+term+teacher, the exact granularity Assignment and
+// KnowledgeCheck already anchor to). Modules are scoped to it rather
+// than to Syllabus, which is curriculum-wide and can span multiple
+// teachers/sections/terms — module organization is this specific
+// teacher's own call for this specific class.
+model CourseModule {
+  id                   String   @id @default(uuid())
+  organizationId       String
+  teachingAssignmentId String
+  title                String
+  description          String?
+  sequence             Int
+  isPublished          Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  organization       Organization       @relation(fields: [organizationId], references: [id])
+  teachingAssignment TeachingAssignment @relation(fields: [teachingAssignmentId], references: [id])
+  items              CourseModuleItem[]
+
+  @@unique([teachingAssignmentId, sequence])
+  @@index([organizationId])
+  @@map("course_modules")
+}
+
+enum CourseModuleItemType {
+  PAGE
+  LINK
+  VIDEO
+  DOCUMENT
+}
+
+model CourseModuleItem {
+  id             String               @id @default(uuid())
+  organizationId String
+  moduleId       String
+  sequence       Int
+  title          String
+  type           CourseModuleItemType
+  // PAGE: the rich-text content itself. LINK/VIDEO/DOCUMENT: an
+  // external URL — no object storage exists in this project yet (see
+  // docs/LMS_NOTES.md), so "uploading" a document/video means linking
+  // one, same precedent as ClassMaterial.
+  content        String
+  isPublished    Boolean              @default(false)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  organization Organization                 @relation(fields: [organizationId], references: [id])
+  module       CourseModule                 @relation(fields: [moduleId], references: [id])
+  completions  CourseModuleItemCompletion[]
+
+  @@unique([moduleId, sequence])
+  @@index([organizationId])
+  @@map("course_module_items")
+}
+
+// A student marking an item as done — deliberately just a timestamped
+// join row, not a richer "progress" table; module-level completion
+// percentage is computed on read (same "computed, not stored"
+// precedent as syllabus_progress) from how many of a module's
+// published items have a completion row for that student.
+model CourseModuleItemCompletion {
+  id             String   @id @default(uuid())
+  organizationId String
+  moduleItemId   String
+  studentId      String
+  completedAt    DateTime @default(now())
+
+  organization Organization     @relation(fields: [organizationId], references: [id])
+  moduleItem   CourseModuleItem @relation(fields: [moduleItemId], references: [id])
+  student      Student          @relation(fields: [studentId], references: [id])
+
+  @@unique([moduleItemId, studentId])
+  @@index([organizationId])
+  @@map("course_module_item_completions")
 }

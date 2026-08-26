@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import { toast } from "sonner";
 import { LogOut } from "lucide-react";
-import { ApiError } from "@education-erp/api-client";
+import { ApiError, type CourseModuleItemType } from "@education-erp/api-client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -59,6 +59,17 @@ export default function TeacherPage() {
 
   const [progressForm, setProgressForm] = useState({ actualSyllabusNodeId: "", progressNotes: "" });
   const [materialForm, setMaterialForm] = useState({ title: "", url: "", description: "" });
+
+  const [courseId, setCourseId] = useState("");
+  const modules = useSWR(courseId ? ["teacher-modules", courseId] : null, () => api.listTeacherModules(courseId));
+  const [moduleForm, setModuleForm] = useState({ title: "", description: "", sequence: "1" });
+  const [expandedModuleId, setExpandedModuleId] = useState<string | null>(null);
+  const [itemForm, setItemForm] = useState<{ title: string; type: CourseModuleItemType; content: string; sequence: string }>({
+    title: "",
+    type: "PAGE",
+    content: "",
+    sequence: "1",
+  });
 
   async function openClass(classScheduleId: string) {
     try {
@@ -313,6 +324,203 @@ export default function TeacherPage() {
                 </CardContent>
               </Card>
             ) : null}
+
+            <Card>
+              <CardHeader>
+                <CardTitle>My courses — modules</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <NativeSelect
+                  className="w-64"
+                  placeholder="Select a course"
+                  value={courseId}
+                  onChange={(v) => {
+                    setCourseId(v);
+                    setExpandedModuleId(null);
+                  }}
+                  options={me.data.teachingAssignments.map((t) => ({ value: t.id, label: t.subject.name }))}
+                />
+
+                {courseId ? (
+                  <>
+                    {!modules.data || modules.data.length === 0 ? (
+                      <p className="text-muted-foreground text-sm">No modules yet.</p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {modules.data.map((m) => (
+                          <li key={m.id} className="rounded-md border p-3 text-sm">
+                            <div className="flex items-center justify-between gap-3">
+                              <button
+                                type="button"
+                                className="text-left font-medium"
+                                onClick={() => setExpandedModuleId(expandedModuleId === m.id ? null : m.id)}
+                              >
+                                {m.sequence}. {m.title}
+                              </button>
+                              <div className="flex items-center gap-2">
+                                <Badge variant={m.isPublished ? "success" : "secondary"}>
+                                  {m.isPublished ? "Published" : "Draft"}
+                                </Badge>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={async () => {
+                                    try {
+                                      await api.updateCourseModule(m.id, { isPublished: !m.isPublished });
+                                      modules.mutate();
+                                    } catch (err) {
+                                      toast.error(errorMessage(err, "Failed to update module"));
+                                    }
+                                  }}
+                                >
+                                  {m.isPublished ? "Unpublish" : "Publish"}
+                                </Button>
+                              </div>
+                            </div>
+                            {expandedModuleId === m.id ? (
+                              <div className="mt-3 space-y-3 border-t pt-3">
+                                {m.items.length === 0 ? (
+                                  <p className="text-muted-foreground text-xs">No items yet.</p>
+                                ) : (
+                                  <ul className="space-y-1">
+                                    {m.items.map((item) => (
+                                      <li key={item.id} className="flex items-center justify-between gap-2 text-xs">
+                                        <span>
+                                          {item.sequence}. [{item.type}] {item.title}
+                                        </span>
+                                        <div className="flex items-center gap-2">
+                                          <Badge variant={item.isPublished ? "success" : "secondary"}>
+                                            {item.isPublished ? "Published" : "Draft"}
+                                          </Badge>
+                                          <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-6"
+                                            onClick={async () => {
+                                              try {
+                                                await api.updateCourseModuleItem(item.id, { isPublished: !item.isPublished });
+                                                modules.mutate();
+                                              } catch (err) {
+                                                toast.error(errorMessage(err, "Failed to update item"));
+                                              }
+                                            }}
+                                          >
+                                            {item.isPublished ? "Unpublish" : "Publish"}
+                                          </Button>
+                                        </div>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                                <form
+                                  className="flex flex-wrap items-end gap-2"
+                                  onSubmit={async (e: FormEvent) => {
+                                    e.preventDefault();
+                                    try {
+                                      await api.addCourseModuleItem(m.id, {
+                                        title: itemForm.title,
+                                        type: itemForm.type,
+                                        content: itemForm.content,
+                                        sequence: Number(itemForm.sequence),
+                                      });
+                                      setItemForm({ title: "", type: "PAGE", content: "", sequence: String(m.items.length + 2) });
+                                      modules.mutate();
+                                      toast.success("Item added");
+                                    } catch (err) {
+                                      toast.error(errorMessage(err, "Failed to add item"));
+                                    }
+                                  }}
+                                >
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">Title</Label>
+                                    <Input
+                                      className="h-7 w-32"
+                                      value={itemForm.title}
+                                      onChange={(e) => setItemForm((f) => ({ ...f, title: e.target.value }))}
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">Type</Label>
+                                    <NativeSelect
+                                      className="h-7 w-28"
+                                      placeholder="Select type"
+                                      value={itemForm.type}
+                                      onChange={(v) => setItemForm((f) => ({ ...f, type: v as CourseModuleItemType }))}
+                                      options={[
+                                        { value: "PAGE", label: "Page (text)" },
+                                        { value: "LINK", label: "Link" },
+                                        { value: "VIDEO", label: "Video URL" },
+                                        { value: "DOCUMENT", label: "Document URL" },
+                                      ]}
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">{itemForm.type === "PAGE" ? "Text" : "URL"}</Label>
+                                    <Input
+                                      className="h-7 w-48"
+                                      value={itemForm.content}
+                                      onChange={(e) => setItemForm((f) => ({ ...f, content: e.target.value }))}
+                                    />
+                                  </div>
+                                  <Button type="submit" size="sm" className="h-7" disabled={!itemForm.title || !itemForm.content}>
+                                    Add item
+                                  </Button>
+                                </form>
+                              </div>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
+                    <Separator />
+
+                    <form
+                      className="flex flex-wrap items-end gap-3"
+                      onSubmit={async (e: FormEvent) => {
+                        e.preventDefault();
+                        try {
+                          await api.createCourseModule({
+                            teachingAssignmentId: courseId,
+                            title: moduleForm.title,
+                            description: moduleForm.description || undefined,
+                            sequence: Number(moduleForm.sequence),
+                          });
+                          setModuleForm({ title: "", description: "", sequence: String((modules.data?.length ?? 0) + 2) });
+                          modules.mutate();
+                          toast.success("Module created");
+                        } catch (err) {
+                          toast.error(errorMessage(err, "Failed to create module"));
+                        }
+                      }}
+                    >
+                      <div className="space-y-1">
+                        <Label className="text-xs">Module title</Label>
+                        <Input
+                          className="w-40"
+                          value={moduleForm.title}
+                          onChange={(e) => setModuleForm((f) => ({ ...f, title: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Order</Label>
+                        <Input
+                          type="number"
+                          className="w-20"
+                          value={moduleForm.sequence}
+                          onChange={(e) => setModuleForm((f) => ({ ...f, sequence: e.target.value }))}
+                        />
+                      </div>
+                      <Button type="submit" size="sm" disabled={!moduleForm.title}>
+                        Add module
+                      </Button>
+                    </form>
+                  </>
+                ) : null}
+              </CardContent>
+            </Card>
           </>
         )}
       </main>

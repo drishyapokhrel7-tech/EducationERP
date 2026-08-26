@@ -190,10 +190,105 @@ from it.
   up** — it's permanent seed data in the Tribhuvan University org,
   same as the 76-student roster imported earlier.
 
+## Slice 2 — Course modules & content
+
+User said "go-ahead" — read as approval to start the next item in the
+proposed sequencing.
+
+### Design
+
+**"Course" is not a new entity** — `TeachingAssignment` already is one
+(subject+section+term+teacher, the exact granularity `Assignment` and
+`KnowledgeCheck` already anchor to). Modules are scoped to it rather
+than to `Syllabus` (curriculum-wide, can span multiple teachers/
+sections/terms) — module organization is this specific teacher's own
+call for this specific class, matching Canvas's own per-course-
+instance model without copying its schema.
+
+**New tables** (RLS as usual): `CourseModule` (teachingAssignmentId,
+title, description, sequence, isPublished), `CourseModuleItem`
+(moduleId, sequence, title, type: PAGE/LINK/VIDEO/DOCUMENT, content,
+isPublished — PAGE's content is the rich text itself, the other three
+are an external URL, same "link, don't upload" precedent as
+`ClassMaterial` since no object storage exists), `CourseModuleItem
+Completion` (moduleItemId, studentId, completedAt — just a timestamped
+join row; module-level "3/5 complete" is computed on read, same
+"computed, not stored" precedent as `syllabus_progress`).
+
+**Two new self-service surfaces, no admin CRUD**: matches the already-
+established principle that "a self-service endpoint... needs a new
+guard/pattern, not a workaround" — module content belongs to the
+teacher who owns the course, not a generic staff permission.
+- `teacher-portal` (new methods): list/create/update modules,
+  add/update items — every write ownership-checked against
+  `module.teachingAssignment.employeeId` (or the schedule's, for
+  session-adjacent flows already there). A different teacher gets 404,
+  not 403, same IDOR-safe convention as everywhere else in this
+  project.
+- `student-portal` (new methods): `listCourses` (every
+  `TeachingAssignment` matching the student's own active
+  `StudentEnrollment.sectionId`+`termId` — "enrolled in a course" is
+  structural, never trusted from a param), `listModules` (published
+  modules/items only, each annotated with the caller's own completion
+  status), `completeModuleItem` (upsert, idempotent — completing twice
+  doesn't error or duplicate; 404 if the item or its module isn't
+  published, or the student isn't actually enrolled in that course).
+
+**Web**: `/teacher` gained a "My courses — modules" card (course
+picker → module list with publish/unpublish toggles → expand a module
+to add/publish items). `/portal/courses` (new nav link) lists the
+student's enrolled courses; `/portal/courses/[teachingAssignmentId]`
+shows published modules, renders PAGE items as text and LINK/VIDEO/
+DOCUMENT items as an outbound link, with a per-item "Mark complete"
+button and a module-level completion badge.
+
+### A real e2e cleanup bug found and fixed
+
+First test run passed the test itself but the suite's shared `afterAll`
+cleanup crashed: `course_modules.teachingAssignmentId` is a RESTRICT
+FK, and the three new tables weren't in `deleteOrder` yet, so deleting
+`teachingAssignment` before its `course_modules` children failed with
+a real Postgres FK violation — the exact "add every new table to
+deleteOrder" discipline this suite has followed since slice 1, just
+missed once. Fixed by inserting `courseModuleItemCompletion` →
+`courseModuleItem` → `courseModule` immediately before `classSchedule`/
+`teachingAssignment` in the list (also ahead of `student`, which
+`courseModuleItemCompletion.studentId` RESTRICTs against). The two
+orgs orphaned by the failed cleanup were removed by hand afterward
+using that same fixed order, confirming it now cleans up correctly
+end-to-end.
+
+### Verified
+
+- `pnpm -r typecheck`/`lint`/`build` clean.
+- `services/api` e2e: one new comprehensive test (`-t "Course
+  modules"`) — a different teacher can't create a module on someone
+  else's course (404); creates a published module with a published
+  item and a draft module with an unpublished item; an enrolled
+  student's `listCourses`/`listModules` return only the published
+  module and only its published item, with `completed: false`;
+  completing an unpublished item 404s; completing the published item
+  works and is idempotent on a second call; a student with no
+  enrollment in that section+term 404s on the same endpoint; cross-
+  tenant module creation on org A's course from org B is rejected
+  (404). Passed clean after the deleteOrder fix.
+- Full browser pass in the Everest Academy demo org: as the real
+  teacher (Sunita Karki) built earlier for slice 1, created "Module 1
+  — Numbers and Counting" with a PAGE item, published both; as the
+  real enrolled student (Aarav Sharma, given a real portal login for
+  this pass), confirmed `/portal/courses` lists Mathematics, opening it
+  shows the published module and item, and "Mark complete" flips the
+  item to "Done" and the module badge to "1/1 complete" — confirmed via
+  both the UI and the underlying network responses. Also re-verified
+  the teacher-side UI shows the same module with a working Publish/
+  Unpublish toggle. **Per the same standing instruction as slice 1,
+  this demo data (module, item, Aarav Sharma's new login) was left in
+  place, not cleaned up.**
+
 ## Next step
 
-Teacher portal (slice 1) is done. The rest of the proposed LMS
-sequencing (course/module content, self-service assignments, quiz
+Teacher portal (slice 1) and course modules (slice 2) are done. The
+rest of the proposed LMS sequencing (self-service assignments, quiz
 engine, announcements, discussions, gradebook, file upload,
 notifications) is **not started** — each needs its own explicit
 go-ahead, per this project's standing rule.

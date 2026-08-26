@@ -214,6 +214,14 @@ import type {
   TeacherPortalMe,
   TeacherPortalClassToday,
   TeacherPortalSyllabusNode,
+  CourseModuleRecord,
+  CreateCourseModuleInput,
+  UpdateCourseModuleInput,
+  CourseModuleItemRecord,
+  CreateCourseModuleItemInput,
+  UpdateCourseModuleItemInput,
+  StudentPortalCourse,
+  StudentPortalModule,
 } from "./types";
 
 export class ApiError extends Error {
@@ -978,6 +986,39 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       }),
     getTeacherSyllabusNodes: (sessionId: string) =>
       request<TeacherPortalSyllabusNode[]>(`/organizations/me/teacher-portal/class-sessions/${sessionId}/syllabus-nodes`),
+
+    // Course modules & content — teacher self-service side.
+    listTeacherModules: (teachingAssignmentId: string) =>
+      request<CourseModuleRecord[]>(
+        `/organizations/me/teacher-portal/modules?teachingAssignmentId=${encodeURIComponent(teachingAssignmentId)}`,
+      ),
+    createCourseModule: (input: CreateCourseModuleInput) =>
+      request<CourseModuleRecord>("/organizations/me/teacher-portal/modules", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    updateCourseModule: (moduleId: string, input: UpdateCourseModuleInput) =>
+      request<CourseModuleRecord>(`/organizations/me/teacher-portal/modules/${moduleId}`, {
+        method: "PUT",
+        body: JSON.stringify(input),
+      }),
+    addCourseModuleItem: (moduleId: string, input: CreateCourseModuleItemInput) =>
+      request<CourseModuleItemRecord>(`/organizations/me/teacher-portal/modules/${moduleId}/items`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    updateCourseModuleItem: (itemId: string, input: UpdateCourseModuleItemInput) =>
+      request<CourseModuleItemRecord>(`/organizations/me/teacher-portal/module-items/${itemId}`, {
+        method: "PUT",
+        body: JSON.stringify(input),
+      }),
+
+    // Course modules & content — student self-service side.
+    listStudentCourses: () => request<StudentPortalCourse[]>("/organizations/me/portal/courses"),
+    listStudentModules: (teachingAssignmentId: string) =>
+      request<StudentPortalModule[]>(`/organizations/me/portal/courses/${teachingAssignmentId}/modules`),
+    completeModuleItem: (itemId: string) =>
+      request(`/organizations/me/portal/module-items/${itemId}/complete`, { method: "POST" }),
   };
 }
 
