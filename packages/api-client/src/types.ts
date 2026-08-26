@@ -882,9 +882,14 @@ export interface KnowledgeCheckAttempt {
   organizationId: string;
   knowledgeCheckId: string;
   studentId: string;
-  answers: number[];
-  score: number;
-  submittedAt: string;
+  // Added for self-service quiz-taking (LMS discovery slice 4) — null
+  // while a self-service attempt is still in progress; always set for an
+  // admin-recorded attempt (CreateAttemptInput) and for any attempt once
+  // submitted.
+  startedAt: string | null;
+  answers: number[] | null;
+  score: number | null;
+  submittedAt: string | null;
   student: Student;
 }
 
@@ -919,6 +924,52 @@ export interface CreateQuestionInput {
 export interface CreateAttemptInput {
   studentId: string;
   answers: number[];
+}
+
+// Teacher-portal's own quiz list doesn't include the parent
+// TeachingAssignment/syllabusNode (the caller already knows which
+// course they picked) — narrower than KnowledgeCheck, not lying about
+// the shape (LMS discovery slice 4, mirrors TeacherPortalAssignmentListItem).
+export type TeacherPortalQuizListItem = Omit<KnowledgeCheck, "teachingAssignment" | "syllabusNode">;
+
+// Self-service quiz-taking (LMS discovery slice 4) — adapts exam-taking's
+// shuffle/autosave/auto-score engine onto KnowledgeCheck.
+
+export interface QuizAttemptSummary {
+  startedAt: string | null;
+  submittedAt: string | null;
+  score: number | null;
+}
+
+// Metadata + the caller's own attempt status only — never the question
+// content (that's only ever revealed by starting the quiz, see
+// QuizAttemptState below) or another student's attempt.
+export interface StudentPortalQuiz {
+  id: string;
+  title: string;
+  durationMinutes: number | null;
+  questionCount: number;
+  teachingAssignment: AssignmentTeachingAssignmentSummary;
+  myAttempt: QuizAttemptSummary | null;
+}
+
+// One question in shuffled display order/options — never the correct
+// answer. selectedOptionIndex (if present) is the caller's own
+// previously-saved answer, translated into this shuffled order.
+export interface QuizTakingQuestion {
+  id: string;
+  text: string;
+  options: string[];
+  selectedOptionIndex?: number;
+}
+
+export interface QuizAttemptState {
+  deadline: string | null;
+  questions: QuizTakingQuestion[];
+}
+
+export interface SaveQuizAnswerInput {
+  selectedOptionIndex: number;
 }
 
 export interface SyllabusNodeProgressGroup {

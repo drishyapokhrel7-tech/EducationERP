@@ -4,6 +4,8 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { DashboardsService } from "../dashboards/dashboards.service";
 import { FinanceService } from "../finance/finance.service";
 import { AssignmentsService } from "../assignments/assignments.service";
+import { KnowledgeChecksService } from "../knowledge-checks/knowledge-checks.service";
+import { SaveQuizAnswerDto } from "../knowledge-checks/dto/save-quiz-answer.dto";
 
 /**
  * Self-service, not admin-facing — studentId is derived exclusively from
@@ -21,6 +23,7 @@ export class StudentPortalService {
     private readonly dashboards: DashboardsService,
     private readonly finance: FinanceService,
     private readonly assignments: AssignmentsService,
+    private readonly knowledgeChecks: KnowledgeChecksService,
   ) {}
 
   async getDashboard(organizationId: string, userId: string) {
@@ -162,6 +165,83 @@ export class StudentPortalService {
     if (!assignment || !assignment.isPublished) throw new NotFoundException("Assignment not found");
     await this.assertEnrolledInCourse(tx, organizationId, studentId, assignment.teachingAssignmentId);
     return assignment;
+  }
+
+  // ── Quizzes (LMS discovery slice 4) ─────────────────────────────────
+  // Adapts exam-taking's shuffle/autosave/auto-score engine — see
+  // KnowledgeChecksService's own comment on that section. Every call
+  // here does its own enrollment check first (same "own ownership
+  // check, then an independent top-level call into the reused service"
+  // shape as assignments above), so a student can only ever start/save/
+  // submit a quiz on a course they're actually enrolled in.
+
+  async listQuizzes(organizationId: string, userId: string) {
+    const student = await this.getOwnStudent(organizationId, userId);
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const enrollment = await tx.studentEnrollment.findFirst({ where: { organizationId, studentId: student.id, status: "ACTIVE" } });
+      if (!enrollment) return [];
+
+      const teachingAssignments = await tx.teachingAssignment.findMany({
+        where: { organizationId, sectionId: enrollment.sectionId, termId: enrollment.termId },
+      });
+      const list = await tx.knowledgeCheck.findMany({
+        where: { organizationId, status: "PUBLISHED", teachingAssignmentId: { in: teachingAssignments.map((t) => t.id) } },
+        include: { teachingAssignment: { include: { subject: true, employee: true } }, questions: true },
+        orderBy: { createdAt: "desc" },
+      });
+
+      const attempts = await tx.knowledgeCheckAttempt.findMany({
+        where: { organizationId, studentId: student.id, knowledgeCheckId: { in: list.map((c) => c.id) } },
+      });
+      const byCheckId = new Map(attempts.map((a) => [a.knowledgeCheckId, a]));
+
+      return list.map((c) => ({
+        id: c.id,
+        title: c.title,
+        durationMinutes: c.durationMinutes,
+        questionCount: c.questions.length,
+        teachingAssignment: c.teachingAssignment,
+        myAttempt: byCheckId.has(c.id)
+          ? {
+              startedAt: byCheckId.get(c.id)!.startedAt,
+              submittedAt: byCheckId.get(c.id)!.submittedAt,
+              score: byCheckId.get(c.id)!.score,
+            }
+          : null,
+      }));
+    });
+  }
+
+  async getQuiz(organizationId: string, userId: string, checkId: string) {
+    const student = await this.getOwnStudent(organizationId, userId);
+    await this.assertEnrolledInQuizCourse(organizationId, student.id, checkId);
+    return this.knowledgeChecks.getPublishedCheckSummary(organizationId, checkId, student.id);
+  }
+
+  async startQuiz(organizationId: string, userId: string, checkId: string) {
+    const student = await this.getOwnStudent(organizationId, userId);
+    await this.assertEnrolledInQuizCourse(organizationId, student.id, checkId);
+    return this.knowledgeChecks.startAttempt(organizationId, checkId, student.id);
+  }
+
+  async saveQuizAnswer(organizationId: string, userId: string, checkId: string, questionId: string, dto: SaveQuizAnswerDto) {
+    const student = await this.getOwnStudent(organizationId, userId);
+    await this.assertEnrolledInQuizCourse(organizationId, student.id, checkId);
+    return this.knowledgeChecks.saveAnswer(organizationId, checkId, student.id, questionId, dto);
+  }
+
+  async submitQuiz(organizationId: string, userId: string, checkId: string) {
+    const student = await this.getOwnStudent(organizationId, userId);
+    await this.assertEnrolledInQuizCourse(organizationId, student.id, checkId);
+    return this.knowledgeChecks.submitAttempt(organizationId, checkId, student.id);
+  }
+
+  private async assertEnrolledInQuizCourse(organizationId: string, studentId: string, checkId: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const check = await tx.knowledgeCheck.findUnique({ where: { id: checkId } });
+      if (!check || check.status !== "PUBLISHED") throw new NotFoundException("Quiz not found");
+      await this.assertEnrolledInCourse(tx, organizationId, studentId, check.teachingAssignmentId);
+    });
   }
 
   private async assertEnrolledInCourse(

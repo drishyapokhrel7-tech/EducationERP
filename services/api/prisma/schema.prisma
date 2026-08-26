@@ -67,6 +67,7 @@ model Organization {
   knowledgeChecks             KnowledgeCheck[]
   knowledgeCheckQuestions     KnowledgeCheckQuestion[]
   knowledgeCheckAttempts      KnowledgeCheckAttempt[]
+  knowledgeCheckAnswers       KnowledgeCheckAnswer[]
   examTypes                   ExamType[]
   gradingSchemes              GradingScheme[]
   questionBanks               QuestionBank[]
@@ -1664,8 +1665,9 @@ model KnowledgeCheckQuestion {
   correctOptionIndex Int
   createdAt          DateTime @default(now())
 
-  organization   Organization   @relation(fields: [organizationId], references: [id])
-  knowledgeCheck KnowledgeCheck @relation(fields: [knowledgeCheckId], references: [id])
+  organization   Organization           @relation(fields: [organizationId], references: [id])
+  knowledgeCheck KnowledgeCheck         @relation(fields: [knowledgeCheckId], references: [id])
+  savedAnswers   KnowledgeCheckAnswer[]
 
   @@index([organizationId])
   @@index([knowledgeCheckId])
@@ -1677,24 +1679,64 @@ model KnowledgeCheckAttempt {
   organizationId   String
   knowledgeCheckId String
   studentId        String
+  // Set when a student starts the self-service quiz-taking flow (LMS
+  // discovery slice 4); left null for an admin-recorded attempt (the
+  // original CreateAttemptDto path, e.g. a paper-based in-class check
+  // being logged after the fact), which never "starts" separately from
+  // submitting.
+  startedAt        DateTime?
   // number[] — the selected option index per question, in the same
-  // order as KnowledgeCheck.questions.
-  answers          Json
+  // order as KnowledgeCheck.questions. Null while a self-service attempt
+  // is still in progress (see KnowledgeCheckAnswer for the autosaved,
+  // per-question state); always set for an admin-recorded attempt and
+  // for any attempt once submitted.
+  answers          Json?
   // Percentage of questions answered correctly, computed server-side at
-  // submission time — never trust a client-submitted score.
-  score            Float
-  submittedAt      DateTime @default(now())
+  // submission time — never trust a client-submitted score. Null until
+  // scored.
+  score            Float?
+  // Null while in progress; set at submission time (self-service or
+  // admin-recorded) — no longer defaults to now(), since a self-service
+  // attempt's row is created at *start*, not submission.
+  submittedAt      DateTime?
 
-  organization   Organization   @relation(fields: [organizationId], references: [id])
-  knowledgeCheck KnowledgeCheck @relation(fields: [knowledgeCheckId], references: [id])
-  student        Student        @relation(fields: [studentId], references: [id])
+  organization   Organization           @relation(fields: [organizationId], references: [id])
+  knowledgeCheck KnowledgeCheck         @relation(fields: [knowledgeCheckId], references: [id])
+  student        Student                @relation(fields: [studentId], references: [id])
+  savedAnswers   KnowledgeCheckAnswer[]
 
   // One attempt per student — these are short in-class checks, not a
   // retake-until-you-pass assessment; resubmission rules are an
-  // Assignment concept, not a KnowledgeCheck one.
+  // Assignment concept, not a KnowledgeCheck one. Shared by both the
+  // self-service and admin-recorded paths, so one can never double up
+  // on the other.
   @@unique([knowledgeCheckId, studentId])
   @@index([organizationId])
   @@map("knowledge_check_attempts")
+}
+
+// Per-question autosave state for a self-service quiz attempt in
+// progress — mirrors ExamTaking's Answer table exactly (same "save one
+// question at a time, resume with the same shuffled order on refresh"
+// shape), scoped to KnowledgeCheckAttempt instead of ExamAttempt since
+// a quiz isn't tied to an exam schedule/window. Selected option index is
+// always the question's real (unshuffled) index — the same
+// seededShuffle-and-translate-back convention as exam-taking.
+model KnowledgeCheckAnswer {
+  id                      String   @id @default(uuid())
+  organizationId          String
+  knowledgeCheckAttemptId String
+  questionId              String
+  selectedOptionIndex     Int
+  updatedAt               DateTime @updatedAt
+
+  organization Organization           @relation(fields: [organizationId], references: [id])
+  attempt      KnowledgeCheckAttempt  @relation(fields: [knowledgeCheckAttemptId], references: [id])
+  question     KnowledgeCheckQuestion @relation(fields: [questionId], references: [id])
+
+  @@unique([knowledgeCheckAttemptId, questionId])
+  @@index([organizationId])
+  @@map("knowledge_check_answers")
 }
 
 // --- Phase 4 slice 4a: exam structure & question banks -------------------

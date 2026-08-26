@@ -370,12 +370,158 @@ introduced for this single use).
   Sharma's submission, and the grade) was left in place, not cleaned
   up.**
 
+## Slice 4 — Quiz engine
+
+User said "go-ahead" — approval to start the next item in the proposed
+sequencing.
+
+### Design
+
+**No new "quiz" entity** — `KnowledgeCheck`/`KnowledgeCheckQuestion`/
+`KnowledgeCheckAttempt` already existed (from Phase 3), already
+anchored to `TeachingAssignment`, already had a DRAFT/PUBLISHED gate
+and a one-attempt-per-student unique constraint. What was missing,
+per discovery, was the self-service *taking* experience: the existing
+`attempt()` method is admin-recorded — one bulk call with a
+`studentId` param and a full `answers` array, no shuffle, no
+autosave, no resume, no per-student time limit. This slice adapts
+`exam-taking`'s already-proven engine (`seededShuffle`, deterministic
+per-attempt question/option order, translate-shuffled-index-back-to-
+real before storing, never trust a client-submitted score) onto
+`KnowledgeCheck` rather than forking a parallel implementation —
+`exam-taking/shuffle.ts`'s `seededShuffle` is imported directly
+(a pure function, no service dependency) into `KnowledgeChecksService`.
+
+**Schema, additive only** (existing admin flow untouched):
+`KnowledgeCheckAttempt` gained `startedAt` (nullable — set only by the
+self-service flow) and `answers`/`score`/`submittedAt` all became
+nullable (previously required, since the admin path always set them
+atomically; a self-service attempt now exists in a real "started, not
+yet submitted" state first). New table `KnowledgeCheckAnswer`
+(`knowledgeCheckAttemptId`, `questionId`, `selectedOptionIndex`) is
+the per-question autosave state — mirrors `exam-taking`'s own `Answer`
+table exactly, scoped to `KnowledgeCheckAttempt` instead of
+`ExamAttempt` since a quiz isn't tied to an exam schedule/window. Both
+the self-service and admin-recorded paths still share the same
+`@@unique([knowledgeCheckId, studentId])` row and constraint, so
+neither can double up on the other — an admin can't record a second
+attempt for a student who already self-attempted, and vice versa.
+
+**Self-service quiz-taking, added directly to `KnowledgeChecksService`**
+(not a new dedicated module — `exam-taking`'s own module-per-domain
+split predates this session's LMS convention of extending the
+existing owning service): `getPublishedCheckSummary`/`startAttempt`/
+`saveAnswer`/`submitAttempt`. `startAttempt` is idempotent (resumes an
+in-progress attempt on a second call, same convention as
+`TeacherPortalService.createSession`) and 409s only once actually
+submitted. `durationMinutes` (existing field, previously unenforced)
+now drives a real per-student deadline computed as
+`startedAt + durationMinutes` — `saveAnswer` rejects past it (400);
+`submitAttempt` doesn't re-check it, same as `exam-taking`'s own
+`submitExam`, since a client-side auto-submit-on-timeout is the
+intended backstop, not a hard server cutoff on the final call.
+
+**Two new self-service wrapper layers, same "reuse the existing
+service, add an ownership/enrollment check in front" precedent as
+assignments and modules**:
+- `teacher-portal` (new methods): `listQuizzes`/`createQuiz`/
+  `getQuizDetail`/`addQuizQuestion`/`publishQuiz` — every write
+  ownership-checked against `knowledgeCheck.teachingAssignment.
+  employeeId` before delegating to `KnowledgeChecksService`'s already-
+  tested create/add-question/publish/get methods (reads are a direct
+  tx query, same split `listAssignments` already uses).
+- `student-portal` (new methods): `listQuizzes`/`getQuiz`/`startQuiz`/
+  `saveQuizAnswer`/`submitQuiz` — every call enrollment-checked
+  (published + the student's own active enrollment covers the quiz's
+  `teachingAssignmentId`) before delegating into
+  `KnowledgeChecksService`'s new self-service methods. `listQuizzes`
+  never returns question content, only metadata + the caller's own
+  attempt status — question content (and the deterministic shuffle)
+  is only ever revealed by actually starting the quiz.
+
+**Web**: `/teacher` gained a "My courses — quizzes" card (course
+picker → quiz list with publish toggle and a fixed 4-option MCQ
+builder whose "correct answer" dropdown re-populates live from
+whatever option text has actually been typed → expand a quiz to see
+its questions and every student's attempt/score). `/portal/quizzes`
+(new nav link) lists published quizzes with a status badge (score if
+graded, or a Start/Resume link); `/portal/quizzes/[quizId]` is a close
+structural mirror of `/portal/exams/[examSubjectId]` — countdown timer,
+autosave-on-select radios, auto-submit at zero, a confirm-before-submit
+button — with the subjective/textarea branch removed (every
+`KnowledgeCheckQuestion` is objective) since a quiz has no subjective
+question type to support.
+
+### A real e2e bug found and fixed (unrelated to this slice's own code)
+
+The first full-suite-relative test run failed everywhere with `431
+Request Header Fields Too Large` — even re-running the already-passing
+slice 3 test hit the identical error, confirming it wasn't caused by
+this slice's changes. Root cause: this project's own documented
+stopgap for JWT header growth
+(`NODE_OPTIONS=--max-http-header-size=65536`) is wired into the
+`test:e2e` **npm script**, not applied globally — invoking `jest`
+directly (bypassing `npm run test:e2e`) silently drops it. Fixed by
+always running e2e tests through `npm run test:e2e -- -t "..."`, never
+`npx jest` directly. Once run correctly, this slice's own test needed
+one real fix of its own: its `it()` block's fixture-building chain (a
+full campus→...→teachingAssignment→two logins→quiz→two questions→
+publish→start→resume→submit→grade-review sequence) took longer than
+the default 60s timeout against the real dev database; raised to
+90000ms, same as this suite's other longer fixture-heavy tests.
+
+### Verified
+
+- `pnpm -r typecheck`/`lint`/`build` clean across all six packages.
+  (One unrelated pre-existing lint failure in `apps/web/src/app/sso/
+  page.tsx`, from an earlier, already-committed, unrelated change —
+  confirmed via `git log` on that file before this slice touched
+  anything — is out of scope here and was left alone.)
+- `services/api` e2e: one new comprehensive test (`-t "Quiz engine"`)
+  — a different teacher can't create a quiz, add a question, or read
+  quiz detail on someone else's course (404, IDOR guard); publishing
+  with zero questions is rejected (400); a draft quiz is invisible to
+  an enrolled student (empty list, 404 on direct get/start); publishing
+  makes it visible; an unenrolled student 404s; starting returns
+  shuffled questions/options with no `correctOptionIndex` leaked and a
+  deadline computed from `durationMinutes`; autosaving both answers
+  succeeds; a second start resumes the identical shuffled order with
+  the saved answers pre-selected (no reshuffle on refresh); submitting
+  auto-scores correctly (1 of 2 correct → 50, never trusting a
+  client-submitted score); resubmission and further answer edits are
+  both rejected once submitted (409); the owning teacher's quiz list
+  shows the graded attempt with the student's info and score, while a
+  different teacher still can't reach it at all (404); cross-tenant
+  quiz creation on org A's course from org B is rejected (404). Passed
+  clean (`55907 ms`) after the timeout fix above — no bugs found in
+  this slice's own application code.
+- Full browser pass in the Everest Academy demo org: as the real
+  teacher (Sunita Karki), created "Addition Basics Quiz" (Mathematics,
+  15-minute limit) with two questions via the dynamic 4-option builder,
+  published it — confirmed 201/201/201/201 via network responses; as
+  the real student (Aarav Sharma), confirmed `/portal/quizzes` lists it,
+  started it and confirmed the countdown timer, shuffled question
+  order (question 2 displayed before question 1) and shuffled option
+  order all render correctly; selected the correct answer for one
+  question and an incorrect answer for the other (both autosaved,
+  confirmed 200 via network responses); reloaded the page mid-quiz and
+  confirmed the identical shuffled order and both previously-saved
+  answers were still selected, with the countdown continuing rather
+  than resetting — proving resume works, not just a fresh shuffle;
+  submitted and confirmed a score of 50 via both the network response
+  and the rendered "Score: 50%" on the list page; switched back to the
+  teacher and confirmed the quiz's expanded view shows "1 attempted"
+  and "Aarav Sharma — 50%" in the attempts list. **Per the same
+  standing instruction as slices 1–3, this demo data (the quiz, its two
+  questions, and Aarav Sharma's attempt) was left in place, not cleaned
+  up.**
+
 ## Next step
 
-Teacher portal (slice 1), course modules (slice 2), and self-service
-assignments (slice 3) are done. The rest of the proposed LMS sequencing
-(quiz engine — adapting the exam-taking engine's proven shuffle/
-autosave/auto-score pattern — announcements, discussions, gradebook,
-file upload, notifications) is **not started**; quiz engine (#4) is
-the natural next item, but each still needs its own explicit go-ahead,
-per this project's standing rule.
+Teacher portal (slice 1), course modules (slice 2), self-service
+assignments (slice 3), and the quiz engine (slice 4) are done. The
+rest of the proposed LMS sequencing — announcements, discussions,
+gradebook, file upload (blocked on the still-open storage decision),
+notifications — is **not started**; announcements (#5) is the natural
+next item, but each still needs its own explicit go-ahead, per this
+project's standing rule.

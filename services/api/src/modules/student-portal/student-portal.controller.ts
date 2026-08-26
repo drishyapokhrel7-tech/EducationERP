@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Put, UseGuards } from "@nestjs/common";
 import { StudentPortalService } from "./student-portal.service";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
@@ -6,6 +6,7 @@ import { JwtPayload } from "../../common/auth/jwt-payload";
 import { InitiateEsewaPaymentDto } from "../finance/dto/initiate-esewa-payment.dto";
 import { ConfirmEsewaPaymentDto } from "../finance/dto/confirm-esewa-payment.dto";
 import { SubmitAssignmentDto } from "./dto/submit-assignment.dto";
+import { SaveQuizAnswerDto } from "../knowledge-checks/dto/save-quiz-answer.dto";
 
 // Deliberately JwtAuthGuard only — no PermissionsGuard/@RequirePermissions.
 // The existing resource:action permission model answers "can this role
@@ -75,5 +76,35 @@ export class StudentPortalController {
     @Body() dto: SubmitAssignmentDto,
   ) {
     return this.studentPortal.submitAssignment(user.organizationId, user.sub, assignmentId, dto.content);
+  }
+
+  @Get("quizzes")
+  listQuizzes(@CurrentUser() user: JwtPayload) {
+    return this.studentPortal.listQuizzes(user.organizationId, user.sub);
+  }
+
+  @Get("quizzes/:checkId")
+  getQuiz(@CurrentUser() user: JwtPayload, @Param("checkId") checkId: string) {
+    return this.studentPortal.getQuiz(user.organizationId, user.sub, checkId);
+  }
+
+  @Post("quizzes/:checkId/start")
+  startQuiz(@CurrentUser() user: JwtPayload, @Param("checkId") checkId: string) {
+    return this.studentPortal.startQuiz(user.organizationId, user.sub, checkId);
+  }
+
+  @Put("quizzes/:checkId/answers/:questionId")
+  saveQuizAnswer(
+    @CurrentUser() user: JwtPayload,
+    @Param("checkId") checkId: string,
+    @Param("questionId") questionId: string,
+    @Body() dto: SaveQuizAnswerDto,
+  ) {
+    return this.studentPortal.saveQuizAnswer(user.organizationId, user.sub, checkId, questionId, dto);
+  }
+
+  @Post("quizzes/:checkId/submit")
+  submitQuiz(@CurrentUser() user: JwtPayload, @Param("checkId") checkId: string) {
+    return this.studentPortal.submitQuiz(user.organizationId, user.sub, checkId);
   }
 }

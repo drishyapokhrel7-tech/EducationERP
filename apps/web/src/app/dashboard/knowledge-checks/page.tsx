@@ -272,7 +272,8 @@ export default function KnowledgeChecksPage() {
                       <ul className="text-muted-foreground text-sm">
                         {activeCheck.data.attempts.map((a) => (
                           <li key={a.id}>
-                            {a.student.firstName} {a.student.lastName} — {a.score.toFixed(0)}%
+                            {a.student.firstName} {a.student.lastName} —{" "}
+                            {a.score !== null ? `${a.score.toFixed(0)}%` : "In progress"}
                           </li>
                         ))}
                       </ul>

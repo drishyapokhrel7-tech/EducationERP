@@ -13,6 +13,8 @@ import { UpdateCourseModuleItemDto } from "./dto/update-course-module-item.dto";
 import { CreateAssignmentDto } from "../assignments/dto/create-assignment.dto";
 import { UpdateAssignmentDto } from "../assignments/dto/update-assignment.dto";
 import { GradeSubmissionDto } from "../assignments/dto/grade-submission.dto";
+import { CreateKnowledgeCheckDto } from "../knowledge-checks/dto/create-knowledge-check.dto";
+import { CreateQuestionDto } from "../knowledge-checks/dto/create-question.dto";
 
 // Deliberately JwtAuthGuard only — no PermissionsGuard/@RequirePermissions,
 // same reasoning as StudentPortalController/DriverPortalController:
@@ -140,5 +142,34 @@ export class TeacherPortalController {
     @Body() dto: GradeSubmissionDto,
   ) {
     return this.teacherPortal.gradeSubmission(user.organizationId, user.sub, assignmentId, studentId, dto);
+  }
+
+  @Get("quizzes")
+  listQuizzes(@CurrentUser() user: JwtPayload, @Query("teachingAssignmentId") teachingAssignmentId: string) {
+    return this.teacherPortal.listQuizzes(user.organizationId, user.sub, teachingAssignmentId);
+  }
+
+  @Post("quizzes")
+  createQuiz(@CurrentUser() user: JwtPayload, @Body() dto: CreateKnowledgeCheckDto) {
+    return this.teacherPortal.createQuiz(user.organizationId, user.sub, dto);
+  }
+
+  @Get("quizzes/:checkId")
+  getQuizDetail(@CurrentUser() user: JwtPayload, @Param("checkId") checkId: string) {
+    return this.teacherPortal.getQuizDetail(user.organizationId, user.sub, checkId);
+  }
+
+  @Post("quizzes/:checkId/questions")
+  addQuizQuestion(
+    @CurrentUser() user: JwtPayload,
+    @Param("checkId") checkId: string,
+    @Body() dto: CreateQuestionDto,
+  ) {
+    return this.teacherPortal.addQuizQuestion(user.organizationId, user.sub, checkId, dto);
+  }
+
+  @Post("quizzes/:checkId/publish")
+  publishQuiz(@CurrentUser() user: JwtPayload, @Param("checkId") checkId: string) {
+    return this.teacherPortal.publishQuiz(user.organizationId, user.sub, checkId);
   }
 }

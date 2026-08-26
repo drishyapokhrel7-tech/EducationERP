@@ -103,6 +103,10 @@ import type {
   CreateQuestionInput,
   KnowledgeCheckAttempt,
   CreateAttemptInput,
+  TeacherPortalQuizListItem,
+  StudentPortalQuiz,
+  QuizAttemptState,
+  SaveQuizAnswerInput,
   TeacherDashboard,
   StudentDashboard,
   ParentDashboard,
@@ -1061,6 +1065,38 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         method: "POST",
         body: JSON.stringify(input),
       }),
+
+    // Quizzes — teacher self-service side (LMS discovery slice 4).
+    listTeacherQuizzes: (teachingAssignmentId: string) =>
+      request<TeacherPortalQuizListItem[]>(
+        `/organizations/me/teacher-portal/quizzes?teachingAssignmentId=${encodeURIComponent(teachingAssignmentId)}`,
+      ),
+    createTeacherQuiz: (input: CreateKnowledgeCheckInput) =>
+      request<KnowledgeCheck>("/organizations/me/teacher-portal/quizzes", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    getTeacherQuiz: (checkId: string) => request<KnowledgeCheck>(`/organizations/me/teacher-portal/quizzes/${checkId}`),
+    addTeacherQuizQuestion: (checkId: string, input: CreateQuestionInput) =>
+      request<KnowledgeCheckQuestion>(`/organizations/me/teacher-portal/quizzes/${checkId}/questions`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    publishTeacherQuiz: (checkId: string) =>
+      request<KnowledgeCheck>(`/organizations/me/teacher-portal/quizzes/${checkId}/publish`, { method: "POST" }),
+
+    // Quizzes — student self-service side.
+    listStudentQuizzes: () => request<StudentPortalQuiz[]>("/organizations/me/portal/quizzes"),
+    getStudentQuiz: (checkId: string) => request<StudentPortalQuiz>(`/organizations/me/portal/quizzes/${checkId}`),
+    startStudentQuiz: (checkId: string) =>
+      request<QuizAttemptState>(`/organizations/me/portal/quizzes/${checkId}/start`, { method: "POST" }),
+    saveStudentQuizAnswer: (checkId: string, questionId: string, input: SaveQuizAnswerInput) =>
+      request(`/organizations/me/portal/quizzes/${checkId}/answers/${questionId}`, {
+        method: "PUT",
+        body: JSON.stringify(input),
+      }),
+    submitStudentQuiz: (checkId: string) =>
+      request<StudentPortalQuiz>(`/organizations/me/portal/quizzes/${checkId}/submit`, { method: "POST" }),
   };
 }
 

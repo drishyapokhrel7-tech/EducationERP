@@ -111,12 +111,16 @@ describe("Tenant isolation (e2e)", () => {
         "examSchedule",
         "examSubject",
         "exam",
-        // knowledgeCheckAttempt/knowledgeCheckQuestion reference
-        // knowledgeCheck; knowledgeCheck references teachingAssignment +
-        // syllabusNode; assignmentSubmission references assignment;
-        // assignment references teachingAssignment — all five lead the
-        // whole list since teachingAssignment and syllabusNode are both
-        // required elsewhere to be deleted much later.
+        // knowledgeCheckAnswer references knowledgeCheckAttempt +
+        // knowledgeCheckQuestion (both RESTRICT, LMS discovery slice 4) —
+        // must precede both. knowledgeCheckAttempt/knowledgeCheckQuestion
+        // reference knowledgeCheck; knowledgeCheck references
+        // teachingAssignment + syllabusNode; assignmentSubmission
+        // references assignment; assignment references teachingAssignment
+        // — all six lead the whole list since teachingAssignment and
+        // syllabusNode are both required elsewhere to be deleted much
+        // later.
+        "knowledgeCheckAnswer",
         "knowledgeCheckAttempt",
         "knowledgeCheckQuestion",
         "knowledgeCheck",
@@ -6572,5 +6576,339 @@ describe("Tenant isolation (e2e)", () => {
         .send({ teachingAssignmentId: teachingAssignment.body.id, title: "Intruder Assignment", submissionType: "TEXT" })
         .expect(404);
     }, 60000);
+  });
+
+  describe("Quiz engine (LMS discovery slice 4)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    it("adapts exam-taking's shuffle/autosave/resume/auto-score engine onto a teacher-owned quiz, gated to published + enrolled (IDOR + tenant guards)", async () => {
+      const suffix = `QZ${run}`;
+
+      const campus = await request(app.getHttpServer())
+        .post("/organizations/me/campuses")
+        .set(...auth(tokenA))
+        .send({ name: `Quiz Campus ${suffix}`, code: `QZCAMP${suffix}` })
+        .expect(201);
+      const faculty = await request(app.getHttpServer())
+        .post("/organizations/me/faculties")
+        .set(...auth(tokenA))
+        .send({ campusId: campus.body.id, name: `Quiz Faculty ${suffix}`, code: `QZFAC${suffix}` })
+        .expect(201);
+      const department = await request(app.getHttpServer())
+        .post("/organizations/me/departments")
+        .set(...auth(tokenA))
+        .send({ facultyId: faculty.body.id, name: `Quiz Dept ${suffix}`, code: `QZDEP${suffix}` })
+        .expect(201);
+      const program = await request(app.getHttpServer())
+        .post("/organizations/me/programs")
+        .set(...auth(tokenA))
+        .send({ departmentId: department.body.id, name: `Quiz Program ${suffix}`, code: `QZPROG${suffix}` })
+        .expect(201);
+      const year = await request(app.getHttpServer())
+        .post("/organizations/me/academic-years")
+        .set(...auth(tokenA))
+        .send({ name: `Quiz Year ${suffix}`, startDate: "2099-08-01", endDate: "2100-06-30" })
+        .expect(201);
+      const term = await request(app.getHttpServer())
+        .post("/organizations/me/terms")
+        .set(...auth(tokenA))
+        .send({
+          academicYearId: year.body.id,
+          name: `Quiz Term ${suffix}`,
+          code: `QZT${suffix}`,
+          sequence: 1,
+          startDate: "2099-08-01",
+          endDate: "2099-12-15",
+        })
+        .expect(201);
+      const section = await request(app.getHttpServer())
+        .post("/organizations/me/sections")
+        .set(...auth(tokenA))
+        .send({ programId: program.body.id, termId: term.body.id, name: `Quiz Section ${suffix}`, code: `QZS${suffix}` })
+        .expect(201);
+      const staffType = await request(app.getHttpServer())
+        .post("/organizations/me/staff-types")
+        .set(...auth(tokenA))
+        .send({ name: `Quiz Staff Type ${suffix}`, code: `QZST${suffix}` })
+        .expect(201);
+      const designation = await request(app.getHttpServer())
+        .post("/organizations/me/designations")
+        .set(...auth(tokenA))
+        .send({ name: `Quiz Designation ${suffix}`, code: `QZDS${suffix}` })
+        .expect(201);
+      const subject = await request(app.getHttpServer())
+        .post("/organizations/me/subjects")
+        .set(...auth(tokenA))
+        .send({ name: `Quiz Subject ${suffix}`, code: `QZSUB${suffix}` })
+        .expect(201);
+
+      const teacher = await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(tokenA))
+        .send({
+          staffTypeId: staffType.body.id,
+          designationId: designation.body.id,
+          employeeCode: `QZ-TCH-${suffix}`,
+          firstName: "Quiz",
+          lastName: "Teacher",
+          email: `qz-teacher-${suffix}-${run}@rls-e2e.test`,
+          dateOfJoining: "2026-01-01",
+        })
+        .expect(201);
+      const otherTeacher = await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(tokenA))
+        .send({
+          staffTypeId: staffType.body.id,
+          designationId: designation.body.id,
+          employeeCode: `QZ-TCH2-${suffix}`,
+          firstName: "Other",
+          lastName: "QuizTeacher",
+          email: `qz-teacher2-${suffix}-${run}@rls-e2e.test`,
+          dateOfJoining: "2026-01-01",
+        })
+        .expect(201);
+
+      const teachingAssignment = await request(app.getHttpServer())
+        .post("/organizations/me/teaching-assignments")
+        .set(...auth(tokenA))
+        .send({ employeeId: teacher.body.id, subjectId: subject.body.id, sectionId: section.body.id, termId: term.body.id })
+        .expect(201);
+
+      const teacherLogin = await request(app.getHttpServer())
+        .post(`/organizations/me/employees/${teacher.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "QuizTeacherPass123" })
+        .expect(201);
+      const otherTeacherLogin = await request(app.getHttpServer())
+        .post(`/organizations/me/employees/${otherTeacher.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "OtherQuizTeacherPass123" })
+        .expect(201);
+      const teacherSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: teacherLogin.body.username, password: "QuizTeacherPass123" })
+        .expect(201);
+      const otherTeacherSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: otherTeacherLogin.body.username, password: "OtherQuizTeacherPass123" })
+        .expect(201);
+      const teacherToken = teacherSession.body.accessToken as string;
+      const otherTeacherToken = otherTeacherSession.body.accessToken as string;
+
+      // A different teacher can't create a quiz on someone else's course
+      // (404, IDOR guard).
+      await request(app.getHttpServer())
+        .post("/organizations/me/teacher-portal/quizzes")
+        .set(...auth(otherTeacherToken))
+        .send({ teachingAssignmentId: teachingAssignment.body.id, title: "Intruder Quiz" })
+        .expect(404);
+
+      const quiz = await request(app.getHttpServer())
+        .post("/organizations/me/teacher-portal/quizzes")
+        .set(...auth(teacherToken))
+        .send({ teachingAssignmentId: teachingAssignment.body.id, title: "Counting Quiz", durationMinutes: 30 })
+        .expect(201);
+      expect(quiz.body.status).toBe("DRAFT");
+
+      // Can't publish with no questions yet (400).
+      await request(app.getHttpServer())
+        .post(`/organizations/me/teacher-portal/quizzes/${quiz.body.id}/publish`)
+        .set(...auth(teacherToken))
+        .expect(400);
+
+      // A different teacher can't add a question or read quiz detail on
+      // someone else's quiz (404, IDOR guard).
+      await request(app.getHttpServer())
+        .post(`/organizations/me/teacher-portal/quizzes/${quiz.body.id}/questions`)
+        .set(...auth(otherTeacherToken))
+        .send({ sequence: 1, text: "Intruder question", options: ["A", "B"], correctOptionIndex: 0 })
+        .expect(404);
+      await request(app.getHttpServer())
+        .get(`/organizations/me/teacher-portal/quizzes/${quiz.body.id}`)
+        .set(...auth(otherTeacherToken))
+        .expect(404);
+
+      const q1 = await request(app.getHttpServer())
+        .post(`/organizations/me/teacher-portal/quizzes/${quiz.body.id}/questions`)
+        .set(...auth(teacherToken))
+        .send({ sequence: 1, text: "How many is 2 + 2?", options: ["3", "4", "5", "6"], correctOptionIndex: 1 })
+        .expect(201);
+      const q2 = await request(app.getHttpServer())
+        .post(`/organizations/me/teacher-portal/quizzes/${quiz.body.id}/questions`)
+        .set(...auth(teacherToken))
+        .send({ sequence: 2, text: "How many is 3 + 3?", options: ["5", "6", "7", "8"], correctOptionIndex: 1 })
+        .expect(201);
+      const q1Id = q1.body.id as string;
+      const q2Id = q2.body.id as string;
+
+      // Build an enrolled student and an unrelated, unenrolled one.
+      const student = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({ studentCode: `QZ-STU-${suffix}`, firstName: "Quiz", lastName: "Student", dateOfBirth: "2015-01-01" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/students/${student.body.id}/enrollments`)
+        .set(...auth(tokenA))
+        .send({ programId: program.body.id, sectionId: section.body.id, termId: term.body.id, enrollmentDate: "2099-08-01" })
+        .expect(201);
+      const studentLogin = await request(app.getHttpServer())
+        .post(`/organizations/me/students/${student.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "QuizStudentPass123" })
+        .expect(201);
+      const studentSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: studentLogin.body.username, password: "QuizStudentPass123" })
+        .expect(201);
+      const studentToken = studentSession.body.accessToken as string;
+
+      const otherStudent = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({ studentCode: `QZ-STU2-${suffix}`, firstName: "Outside", lastName: "QuizStudent", dateOfBirth: "2015-01-01" })
+        .expect(201);
+      const otherStudentLogin = await request(app.getHttpServer())
+        .post(`/organizations/me/students/${otherStudent.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "OtherQuizStudentPass123" })
+        .expect(201);
+      const otherStudentSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: otherStudentLogin.body.username, password: "OtherQuizStudentPass123" })
+        .expect(201);
+      const otherStudentToken = otherStudentSession.body.accessToken as string;
+
+      // Draft quiz is invisible to the enrolled student.
+      const listBeforePublish = await request(app.getHttpServer())
+        .get("/organizations/me/portal/quizzes")
+        .set(...auth(studentToken))
+        .expect(200);
+      expect(listBeforePublish.body).toEqual([]);
+      await request(app.getHttpServer())
+        .get(`/organizations/me/portal/quizzes/${quiz.body.id}`)
+        .set(...auth(studentToken))
+        .expect(404);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/portal/quizzes/${quiz.body.id}/start`)
+        .set(...auth(studentToken))
+        .expect(404);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/teacher-portal/quizzes/${quiz.body.id}/publish`)
+        .set(...auth(teacherToken))
+        .expect(201);
+
+      const listAfterPublish = await request(app.getHttpServer())
+        .get("/organizations/me/portal/quizzes")
+        .set(...auth(studentToken))
+        .expect(200);
+      expect(listAfterPublish.body).toHaveLength(1);
+      expect(listAfterPublish.body[0].questionCount).toBe(2);
+      expect(listAfterPublish.body[0].myAttempt).toBeNull();
+
+      // A student not enrolled in this course can't reach it (404).
+      await request(app.getHttpServer())
+        .get(`/organizations/me/portal/quizzes/${quiz.body.id}`)
+        .set(...auth(otherStudentToken))
+        .expect(404);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/portal/quizzes/${quiz.body.id}/start`)
+        .set(...auth(otherStudentToken))
+        .expect(404);
+
+      const started = await request(app.getHttpServer())
+        .post(`/organizations/me/portal/quizzes/${quiz.body.id}/start`)
+        .set(...auth(studentToken))
+        .expect(201);
+      expect(started.body.questions).toHaveLength(2);
+      for (const q of started.body.questions) {
+        expect(q).not.toHaveProperty("correctOptionIndex");
+      }
+      // durationMinutes was set — a deadline roughly 30 minutes out is
+      // returned; no time limit would instead be a null deadline.
+      const deadlineMs = new Date(started.body.deadline).getTime();
+      expect(deadlineMs).toBeGreaterThan(Date.now());
+      expect(deadlineMs).toBeLessThanOrEqual(Date.now() + 31 * 60_000);
+
+      const shownQ1 = started.body.questions.find((q: { id: string }) => q.id === q1Id);
+      const shownQ2 = started.body.questions.find((q: { id: string }) => q.id === q2Id);
+      const q1CorrectDisplayIndex = shownQ1.options.indexOf("4");
+      const q2WrongDisplayIndex = shownQ2.options.findIndex((o: string) => o !== "6");
+
+      await request(app.getHttpServer())
+        .put(`/organizations/me/portal/quizzes/${quiz.body.id}/answers/${q1Id}`)
+        .set(...auth(studentToken))
+        .send({ selectedOptionIndex: q1CorrectDisplayIndex })
+        .expect(200);
+      await request(app.getHttpServer())
+        .put(`/organizations/me/portal/quizzes/${quiz.body.id}/answers/${q2Id}`)
+        .set(...auth(studentToken))
+        .send({ selectedOptionIndex: q2WrongDisplayIndex })
+        .expect(200);
+
+      // Resume: a second start returns the identical question/option
+      // order (deterministic seed) with the previously-saved answers
+      // pre-selected — no reshuffle on refresh.
+      const resumed = await request(app.getHttpServer())
+        .post(`/organizations/me/portal/quizzes/${quiz.body.id}/start`)
+        .set(...auth(studentToken))
+        .expect(201);
+      expect(resumed.body.questions.map((q: { id: string }) => q.id)).toEqual(
+        started.body.questions.map((q: { id: string }) => q.id),
+      );
+      const resumedQ1 = resumed.body.questions.find((q: { id: string }) => q.id === q1Id);
+      const resumedQ2 = resumed.body.questions.find((q: { id: string }) => q.id === q2Id);
+      expect(resumedQ1.options).toEqual(shownQ1.options);
+      expect(resumedQ1.selectedOptionIndex).toBe(q1CorrectDisplayIndex);
+      expect(resumedQ2.selectedOptionIndex).toBe(q2WrongDisplayIndex);
+
+      const submitted = await request(app.getHttpServer())
+        .post(`/organizations/me/portal/quizzes/${quiz.body.id}/submit`)
+        .set(...auth(studentToken))
+        .expect(201);
+      expect(submitted.body.myAttempt.submittedAt).not.toBeNull();
+      // One of two correct — never trust a client-submitted score.
+      expect(submitted.body.myAttempt.score).toBe(50);
+
+      // Resubmission and further edits are rejected once submitted.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/portal/quizzes/${quiz.body.id}/submit`)
+        .set(...auth(studentToken))
+        .expect(409);
+      await request(app.getHttpServer())
+        .put(`/organizations/me/portal/quizzes/${quiz.body.id}/answers/${q1Id}`)
+        .set(...auth(studentToken))
+        .send({ selectedOptionIndex: 0 })
+        .expect(409);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/portal/quizzes/${quiz.body.id}/start`)
+        .set(...auth(studentToken))
+        .expect(409);
+
+      // The owning teacher sees the graded attempt with the student's
+      // info; a different teacher still can't reach the quiz at all.
+      const teacherView = await request(app.getHttpServer())
+        .get(`/organizations/me/teacher-portal/quizzes?teachingAssignmentId=${teachingAssignment.body.id}`)
+        .set(...auth(teacherToken))
+        .expect(200);
+      expect(teacherView.body).toHaveLength(1);
+      expect(teacherView.body[0].attempts).toHaveLength(1);
+      expect(teacherView.body[0].attempts[0].student.id).toBe(student.body.id);
+      expect(teacherView.body[0].attempts[0].score).toBe(50);
+      await request(app.getHttpServer())
+        .get(`/organizations/me/teacher-portal/quizzes?teachingAssignmentId=${teachingAssignment.body.id}`)
+        .set(...auth(otherTeacherToken))
+        .expect(404);
+
+      // Cross-tenant: org B can't create/publish a quiz on org A's
+      // course.
+      await request(app.getHttpServer())
+        .post("/organizations/me/teacher-portal/quizzes")
+        .set(...auth(tokenB))
+        .send({ teachingAssignmentId: teachingAssignment.body.id, title: "Intruder Quiz" })
+        .expect(404);
+    }, 90000);
   });
 });

@@ -3,6 +3,7 @@ import { PrismaClient } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { DashboardsService } from "../dashboards/dashboards.service";
 import { AssignmentsService } from "../assignments/assignments.service";
+import { KnowledgeChecksService } from "../knowledge-checks/knowledge-checks.service";
 import { CreateClassSessionDto } from "../class-sessions/dto/create-class-session.dto";
 import { RecordProgressDto } from "../class-sessions/dto/record-progress.dto";
 import { CreateClassMaterialDto } from "../class-sessions/dto/create-class-material.dto";
@@ -13,6 +14,8 @@ import { UpdateCourseModuleItemDto } from "./dto/update-course-module-item.dto";
 import { CreateAssignmentDto } from "../assignments/dto/create-assignment.dto";
 import { UpdateAssignmentDto } from "../assignments/dto/update-assignment.dto";
 import { GradeSubmissionDto } from "../assignments/dto/grade-submission.dto";
+import { CreateKnowledgeCheckDto } from "../knowledge-checks/dto/create-knowledge-check.dto";
+import { CreateQuestionDto } from "../knowledge-checks/dto/create-question.dto";
 
 const SESSION_INCLUDE = {
   classSchedule: {
@@ -50,6 +53,7 @@ export class TeacherPortalService {
     private readonly prisma: PrismaService,
     private readonly dashboards: DashboardsService,
     private readonly assignments: AssignmentsService,
+    private readonly knowledgeChecks: KnowledgeChecksService,
   ) {}
 
   async getMe(organizationId: string, userId: string) {
@@ -336,6 +340,65 @@ export class TeacherPortalService {
         throw new NotFoundException("Assignment not found");
       }
       return assignment;
+    });
+  }
+
+  // ── Quizzes (LMS discovery slice 4) ──────────────────────────────────
+  // Reuses KnowledgeChecksService's already-tested create/add-question/
+  // publish/get logic wholesale, same "reuse the existing service, add a
+  // self-service ownership check in front" precedent as assignments
+  // above. Reads (listQuizzes) are a direct tx query, same split
+  // listAssignments already uses — only writes delegate to the shared
+  // service.
+
+  async listQuizzes(organizationId: string, userId: string, teachingAssignmentId: string) {
+    const employee = await this.getOwnEmployee(organizationId, userId);
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.assertOwnsTeachingAssignment(tx, employee.id, teachingAssignmentId);
+      return tx.knowledgeCheck.findMany({
+        where: { organizationId, teachingAssignmentId },
+        include: { questions: true, attempts: { include: { student: true } } },
+        orderBy: { createdAt: "desc" },
+      });
+    });
+  }
+
+  async createQuiz(organizationId: string, userId: string, dto: CreateKnowledgeCheckDto) {
+    const employee = await this.getOwnEmployee(organizationId, userId);
+    await this.prisma.withTenant(organizationId, (tx) =>
+      this.assertOwnsTeachingAssignment(tx, employee.id, dto.teachingAssignmentId),
+    );
+    return this.knowledgeChecks.createCheck(organizationId, dto);
+  }
+
+  async getQuizDetail(organizationId: string, userId: string, checkId: string) {
+    const employee = await this.getOwnEmployee(organizationId, userId);
+    await this.assertOwnsQuiz(organizationId, employee.id, checkId);
+    return this.knowledgeChecks.getCheck(organizationId, checkId);
+  }
+
+  async addQuizQuestion(organizationId: string, userId: string, checkId: string, dto: CreateQuestionDto) {
+    const employee = await this.getOwnEmployee(organizationId, userId);
+    await this.assertOwnsQuiz(organizationId, employee.id, checkId);
+    return this.knowledgeChecks.addQuestion(organizationId, checkId, dto);
+  }
+
+  async publishQuiz(organizationId: string, userId: string, checkId: string) {
+    const employee = await this.getOwnEmployee(organizationId, userId);
+    await this.assertOwnsQuiz(organizationId, employee.id, checkId);
+    return this.knowledgeChecks.publish(organizationId, checkId);
+  }
+
+  private async assertOwnsQuiz(organizationId: string, employeeId: string, checkId: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const check = await tx.knowledgeCheck.findUnique({
+        where: { id: checkId },
+        include: { teachingAssignment: true },
+      });
+      if (!check || check.teachingAssignment.employeeId !== employeeId) {
+        throw new NotFoundException("Quiz not found");
+      }
+      return check;
     });
   }
 

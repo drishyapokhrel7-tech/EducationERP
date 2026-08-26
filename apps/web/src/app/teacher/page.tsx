@@ -83,6 +83,16 @@ export default function TeacherPage() {
   const [expandedAssignmentId, setExpandedAssignmentId] = useState<string | null>(null);
   const [gradeForms, setGradeForms] = useState<Record<string, { score: string; feedback: string }>>({});
 
+  const quizzes = useSWR(courseId ? ["teacher-quizzes", courseId] : null, () => api.listTeacherQuizzes(courseId));
+  const [quizForm, setQuizForm] = useState({ title: "", durationMinutes: "" });
+  const [expandedQuizId, setExpandedQuizId] = useState<string | null>(null);
+  const [questionForm, setQuestionForm] = useState({
+    text: "",
+    options: ["", "", "", ""],
+    correctOptionIndex: "0",
+    sequence: "1",
+  });
+
   async function openClass(classScheduleId: string) {
     try {
       const session = await api.createTeacherClassSession({ classScheduleId, date });
@@ -736,6 +746,235 @@ export default function TeacherPage() {
                       </label>
                       <Button type="submit" size="sm" disabled={!assignmentForm.title}>
                         Add assignment
+                      </Button>
+                    </form>
+                  </>
+                ) : null}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>My courses — quizzes</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <NativeSelect
+                  className="w-64"
+                  placeholder="Select a course"
+                  value={courseId}
+                  onChange={(v) => {
+                    setCourseId(v);
+                    setExpandedQuizId(null);
+                  }}
+                  options={me.data.teachingAssignments.map((t) => ({ value: t.id, label: t.subject.name }))}
+                />
+
+                {courseId ? (
+                  <>
+                    {!quizzes.data || quizzes.data.length === 0 ? (
+                      <p className="text-muted-foreground text-sm">No quizzes yet.</p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {quizzes.data.map((qz) => (
+                          <li key={qz.id} className="rounded-md border p-3 text-sm">
+                            <div className="flex items-center justify-between gap-3">
+                              <button
+                                type="button"
+                                className="text-left font-medium"
+                                onClick={() => setExpandedQuizId(expandedQuizId === qz.id ? null : qz.id)}
+                              >
+                                {qz.title}
+                                <span className="text-muted-foreground font-normal">
+                                  {" "}
+                                  — {qz.questions.length} question{qz.questions.length === 1 ? "" : "s"}
+                                  {qz.durationMinutes ? `, ${qz.durationMinutes} min` : ""}
+                                </span>
+                              </button>
+                              <div className="flex items-center gap-2">
+                                <Badge variant="secondary">{qz.attempts.length} attempted</Badge>
+                                <Badge variant={qz.status === "PUBLISHED" ? "success" : "secondary"}>
+                                  {qz.status === "PUBLISHED" ? "Published" : "Draft"}
+                                </Badge>
+                                {qz.status !== "PUBLISHED" ? (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={qz.questions.length === 0}
+                                    onClick={async () => {
+                                      try {
+                                        await api.publishTeacherQuiz(qz.id);
+                                        quizzes.mutate();
+                                        toast.success("Quiz published");
+                                      } catch (err) {
+                                        toast.error(errorMessage(err, "Failed to publish quiz"));
+                                      }
+                                    }}
+                                  >
+                                    Publish
+                                  </Button>
+                                ) : null}
+                              </div>
+                            </div>
+                            {expandedQuizId === qz.id ? (
+                              <div className="mt-3 space-y-3 border-t pt-3">
+                                {qz.questions.length === 0 ? (
+                                  <p className="text-muted-foreground text-xs">No questions yet.</p>
+                                ) : (
+                                  <ul className="list-decimal space-y-1 pl-4 text-xs">
+                                    {qz.questions.map((question) => (
+                                      <li key={question.id}>
+                                        {question.text}{" "}
+                                        <span className="text-muted-foreground">
+                                          (correct: {question.options[question.correctOptionIndex]})
+                                        </span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+
+                                {qz.attempts.length > 0 ? (
+                                  <div className="space-y-1">
+                                    <p className="text-xs font-medium">Attempts</p>
+                                    <ul className="space-y-1 text-xs">
+                                      {qz.attempts.map((a) => (
+                                        <li key={a.id} className="flex items-center justify-between">
+                                          <span>
+                                            {a.student.firstName} {a.student.lastName}
+                                          </span>
+                                          <span className="text-muted-foreground">
+                                            {a.submittedAt ? `${a.score?.toFixed(0)}%` : "In progress"}
+                                          </span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                ) : null}
+
+                                {qz.status !== "PUBLISHED" ? (
+                                  <form
+                                    className="space-y-2"
+                                    onSubmit={async (e: FormEvent) => {
+                                      e.preventDefault();
+                                      const filledOptions = questionForm.options.map((o) => o.trim()).filter(Boolean);
+                                      try {
+                                        await api.addTeacherQuizQuestion(qz.id, {
+                                          text: questionForm.text,
+                                          options: filledOptions,
+                                          correctOptionIndex: Number(questionForm.correctOptionIndex),
+                                          sequence: Number(questionForm.sequence),
+                                        });
+                                        setQuestionForm({
+                                          text: "",
+                                          options: ["", "", "", ""],
+                                          correctOptionIndex: "0",
+                                          sequence: String(qz.questions.length + 2),
+                                        });
+                                        quizzes.mutate();
+                                        toast.success("Question added");
+                                      } catch (err) {
+                                        toast.error(errorMessage(err, "Failed to add question"));
+                                      }
+                                    }}
+                                  >
+                                    <div className="space-y-1">
+                                      <Label className="text-xs">Question text</Label>
+                                      <Input
+                                        className="h-7 w-full"
+                                        value={questionForm.text}
+                                        onChange={(e) => setQuestionForm((f) => ({ ...f, text: e.target.value }))}
+                                      />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                      {questionForm.options.map((opt, i) => (
+                                        <Input
+                                          key={i}
+                                          className="h-7"
+                                          placeholder={`Option ${i + 1}`}
+                                          value={opt}
+                                          onChange={(e) =>
+                                            setQuestionForm((f) => ({
+                                              ...f,
+                                              options: f.options.map((o, oi) => (oi === i ? e.target.value : o)),
+                                            }))
+                                          }
+                                        />
+                                      ))}
+                                    </div>
+                                    <div className="flex flex-wrap items-end gap-2">
+                                      <div className="space-y-1">
+                                        <Label className="text-xs">Correct answer</Label>
+                                        <NativeSelect
+                                          className="h-7 w-40"
+                                          placeholder="Select correct option"
+                                          value={questionForm.correctOptionIndex}
+                                          onChange={(v) => setQuestionForm((f) => ({ ...f, correctOptionIndex: v }))}
+                                          options={questionForm.options
+                                            .map((o, i) => ({ value: String(i), label: o.trim() }))
+                                            .filter((o) => o.label)}
+                                        />
+                                      </div>
+                                      <Button
+                                        type="submit"
+                                        size="sm"
+                                        className="h-7"
+                                        disabled={
+                                          !questionForm.text ||
+                                          questionForm.options.map((o) => o.trim()).filter(Boolean).length < 2
+                                        }
+                                      >
+                                        Add question
+                                      </Button>
+                                    </div>
+                                  </form>
+                                ) : null}
+                              </div>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
+                    <Separator />
+
+                    <form
+                      className="flex flex-wrap items-end gap-3"
+                      onSubmit={async (e: FormEvent) => {
+                        e.preventDefault();
+                        try {
+                          await api.createTeacherQuiz({
+                            teachingAssignmentId: courseId,
+                            title: quizForm.title,
+                            durationMinutes: quizForm.durationMinutes ? Number(quizForm.durationMinutes) : undefined,
+                          });
+                          setQuizForm({ title: "", durationMinutes: "" });
+                          quizzes.mutate();
+                          toast.success("Quiz created");
+                        } catch (err) {
+                          toast.error(errorMessage(err, "Failed to create quiz"));
+                        }
+                      }}
+                    >
+                      <div className="space-y-1">
+                        <Label className="text-xs">Quiz title</Label>
+                        <Input
+                          className="w-40"
+                          value={quizForm.title}
+                          onChange={(e) => setQuizForm((f) => ({ ...f, title: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Time limit (min)</Label>
+                        <Input
+                          type="number"
+                          className="w-28"
+                          placeholder="No limit"
+                          value={quizForm.durationMinutes}
+                          onChange={(e) => setQuizForm((f) => ({ ...f, durationMinutes: e.target.value }))}
+                        />
+                      </div>
+                      <Button type="submit" size="sm" disabled={!quizForm.title}>
+                        Add quiz
                       </Button>
                     </form>
                   </>
