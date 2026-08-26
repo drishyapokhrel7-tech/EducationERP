@@ -163,6 +163,14 @@ import type {
   EsewaFormPayload,
   ConfirmEsewaPaymentResult,
   PortalInvoiceRecord,
+  RoleRecord,
+  PermissionRecord,
+  CreateRoleInput,
+  UpdateRoleInput,
+  UserSummary,
+  UserRoleAssignment,
+  AssignRoleInput,
+  AuditLogRecord,
   ScholarshipRecord,
   CreateScholarshipInput,
   AssignScholarshipInput,
@@ -762,6 +770,31 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         method: "POST",
         body: JSON.stringify(input),
       }),
+
+    // Roles & Permissions admin.
+    listRoles: () => request<RoleRecord[]>("/organizations/me/roles"),
+    createRole: (input: CreateRoleInput) =>
+      request<RoleRecord>("/organizations/me/roles", { method: "POST", body: JSON.stringify(input) }),
+    updateRole: (id: string, input: UpdateRoleInput) =>
+      request<RoleRecord>(`/organizations/me/roles/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    deleteRole: (id: string) => request<{ deleted: true }>(`/organizations/me/roles/${id}`, { method: "DELETE" }),
+    listPermissions: () => request<PermissionRecord[]>("/organizations/me/permissions"),
+    listOrgUsers: () => request<UserSummary[]>("/organizations/me/users"),
+    assignRole: (userId: string, input: AssignRoleInput) =>
+      request<UserRoleAssignment>(`/organizations/me/users/${userId}/roles`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    unassignRole: (userId: string, roleId: string) =>
+      request<{ unassigned: true }>(`/organizations/me/users/${userId}/roles/${roleId}`, { method: "DELETE" }),
+    listAuditLogs: (params: { resource?: string; action?: string; limit?: number } = {}) => {
+      const q = new URLSearchParams();
+      if (params.resource) q.set("resource", params.resource);
+      if (params.action) q.set("action", params.action);
+      if (params.limit != null) q.set("limit", String(params.limit));
+      const qs = q.toString();
+      return request<AuditLogRecord[]>(`/organizations/me/audit-logs${qs ? `?${qs}` : ""}`);
+    },
   };
 }
 

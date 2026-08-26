@@ -23,6 +23,7 @@ import {
   LogOut,
   Network,
   NotebookText,
+  Shield,
   Users,
   Wallet,
 } from "lucide-react";
@@ -50,6 +51,7 @@ const NAV = [
   { href: "/dashboard/biometric-policy", label: "Biometric", icon: Fingerprint },
   { href: "/dashboard/cameras", label: "Cameras", icon: Camera },
   { href: "/dashboard/library", label: "Library", icon: Library },
+  { href: "/dashboard/roles-permissions", label: "Roles & Permissions", icon: Shield },
 ];
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {

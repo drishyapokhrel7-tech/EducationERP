@@ -124,6 +124,13 @@ const RESOURCES = [
   "scholarship",
   "discount",
   "refund",
+  // Roles & Permissions admin module — "user" and "role" were already
+  // reserved here since Phase 1 (Super Admin/Organization Admin already
+  // had every action on both granted, just with no API ever built on
+  // top). audit_log is the one genuinely new resource this slice adds —
+  // only `view` is actually wired to an endpoint, seeded with the full
+  // matrix anyway for consistency with every other resource here.
+  "audit_log",
 ];
 const ACTIONS = Object.values(PermissionAction);
 

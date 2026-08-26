@@ -226,7 +226,12 @@ describe("Tenant isolation (e2e)", () => {
           );
         }
       }
+      // Roles & Permissions admin (custom Role rows only — Role.organizationId
+      // is null for system roles, so this never touches the master template).
+      // rolePermission/userRole must both clear before role itself deletes.
+      await prisma.rolePermission.deleteMany({ where: { role: { organizationId: { in: [orgAId, orgBId] } } } });
       await prisma.userRole.deleteMany({ where: { user: { organizationId: { in: [orgAId, orgBId] } } } });
+      await prisma.role.deleteMany({ where: { organizationId: { in: [orgAId, orgBId] } } });
       await prisma.session.deleteMany({ where: { user: { organizationId: { in: [orgAId, orgBId] } } } });
       await prisma.loginEvent.deleteMany({ where: { organizationId: { in: [orgAId, orgBId] } } });
       await prisma.user.deleteMany({ where: { organizationId: { in: [orgAId, orgBId] } } });
@@ -4858,5 +4863,158 @@ describe("Tenant isolation (e2e)", () => {
         .send({ data: payload })
         .expect(404);
     }, 30000);
+  });
+
+  describe("Roles & Permissions admin (per-school custom roles, built from the shared permission catalog)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    it("creates a custom role from a subset of the permission catalog, assigns/unassigns it, enforces exactly those permissions, edits and deletes it, audits every action, and stays tenant-scoped", async () => {
+      const permissions = await request(app.getHttpServer())
+        .get("/organizations/me/permissions")
+        .set(...auth(tokenA))
+        .expect(200);
+      const invoiceView = permissions.body.find(
+        (p: { resource: string; action: string }) => p.resource === "invoice" && p.action === "VIEW",
+      );
+      expect(invoiceView).toBeDefined();
+
+      const role = await request(app.getHttpServer())
+        .post("/organizations/me/roles")
+        .set(...auth(tokenA))
+        .send({ name: `Invoice Viewer ${run}`, description: "e2e test role", permissionIds: [invoiceView.id] })
+        .expect(201);
+      expect(role.body.isSystem).toBe(false);
+      expect(role.body.rolePermissions).toHaveLength(1);
+
+      // Duplicate name within the same org is rejected, not silently allowed.
+      await request(app.getHttpServer())
+        .post("/organizations/me/roles")
+        .set(...auth(tokenA))
+        .send({ name: `Invoice Viewer ${run}`, permissionIds: [invoiceView.id] })
+        .expect(409);
+
+      // A student create-login auto-grants the "Student" system role — used
+      // here purely as a convenient way to get a real second User, then
+      // re-pointed at the custom role under test via the new endpoints.
+      const student = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({ studentCode: `RBAC-STU-${run}`, firstName: "Rbac", lastName: "Test", dateOfBirth: "2015-01-01" })
+        .expect(201);
+      const login = await request(app.getHttpServer())
+        .post(`/organizations/me/students/${student.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "RbacTest123!" })
+        .expect(201);
+
+      const usersList = await request(app.getHttpServer())
+        .get("/organizations/me/users")
+        .set(...auth(tokenA))
+        .expect(200);
+      const newUser = usersList.body.find((u: { username: string }) => u.username === login.body.username);
+      expect(newUser).toBeDefined();
+      const studentRoleAssignment = newUser.userRoles.find((ur: { role: { name: string } }) => ur.role.name === "Student");
+      expect(studentRoleAssignment).toBeDefined();
+
+      await request(app.getHttpServer())
+        .delete(`/organizations/me/users/${newUser.id}/roles/${studentRoleAssignment.roleId}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/users/${newUser.id}/roles`)
+        .set(...auth(tokenA))
+        .send({ roleId: role.body.id })
+        .expect(201);
+      // Re-assigning the same role again is a conflict, not a silent no-op.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/users/${newUser.id}/roles`)
+        .set(...auth(tokenA))
+        .send({ roleId: role.body.id })
+        .expect(409);
+
+      const session = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: login.body.username, password: "RbacTest123!" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .get("/organizations/me/invoices")
+        .set(...auth(session.body.accessToken))
+        .expect(200);
+      await request(app.getHttpServer())
+        .get("/organizations/me/students")
+        .set(...auth(session.body.accessToken))
+        .expect(403);
+
+      // Revoke the permission from the role. Permissions are baked into the
+      // JWT at login/refresh, not checked live — the already-issued token
+      // keeps working, a freshly-issued one doesn't.
+      await request(app.getHttpServer())
+        .patch(`/organizations/me/roles/${role.body.id}`)
+        .set(...auth(tokenA))
+        .send({ permissionIds: [] })
+        .expect(200);
+      await request(app.getHttpServer())
+        .get("/organizations/me/invoices")
+        .set(...auth(session.body.accessToken))
+        .expect(200);
+
+      const freshSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: login.body.username, password: "RbacTest123!" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .get("/organizations/me/invoices")
+        .set(...auth(freshSession.body.accessToken))
+        .expect(403);
+
+      // Deleting a role still assigned to a user is rejected with the count,
+      // not silently cascaded.
+      const deleteBlocked = await request(app.getHttpServer())
+        .delete(`/organizations/me/roles/${role.body.id}`)
+        .set(...auth(tokenA))
+        .expect(409);
+      expect(deleteBlocked.body.message).toContain("1 user");
+
+      await request(app.getHttpServer())
+        .delete(`/organizations/me/users/${newUser.id}/roles/${role.body.id}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      await request(app.getHttpServer())
+        .delete(`/organizations/me/roles/${role.body.id}`)
+        .set(...auth(tokenA))
+        .expect(200);
+
+      // Cross-tenant: org B can't see, edit, or be affected by org A's
+      // custom roles/users, even by a well-formed id.
+      const role2 = await request(app.getHttpServer())
+        .post("/organizations/me/roles")
+        .set(...auth(tokenA))
+        .send({ name: `Cross Tenant Test ${run}`, permissionIds: [invoiceView.id] })
+        .expect(201);
+      const rolesB = await request(app.getHttpServer())
+        .get("/organizations/me/roles")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(rolesB.body.find((r: { id: string }) => r.id === role2.body.id)).toBeUndefined();
+      await request(app.getHttpServer())
+        .patch(`/organizations/me/roles/${role2.body.id}`)
+        .set(...auth(tokenB))
+        .send({ name: "hijacked" })
+        .expect(404);
+      const usersB = await request(app.getHttpServer())
+        .get("/organizations/me/users")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(usersB.body.find((u: { id: string }) => u.id === newUser.id)).toBeUndefined();
+
+      const auditLogs = await request(app.getHttpServer())
+        .get("/organizations/me/audit-logs")
+        .set(...auth(tokenA))
+        .expect(200);
+      const actions = auditLogs.body.map((e: { action: string }) => e.action);
+      expect(actions).toEqual(
+        expect.arrayContaining(["role.created", "role.updated", "role.deleted", "user.role_assigned", "user.role_unassigned"]),
+      );
+    }, 60000);
   });
 });

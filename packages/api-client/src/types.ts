@@ -1710,3 +1710,78 @@ export interface StudentScholarshipRecord {
   active: boolean;
   scholarship: ScholarshipRecord;
 }
+
+// Roles & Permissions admin.
+export interface PermissionRecord {
+  id: string;
+  resource: string;
+  action: string;
+  description: string | null;
+}
+
+export interface RolePermissionRecord {
+  id: string;
+  roleId: string;
+  permissionId: string;
+  permission: PermissionRecord;
+}
+
+export interface RoleRecord {
+  id: string;
+  organizationId: string | null;
+  name: string;
+  description: string | null;
+  isSystem: boolean;
+  createdAt: string;
+  updatedAt: string;
+  rolePermissions: RolePermissionRecord[];
+}
+
+export interface CreateRoleInput {
+  name: string;
+  description?: string;
+  permissionIds: string[];
+}
+
+export interface UpdateRoleInput {
+  name?: string;
+  description?: string;
+  permissionIds?: string[];
+}
+
+export interface UserRoleAssignment {
+  id: string;
+  userId: string;
+  roleId: string;
+  campusId: string | null;
+  createdAt: string;
+  role: RoleRecord;
+}
+
+export interface UserSummary {
+  id: string;
+  email: string;
+  username: string | null;
+  firstName: string;
+  lastName: string;
+  status: UserStatus;
+  createdAt: string;
+  userRoles: UserRoleAssignment[];
+}
+
+export interface AssignRoleInput {
+  roleId: string;
+  campusId?: string;
+}
+
+export interface AuditLogRecord {
+  id: string;
+  organizationId: string;
+  userId: string | null;
+  action: string;
+  resource: string;
+  resourceId: string | null;
+  metadata: unknown;
+  createdAt: string;
+  user: { firstName: string; lastName: string; email: string } | null;
+}
