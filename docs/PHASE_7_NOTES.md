@@ -371,3 +371,135 @@ payment → discounts/scholarships/refunds → an audit ledger. Next up
 per the Phase 7 breakdown: **7b, HR & payroll**. Needs its own
 go-ahead; expect it to build on the existing `Employee`/staff model
 from Phase 2 the same way Finance built on `StudentEnrollment`.
+
+## Slice 7b-1 — Leave Management (HR & Payroll, part 1)
+
+The plan's own scope for this domain is thin — §5 "Staff & HR" just
+says "...leave and payroll," and §6's ERD list gives six bare table
+names: `salary_structures, payroll, payroll_items, leave_types,
+leave_requests, staff_leave_balances`. Everything else in this domain
+(`Employee`, `StaffType`, `Designation`, `EmploymentHistory`,
+`Qualification`, `TeacherProfile`) was already built in Phase 2 slice
+2b — this slice's real new scope is just those six tables, split the
+same way Finance was: **7b-1 (this slice) = leave**
+(`leave_types`/`leave_requests`/`staff_leave_balances`), **7b-2 (next,
+confirmed) = payroll** (`salary_structures`/`payroll`/`payroll_items`).
+Payroll naturally comes second since a real payroll run plausibly
+needs to know about unpaid leave taken in the period.
+
+No staff/employee self-service portal exists anywhere in this project
+— only students got one (Phase 4e). `Employee.userId` is optional
+("set only for staff who also log in"), but no login flow, no portal
+routes, nothing employee-facing has ever been built. Leave requests in
+this slice are therefore **admin/HR-recorded on an employee's
+behalf** — the same precedent as `StudentAttendance`/`StaffAttendance`
+being admin-recorded, not self-service. A real staff self-service
+portal is a materially bigger, separate undertaking (new login
+mechanism, new auth guard pattern), not implied by "add leave
+management."
+
+## What shipped
+
+**Schema** — three new models: `LeaveType` (org-level catalog: name,
+code, `defaultDaysPerYear`, `isPaid`, `carryForward`);
+`StaffLeaveBalance` (one row per `employeeId`+`leaveTypeId`+`year`,
+storing only the **allocation** — `usedDays`/`remainingDays` are
+**computed on read** by summing `days` across that combination's
+`APPROVED` `LeaveRequest` rows, the same reasoning as this project's
+`syllabus_progress` precedent: cheaply derivable, avoids a second
+source of truth); `LeaveRequest` (`startDate`/`endDate`, `days`
+computed server-side from the date range at creation, `status`
+`PENDING`/`APPROVED`/`REJECTED`/`CANCELLED`, `reviewedBy`/
+`reviewedAt`/`reviewComment`). RLS on all three, same pattern as every
+prior slice.
+
+**Two-layer balance check, deliberate**: `assertWithinBalance()` runs
+both at request-creation time (summing only currently-`APPROVED`
+requests, so several `PENDING` requests can coexist even if their sum
+would exceed the balance) and again at approval time (re-checking,
+since other requests may have been approved in the meantime). Tested
+explicitly: a request that individually passes the creation-time check
+can still be correctly rejected at approval time if another request
+consumed the balance first. **"No allocation = untracked, not
+zero"** — if no `StaffLeaveBalance` row exists for an employee+type+
+year, a request against that type is allowed freely; not every leave
+type needs quota tracking (e.g. unpaid leave).
+
+**API** — new `leave` module under `organizations/me/`: `leave-types`
+(GET/POST), `leave-balances` (POST to allocate — an upsert, since
+re-allocating is a legitimate admin correction, not a conflict),
+`employees/:id/leave-balances` (GET, augmented with computed
+used/remaining), `leave-requests` (GET, filterable by `employeeId`/
+`status`; POST), `leave-requests/:id/approve|reject|cancel` (only from
+`PENDING`, 409 otherwise — same "reject, don't silently no-op"
+precedent as every other status transition in this project). Two new
+RBAC resources, `leave_type` and `leave_request` (the latter folds
+balance-allocation actions in too — same "closely-related concepts
+share one resource" precedent as `financial_transactions` folding
+under `invoice`), Super Admin/Organization Admin only.
+
+**Web UI** — new `/dashboard/leave` page, the established
+one-page-many-Cards structure: Leave Types (list/add), Balances (pick
+an employee, allocate a type+year+days, see computed used/remaining),
+Requests (status filter, create on behalf of an employee, approve/
+reject/cancel). New `CalendarOff` nav entry.
+
+## Explicitly not in this slice
+
+- Payroll (`salary_structures`/`payroll`/`payroll_items`) — confirmed
+  as 7b-2, immediately next.
+- A staff/employee self-service portal.
+- Half-day leave, carry-forward *processing* (the `carryForward` flag
+  is stored on `LeaveType` for future use; nothing in this slice rolls
+  unused days into the next year automatically).
+- An HR Manager-specific RBAC role.
+
+## Errors caught and fixed
+
+- **`defaultDaysPerYear: 0` rejected** — the DTO originally used
+  `@IsPositive()`, which rejects `0`, a legitimate value for an
+  untracked/unpaid leave type. Caught by the e2e test (`expected 201,
+  got 400`), not by typecheck/lint. Fixed to `@Min(0)`.
+- **Balances panel not refreshing after Approve** — the same `useSWR`
+  staleness bug class already documented in the RBAC/Roles-Permissions
+  work: a page with multiple `useSWR` hooks where one hook's displayed
+  data (`usedDays`/`remainingDays`) is a side effect of an action whose
+  primary mutation targets a *different* hook (`leave-requests`). Fixed
+  by also calling `balances.mutate()` in the Approve button's success
+  callback (Reject/Cancel don't need it — they only ever fire from
+  `PENDING`, never `APPROVED`, so they never change a computed
+  balance). Re-verified live in the browser: approved a second request
+  and watched the Balances card update from "3/12 used — 9 remaining"
+  to "5/12 used — 7 remaining" with no page reload.
+
+## Verified
+
+- `pnpm -r typecheck` clean across all six packages. `pnpm -r lint`
+  clean for every package this slice touched; the one failing package
+  (`apps/web`, an `sso/page.tsx` `react-hooks/set-state-in-effect`
+  error) is pre-existing, untouched by this slice, and belongs to
+  earlier unrelated SSO/Vercel-deployment work — confirmed via `git
+  status`/`git log` showing zero uncommitted changes to that file.
+- `services/api` e2e: one comprehensive new test covering allocation +
+  idempotent re-allocation, creation-time balance rejection (400), the
+  two-layer approval-time re-check, an unallocated/untracked leave type
+  being allowed freely, reject-with-comment, cancel, 409 on
+  re-cancelling/re-approving a terminal request, final computed-balance
+  verification, and cross-tenant isolation — passing standalone and
+  inside a full-suite run.
+- Full browser pass, as the demo admin: created a real employee (no
+  demo employee data existed in the seeded org — a discovery made
+  mid-pass), created a real "Sick Leave" leave type, allocated a 12-day
+  balance for 2026, submitted and approved two real leave requests
+  through the actual UI, confirmed the Balances card tracked correctly
+  after each approval (including the live-refresh fix above). All test
+  data (leave request, balance, leave type, employee, and its
+  designation/staff-type) removed afterward via a one-off cleanup
+  script scoped to only what this pass created; confirmed clean via a
+  fresh page load showing "No leave types yet." / "No requests."
+
+## Next step (as of slice 7b-1)
+
+Slice 7b-1 done, stopped per plan §21 step 17. Next up per the
+confirmed roadmap: **7b-2, Payroll** (`salary_structures`/`payroll`/
+`payroll_items`) — needs its own explicit go-ahead to start.

@@ -157,6 +157,13 @@ describe("Tenant isolation (e2e)", () => {
         "teacherProfile",
         "qualification",
         "employmentHistory",
+        // Leave (Phase 7 slice 7b-1) — leaveRequest/staffLeaveBalance both
+        // reference employee (RESTRICT), so both must precede it; leaveType
+        // is only referenced by those two, so it can go anywhere ahead of
+        // employee too.
+        "leaveRequest",
+        "staffLeaveBalance",
+        "leaveType",
         "employee",
         "staffType",
         "designation",
@@ -5015,6 +5022,175 @@ describe("Tenant isolation (e2e)", () => {
       expect(actions).toEqual(
         expect.arrayContaining(["role.created", "role.updated", "role.deleted", "user.role_assigned", "user.role_unassigned"]),
       );
+    }, 60000);
+  });
+
+  describe("Leave (HR & Payroll, part 1 — Phase 7 slice 7b-1)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    async function buildEmployee(token: string, suffix: string) {
+      const staffType = await request(app.getHttpServer())
+        .post("/organizations/me/staff-types")
+        .set(...auth(token))
+        .send({ name: `Leave Teaching ${suffix}`, code: `LTEACH${suffix}` })
+        .expect(201);
+      const designation = await request(app.getHttpServer())
+        .post("/organizations/me/designations")
+        .set(...auth(token))
+        .send({ name: `Leave Teacher ${suffix}`, code: `LTCHR${suffix}` })
+        .expect(201);
+      const employee = await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(token))
+        .send({
+          staffTypeId: staffType.body.id,
+          designationId: designation.body.id,
+          employeeCode: `LV-EMP-${suffix}`,
+          firstName: "Leave",
+          lastName: suffix,
+          email: `leave-${suffix}@staff-e2e.test`,
+          dateOfJoining: "2026-01-01",
+        })
+        .expect(201);
+      return employee.body.id as string;
+    }
+
+    it("allocates a leave balance, enforces it at both request-creation and approval time, allows an unallocated type freely, rejects/cancels, and stays tenant-scoped", async () => {
+      const employeeId = await buildEmployee(tokenA, `LV${run}`);
+      const year = new Date().getFullYear();
+
+      const leaveType = await request(app.getHttpServer())
+        .post("/organizations/me/leave-types")
+        .set(...auth(tokenA))
+        .send({ name: `Sick Leave ${run}`, code: `SICK${run}`, defaultDaysPerYear: 12 })
+        .expect(201);
+      const untrackedType = await request(app.getHttpServer())
+        .post("/organizations/me/leave-types")
+        .set(...auth(tokenA))
+        .send({ name: `Unpaid Leave ${run}`, code: `UNPAID${run}`, defaultDaysPerYear: 0, isPaid: false })
+        .expect(201);
+
+      const balance = await request(app.getHttpServer())
+        .post("/organizations/me/leave-balances")
+        .set(...auth(tokenA))
+        .send({ employeeId, leaveTypeId: leaveType.body.id, year, allocatedDays: 6 })
+        .expect(201);
+      expect(balance.body.allocatedDays).toBe(6);
+
+      // Re-allocating the same employee+type+year is an upsert (a
+      // legitimate admin correction), not a conflict.
+      const reallocated = await request(app.getHttpServer())
+        .post("/organizations/me/leave-balances")
+        .set(...auth(tokenA))
+        .send({ employeeId, leaveTypeId: leaveType.body.id, year, allocatedDays: 6 })
+        .expect(201);
+      expect(reallocated.body.allocatedDays).toBe(6);
+
+      // Request A (3 days) — nothing approved yet, well within balance.
+      const reqA = await request(app.getHttpServer())
+        .post("/organizations/me/leave-requests")
+        .set(...auth(tokenA))
+        .send({ employeeId, leaveTypeId: leaveType.body.id, startDate: `${year}-06-01`, endDate: `${year}-06-03`, reason: "Flu" })
+        .expect(201);
+      expect(reqA.body.days).toBe(3);
+      expect(reqA.body.status).toBe("PENDING");
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/leave-requests/${reqA.body.id}/approve`)
+        .set(...auth(tokenA))
+        .expect(201);
+
+      // Request B (5 days) — creation-time check: 3 already approved + 5
+      // would be 8 > 6 allocated, rejected before it can even become PENDING.
+      await request(app.getHttpServer())
+        .post("/organizations/me/leave-requests")
+        .set(...auth(tokenA))
+        .send({ employeeId, leaveTypeId: leaveType.body.id, startDate: `${year}-06-10`, endDate: `${year}-06-14`, reason: "Too many" })
+        .expect(400);
+
+      // Request C (2 days) and Request D (3 days) both created while only
+      // A (3 days) is approved: 3+2=5<=6 and 3+3=6<=6, so creation-time
+      // checks pass for both, even though approving both later would not.
+      const reqC = await request(app.getHttpServer())
+        .post("/organizations/me/leave-requests")
+        .set(...auth(tokenA))
+        .send({ employeeId, leaveTypeId: leaveType.body.id, startDate: `${year}-07-01`, endDate: `${year}-07-02`, reason: "C" })
+        .expect(201);
+      const reqD = await request(app.getHttpServer())
+        .post("/organizations/me/leave-requests")
+        .set(...auth(tokenA))
+        .send({ employeeId, leaveTypeId: leaveType.body.id, startDate: `${year}-08-01`, endDate: `${year}-08-03`, reason: "D" })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/leave-requests/${reqC.body.id}/approve`)
+        .set(...auth(tokenA))
+        .expect(201);
+
+      // Approving D now re-checks the balance at approval time: 3(A)+2(C)
+      // already approved, +3(D) = 8 > 6 — rejected even though D passed
+      // its own creation-time check.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/leave-requests/${reqD.body.id}/approve`)
+        .set(...auth(tokenA))
+        .expect(400);
+
+      // A request against a leave type with no allocation for this
+      // employee+year is allowed freely — "no allocation" means
+      // untracked, not "zero."
+      const untrackedRequest = await request(app.getHttpServer())
+        .post("/organizations/me/leave-requests")
+        .set(...auth(tokenA))
+        .send({ employeeId, leaveTypeId: untrackedType.body.id, startDate: `${year}-09-01`, endDate: `${year}-09-10`, reason: "Unpaid" })
+        .expect(201);
+      expect(untrackedRequest.body.days).toBe(10);
+
+      // Reject D (still pending), then confirm re-rejecting/re-approving/
+      // cancelling an already-terminal request 409s, not a silent no-op.
+      const rejected = await request(app.getHttpServer())
+        .post(`/organizations/me/leave-requests/${reqD.body.id}/reject`)
+        .set(...auth(tokenA))
+        .send({ reviewComment: "Exceeds balance" })
+        .expect(201);
+      expect(rejected.body.status).toBe("REJECTED");
+      expect(rejected.body.reviewComment).toBe("Exceeds balance");
+      await request(app.getHttpServer())
+        .post(`/organizations/me/leave-requests/${reqD.body.id}/cancel`)
+        .set(...auth(tokenA))
+        .expect(409);
+
+      // Cancel the untracked request while it's still pending.
+      const cancelled = await request(app.getHttpServer())
+        .post(`/organizations/me/leave-requests/${untrackedRequest.body.id}/cancel`)
+        .set(...auth(tokenA))
+        .expect(201);
+      expect(cancelled.body.status).toBe("CANCELLED");
+
+      // Final computed balance: A (3) + C (2) approved = 5 used, 1 remaining.
+      const finalBalances = await request(app.getHttpServer())
+        .get(`/organizations/me/employees/${employeeId}/leave-balances`)
+        .set(...auth(tokenA))
+        .expect(200);
+      const finalSickBalance = finalBalances.body.find((b: { leaveTypeId: string }) => b.leaveTypeId === leaveType.body.id);
+      expect(finalSickBalance.usedDays).toBe(5);
+      expect(finalSickBalance.remainingDays).toBe(1);
+
+      // Cross-tenant: org B sees none of this and can't act on it by id.
+      for (const path of ["leave-types", "leave-requests"]) {
+        const res = await request(app.getHttpServer())
+          .get(`/organizations/me/${path}`)
+          .set(...auth(tokenB))
+          .expect(200);
+        expect(res.body).toEqual([]);
+      }
+      await request(app.getHttpServer())
+        .get(`/organizations/me/employees/${employeeId}/leave-balances`)
+        .set(...auth(tokenB))
+        .expect(404);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/leave-requests/${reqC.body.id}/approve`)
+        .set(...auth(tokenB))
+        .expect(404);
     }, 60000);
   });
 });

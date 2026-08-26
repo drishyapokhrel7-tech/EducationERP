@@ -131,6 +131,12 @@ const RESOURCES = [
   // only `view` is actually wired to an endpoint, seeded with the full
   // matrix anyway for consistency with every other resource here.
   "audit_log",
+  // Phase 7 slice 7b-1 (HR & Payroll, part 1: Leave Management) —
+  // leave_request folds balance-allocation actions in too, same
+  // "closely-related concepts share one resource" precedent as
+  // financial_transactions folding under invoice.
+  "leave_type",
+  "leave_request",
 ];
 const ACTIONS = Object.values(PermissionAction);
 

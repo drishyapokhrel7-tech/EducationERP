@@ -1785,3 +1785,77 @@ export interface AuditLogRecord {
   createdAt: string;
   user: { firstName: string; lastName: string; email: string } | null;
 }
+
+// HR & Payroll, part 1: Leave Management (Phase 7 slice 7b-1).
+export type LeaveRequestStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED";
+
+export interface LeaveTypeRecord {
+  id: string;
+  organizationId: string;
+  name: string;
+  code: string;
+  defaultDaysPerYear: number;
+  isPaid: boolean;
+  carryForward: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateLeaveTypeInput {
+  name: string;
+  code: string;
+  defaultDaysPerYear: number;
+  isPaid?: boolean;
+  carryForward?: boolean;
+}
+
+export interface AllocateLeaveBalanceInput {
+  employeeId: string;
+  leaveTypeId: string;
+  year: number;
+  allocatedDays: number;
+}
+
+export interface StaffLeaveBalanceRecord {
+  id: string;
+  organizationId: string;
+  employeeId: string;
+  leaveTypeId: string;
+  year: number;
+  allocatedDays: number;
+  usedDays: number;
+  remainingDays: number;
+  leaveType: LeaveTypeRecord;
+}
+
+export interface CreateLeaveRequestInput {
+  employeeId: string;
+  leaveTypeId: string;
+  startDate: string;
+  endDate: string;
+  reason?: string;
+}
+
+export interface ReviewLeaveRequestInput {
+  reviewComment?: string;
+}
+
+export interface LeaveRequestRecord {
+  id: string;
+  organizationId: string;
+  employeeId: string;
+  leaveTypeId: string;
+  startDate: string;
+  endDate: string;
+  days: number;
+  reason: string | null;
+  status: LeaveRequestStatus;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  reviewComment: string | null;
+  createdAt: string;
+  updatedAt: string;
+  employee: Employee;
+  leaveType: LeaveTypeRecord;
+  reviewer?: { firstName: string; lastName: string } | null;
+}

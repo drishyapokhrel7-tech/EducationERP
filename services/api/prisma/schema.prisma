@@ -99,6 +99,9 @@ model Organization {
   refunds                  Refund[]
   financialTransactions    FinancialTransaction[]
   esewaTransactions        EsewaTransaction[]
+  leaveTypes               LeaveType[]
+  staffLeaveBalances       StaffLeaveBalance[]
+  leaveRequests            LeaveRequest[]
 
   @@map("organizations")
 }
@@ -371,6 +374,7 @@ model User {
   discountsApplied           Discount[]
   refundsProcessed           Refund[]
   esewaTransactionsInitiated EsewaTransaction[]
+  leaveRequestsReviewed      LeaveRequest[]
 
   @@index([organizationId])
   @@map("users")
@@ -597,6 +601,8 @@ model Employee {
   classSchedulesAsTeacher ClassSchedule[]
   staffAttendances        StaffAttendance[]
   faceEnrollments         FaceEnrollment[]
+  leaveBalances           StaffLeaveBalance[]
+  leaveRequests           LeaveRequest[]
 
   @@unique([organizationId, employeeCode])
   @@unique([organizationId, email])
@@ -2326,4 +2332,88 @@ model EsewaTransaction {
   @@index([organizationId])
   @@index([invoiceId])
   @@map("esewa_transactions")
+}
+
+// ── HR & Payroll, part 1: Leave Management (Phase 7 slice 7b-1) ────────
+// Everything else in the Staff & HR domain (Employee, StaffType,
+// Designation, EmploymentHistory, Qualification, TeacherProfile) was
+// already built in Phase 2 slice 2b — this section is the genuinely new
+// scope. Payroll (salary_structures/payroll/payroll_items) is slice
+// 7b-2, layered on top of this later.
+
+model LeaveType {
+  id                 String   @id @default(uuid())
+  organizationId     String
+  name               String
+  code               String
+  defaultDaysPerYear Int
+  isPaid             Boolean  @default(true)
+  carryForward       Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id])
+  balances     StaffLeaveBalance[]
+  requests     LeaveRequest[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+  @@map("leave_types")
+}
+
+// Stores only the allocation ("12 sick days for 2026") — a discrete
+// admin action, not something to derive. usedDays/remainingDays are
+// computed on read by summing this employee+type+year's APPROVED
+// LeaveRequest rows, same reasoning as syllabus_progress elsewhere in
+// this project: cheaply derivable, no audit-trail need of its own.
+model StaffLeaveBalance {
+  id             String @id @default(uuid())
+  organizationId String
+  employeeId     String
+  leaveTypeId    String
+  year           Int
+  allocatedDays  Int
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  employee     Employee     @relation(fields: [employeeId], references: [id])
+  leaveType    LeaveType    @relation(fields: [leaveTypeId], references: [id])
+
+  @@unique([employeeId, leaveTypeId, year])
+  @@index([organizationId])
+  @@map("staff_leave_balances")
+}
+
+enum LeaveRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model LeaveRequest {
+  id             String             @id @default(uuid())
+  organizationId String
+  employeeId     String
+  leaveTypeId    String
+  startDate      DateTime
+  endDate        DateTime
+  // Whole days only, computed server-side from the date range at
+  // creation — no half-day support this slice.
+  days           Int
+  reason         String?
+  status         LeaveRequestStatus @default(PENDING)
+  reviewedBy     String?
+  reviewedAt     DateTime?
+  reviewComment  String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  employee     Employee     @relation(fields: [employeeId], references: [id])
+  leaveType    LeaveType    @relation(fields: [leaveTypeId], references: [id])
+  reviewer     User?        @relation(fields: [reviewedBy], references: [id])
+
+  @@index([organizationId])
+  @@index([employeeId])
+  @@map("leave_requests")
 }

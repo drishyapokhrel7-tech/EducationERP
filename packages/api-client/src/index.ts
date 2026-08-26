@@ -171,6 +171,14 @@ import type {
   UserRoleAssignment,
   AssignRoleInput,
   AuditLogRecord,
+  LeaveRequestStatus,
+  LeaveTypeRecord,
+  CreateLeaveTypeInput,
+  AllocateLeaveBalanceInput,
+  StaffLeaveBalanceRecord,
+  CreateLeaveRequestInput,
+  ReviewLeaveRequestInput,
+  LeaveRequestRecord,
   ScholarshipRecord,
   CreateScholarshipInput,
   AssignScholarshipInput,
@@ -795,6 +803,33 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       const qs = q.toString();
       return request<AuditLogRecord[]>(`/organizations/me/audit-logs${qs ? `?${qs}` : ""}`);
     },
+
+    // HR & Payroll, part 1: Leave Management (Phase 7 slice 7b-1).
+    createLeaveType: (input: CreateLeaveTypeInput) =>
+      request<LeaveTypeRecord>("/organizations/me/leave-types", { method: "POST", body: JSON.stringify(input) }),
+    listLeaveTypes: () => request<LeaveTypeRecord[]>("/organizations/me/leave-types"),
+    allocateLeaveBalance: (input: AllocateLeaveBalanceInput) =>
+      request<StaffLeaveBalanceRecord>("/organizations/me/leave-balances", { method: "POST", body: JSON.stringify(input) }),
+    listEmployeeLeaveBalances: (employeeId: string) =>
+      request<StaffLeaveBalanceRecord[]>(`/organizations/me/employees/${employeeId}/leave-balances`),
+    listLeaveRequests: (params: { employeeId?: string; status?: LeaveRequestStatus } = {}) => {
+      const q = new URLSearchParams();
+      if (params.employeeId) q.set("employeeId", params.employeeId);
+      if (params.status) q.set("status", params.status);
+      const qs = q.toString();
+      return request<LeaveRequestRecord[]>(`/organizations/me/leave-requests${qs ? `?${qs}` : ""}`);
+    },
+    createLeaveRequest: (input: CreateLeaveRequestInput) =>
+      request<LeaveRequestRecord>("/organizations/me/leave-requests", { method: "POST", body: JSON.stringify(input) }),
+    approveLeaveRequest: (id: string) =>
+      request<LeaveRequestRecord>(`/organizations/me/leave-requests/${id}/approve`, { method: "POST" }),
+    rejectLeaveRequest: (id: string, input: ReviewLeaveRequestInput = {}) =>
+      request<LeaveRequestRecord>(`/organizations/me/leave-requests/${id}/reject`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    cancelLeaveRequest: (id: string) =>
+      request<LeaveRequestRecord>(`/organizations/me/leave-requests/${id}/cancel`, { method: "POST" }),
   };
 }
 
