@@ -188,6 +188,91 @@ API before this slice was considered done.
   to exactly their pre-existing state (confirmed via a final
   cross-check against both APIs).
 
+## ERP-staff → Librarian role bridge (closes the gap above)
+
+User said "add librarian role and manage existing application" right
+after cancelling Phase 7 slice 7c (Library) as redundant with this
+integration — this closes the one real gap this document itself
+flagged: `POST /auth/erp-login` only ever produced a `MEMBER` session,
+so `/dashboard/library` needed a separate real librarysystem login.
+
+**A pleasant discovery made while implementing**: educationERP already
+has a *system* role literally named `Librarian`, seeded since Phase 1
+alongside `Accountant`/`HR Manager`/`Transport Manager`/etc. — this
+whole per-domain role catalog was anticipated from the very start.
+Granting library access needs **zero new educationERP UI or code**: an
+org admin just assigns the existing `Librarian` system role to a staff
+member via the already-built `/dashboard/roles-permissions` page (the
+same page also lets them create an org-scoped custom role of that same
+name if they'd rather scope it differently — the bridge checks the
+role's name, not whether it's a system or custom role).
+
+**How it works**: `POST /auth/login`'s JWT payload already carries
+`roles: string[]` (role names, from `issueTokens` in
+`services/api/src/modules/auth/auth.service.ts`). librarysystem's
+`AuthService.erpLogin` (`~/librarysystem/apps/api/src/auth/
+auth.service.ts`) now decodes that token (via `JwtService.decode` —
+no signature verification needed, since it's the direct, trusted
+response to the exact login call librarysystem itself just made, not
+a token presented by a third party) and checks for `"Librarian"`. If
+present and the ERP user is an employee, a `Staff` row is
+upserted (`erpRefId` = the ERP employee id — a field that already
+existed in the schema, commented "used to authenticate via SSO once
+wired up," anticipating exactly this) and a real `LIBRARIAN` session
+is issued instead of `MEMBER`; no `Member` row is created for that
+path. Any employee without the role, and every student, keeps the
+unchanged `MEMBER` behavior. Scoped to `LIBRARIAN` only, not
+`ADMINISTRATOR` — admin-level access stays on the existing seeded
+login (`admin`/`Admin@123`).
+
+`Staff.passwordHash` became nullable (one small migration) — an
+ERP-bridged Staff row never has a local password, same reasoning
+already applied to `Member.passwordHash`.
+
+**Web UI**: `/dashboard/library`'s login card now offers "Connect via
+ERP" (identifier pre-filled from the ERP session, mirrors
+`/portal/library`'s existing pattern exactly) alongside the original
+separate-credentials form. Since one shared backend endpoint can now
+return either session type, the frontend checks `result.user.role`
+before storing it — a `MEMBER` result is rejected with a clear message
+("ask an admin to grant the Librarian role"), never silently saved
+into the staff session store. Silently accepting the wrong session
+type there would reopen the exact session-leakage bug this
+integration's own original slice already found and fixed once (see
+above) — this check exists specifically to prevent a repeat.
+
+**A real pre-existing bug found and fixed along the way, unrelated to
+this feature**: `~/librarysystem/apps/api/src/create-app.ts` directly
+imports from `express` (`import { json } from 'express'`), but
+`express` was never declared as a direct dependency of `apps/api`'s
+own `package.json` — it only ever resolved because `@nestjs/platform-
+express` happened to pull a copy into the shared pnpm store, which
+worked under looser hoisting but breaks under pnpm's strict
+per-package isolation. Running the app fresh (`node dist/src/main`)
+surfaced `Cannot find module 'express'` immediately. Fixed by adding
+`express` as an explicit dependency (`pnpm --filter @lis/api add
+express@4.22.1`, matching the version already resolved
+transitively) — this was blocking verification of the actual feature,
+not a drive-by unrelated change.
+
+**Verified**: `pnpm --filter @lis/api build`/`lint` clean;
+`pnpm -r typecheck`/`lint` clean on the educationERP side (same one
+pre-existing unrelated `sso/page.tsx` lint failure noted elsewhere in
+this session). Full real end-to-end pass against both running
+systems: created a real ERP employee+user, assigned a (test, org-
+scoped) "Librarian" role, called `erp-login` directly — confirmed a
+real `LIBRARIAN` session with a correctly-upserted, idempotent `Staff`
+row (`passwordHash: null`, `erpRefId` set, same row id on a second
+login, not duplicated). Confirmed the negative case: an employee
+*without* the role still gets a `MEMBER` session, exactly matching
+prior behavior. Confirmed live in the browser: connecting with the
+Librarian-role account rendered the full real staff dashboard
+(categories, books, "Connected to Library as librarian" toast);
+connecting with the non-Librarian account correctly showed the
+rejection message and did not store a session. All test data (ERP
+user/employee/role, the auto-created `Staff` row) removed afterward;
+confirmed clean via direct API calls.
+
 ## Running both systems together
 
 `~/librarysystem`'s API isn't in this repo's `.claude/launch.json`

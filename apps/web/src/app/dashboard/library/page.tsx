@@ -13,6 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { FaceCapture, type FaceCaptureResult } from "@/components/library/face-capture";
 import { libraryStaffApi, LibraryApiError, type FineCollectionReport } from "@/lib/library-api";
 import { useLibraryStaffSession, setStoredLibraryStaffSession } from "@/lib/library-auth-storage";
+import { useAuth } from "@/lib/auth-context";
 
 function errorMessage(err: unknown, fallback: string) {
   if (err instanceof LibraryApiError) {
@@ -41,12 +42,18 @@ function dataUrlFromBlob(blob: Blob): Promise<File> {
 }
 
 export default function LibraryDashboardPage() {
+  const { user } = useAuth();
   const session = useLibraryStaffSession();
 
   // ── Staff login ────────────────────────────────────────────────────
   const [loginForm, setLoginForm] = useState({ username: "", password: "" });
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loggingIn, setLoggingIn] = useState(false);
+
+  // ── ERP-SSO login (for staff granted the ERP's "Librarian" role) ────
+  const [ssoForm, setSsoForm] = useState({ identifier: user?.email ?? "", password: "" });
+  const [ssoError, setSsoError] = useState<string | null>(null);
+  const [ssoLoggingIn, setSsoLoggingIn] = useState(false);
 
   // ── Catalog ────────────────────────────────────────────────────────
   const categories = useSWR(session ? "library-categories" : null, () => libraryStaffApi.listCategories());
@@ -112,6 +119,32 @@ export default function LibraryDashboardPage() {
     }
   }
 
+  // POST /auth/erp-login is a single shared endpoint that can return either a
+  // MEMBER or a LIBRARIAN session depending on the caller's ERP roles — a
+  // MEMBER result here must be rejected, not stored, or a staff member
+  // without the Librarian role would silently see the wrong kind of session
+  // in the staff store (the exact class of bug this integration's own
+  // session-separation fix already addressed once, see
+  // LIBRARY_SYSTEM_INTEGRATION_NOTES.md).
+  async function ssoLogin(e: FormEvent) {
+    e.preventDefault();
+    setSsoLoggingIn(true);
+    setSsoError(null);
+    try {
+      const result = await libraryStaffApi.erpLogin(ssoForm.identifier, ssoForm.password);
+      if (result.user.role === "MEMBER") {
+        setSsoError("Your ERP account doesn't have the Librarian role — ask an admin to grant it via Roles & Permissions.");
+        return;
+      }
+      setStoredLibraryStaffSession(result);
+      toast.success("Connected to Library as " + result.user.role.toLowerCase());
+    } catch (err) {
+      setSsoError(errorMessage(err, "Could not connect — check your ERP password"));
+    } finally {
+      setSsoLoggingIn(false);
+    }
+  }
+
   const activeMember = members.data?.find((m) => m.id === activeMemberId) ?? null;
   const cfg = configForm ?? (config.data ? { finePerDayRate: config.data.finePerDayRate, faceMatchConfidenceMin: String(config.data.faceMatchConfidenceMin), loanPeriodDays: String(config.data.loanPeriodDays) } : null);
 
@@ -129,29 +162,64 @@ export default function LibraryDashboardPage() {
           <CardHeader>
             <CardTitle>Library staff login</CardTitle>
           </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground mb-3 text-xs">
-              A separate Librarian/Administrator account — the library system has no role bridge from ERP staff accounts yet.
-            </p>
-            <form className="flex flex-wrap items-end gap-3" onSubmit={staffLogin}>
-              <div className="space-y-1">
-                <Label className="text-xs">Username</Label>
-                <Input className="w-48" value={loginForm.username} onChange={(e) => setLoginForm((f) => ({ ...f, username: e.target.value }))} />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Password</Label>
-                <Input
-                  type="password"
-                  className="w-48"
-                  value={loginForm.password}
-                  onChange={(e) => setLoginForm((f) => ({ ...f, password: e.target.value }))}
-                />
-              </div>
-              <Button type="submit" size="sm" disabled={loggingIn || !loginForm.username || !loginForm.password}>
-                {loggingIn ? "Signing in…" : "Sign in"}
-              </Button>
-            </form>
-            {loginError ? <p className="text-destructive mt-2 text-xs">{loginError}</p> : null}
+          <CardContent className="space-y-6">
+            <div>
+              <p className="text-muted-foreground mb-3 text-xs">
+                Connect with your ERP session — works if an admin has granted you the &quot;Librarian&quot; role via{" "}
+                <a href="/dashboard/roles-permissions" className="underline">
+                  Roles &amp; Permissions
+                </a>
+                .
+              </p>
+              <form className="flex flex-wrap items-end gap-3" onSubmit={ssoLogin}>
+                <div className="space-y-1">
+                  <Label className="text-xs">ERP email or student ID</Label>
+                  <Input
+                    className="w-56"
+                    value={ssoForm.identifier}
+                    onChange={(e) => setSsoForm((f) => ({ ...f, identifier: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">ERP password</Label>
+                  <Input
+                    type="password"
+                    className="w-48"
+                    value={ssoForm.password}
+                    onChange={(e) => setSsoForm((f) => ({ ...f, password: e.target.value }))}
+                  />
+                </div>
+                <Button type="submit" size="sm" disabled={ssoLoggingIn || !ssoForm.identifier || !ssoForm.password}>
+                  {ssoLoggingIn ? "Connecting…" : "Connect via ERP"}
+                </Button>
+              </form>
+              {ssoError ? <p className="text-destructive mt-2 text-xs">{ssoError}</p> : null}
+            </div>
+
+            <Separator />
+
+            <div>
+              <p className="text-muted-foreground mb-3 text-xs">Or a separate Librarian/Administrator library account.</p>
+              <form className="flex flex-wrap items-end gap-3" onSubmit={staffLogin}>
+                <div className="space-y-1">
+                  <Label className="text-xs">Username</Label>
+                  <Input className="w-48" value={loginForm.username} onChange={(e) => setLoginForm((f) => ({ ...f, username: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Password</Label>
+                  <Input
+                    type="password"
+                    className="w-48"
+                    value={loginForm.password}
+                    onChange={(e) => setLoginForm((f) => ({ ...f, password: e.target.value }))}
+                  />
+                </div>
+                <Button type="submit" size="sm" disabled={loggingIn || !loginForm.username || !loginForm.password}>
+                  {loggingIn ? "Signing in…" : "Sign in"}
+                </Button>
+              </form>
+              {loginError ? <p className="text-destructive mt-2 text-xs">{loginError}</p> : null}
+            </div>
           </CardContent>
         </Card>
       ) : (
