@@ -23,8 +23,16 @@ precedes it:
   fees) will eventually attach an `Invoice` to.
 - **7b** HR & payroll — builds on the existing `Employee`/staff model
   from Phase 2.
-- **7c** Library — catalog, circulation, fines (the latter naturally
-  routes through 7a's `FeeCategory`/`Invoice` once it exists).
+- ~~**7c** Library~~ — **cancelled** (user, 2026-08-26). Catalog,
+  circulation, and fines already exist for real: the standalone
+  `~/librarysystem` project was integrated into this ERP's own
+  `apps/web` earlier in this session as a cross-cutting bridge feature
+  (see `docs/LIBRARY_SYSTEM_INTEGRATION_NOTES.md`), including fines
+  routing through 7a's `Invoice`/`FeeStructure` already. Building a
+  second, native 7c library module would duplicate that. If library
+  work is raised again, it means extending the existing integration
+  (the ERP-staff→Librarian role bridge, CORS lockdown, overdue
+  reminders — see that doc's own "next steps"), not starting 7c fresh.
 - **7d** Transport — routes, vehicles, student assignment.
 - **7e** Hostel — rooms, allocation, fees (same fee-routing story as
   7c).
@@ -650,13 +658,13 @@ Finalize/Mark-paid/Cancel).
 Slice 7b-2 done, stopped per plan §21 step 17. **This closes Phase
 7's HR & Payroll domain** (7b-1 leave + 7b-2 payroll) — Staff & HR
 (plan §5/§6) is now fully built out: employees/designations (Phase 2b)
-+ leave + payroll. Next up per the Phase 7 breakdown in this
-document's intro: **7c, Library** — though note the standalone
-`~/librarysystem` project was already integrated into this ERP's own
-`apps/web` as a cross-cutting bridge feature (see
-`docs/LIBRARY_SYSTEM_INTEGRATION_NOTES.md`), so if the user raises "library"
-next, check whether they mean extending that integration further
-(the already-identified next steps there) rather than restarting 7c
-as if nothing exists yet. After that: 7d transport, 7e hostel, 7f
-inventory, 7g communication, 7h documents/certificates — each still
-needing its own go-ahead when reached.
++ leave + payroll.
+
+User said "cancel 7c" immediately after — confirmed as cancelling the
+slice outright (redundant with the already-shipped library
+integration), not deferring it; see the breakdown list at the top of
+this document for the reasoning. Next up per the Phase 7 breakdown:
+**7d, Transport** (routes, vehicles, student assignment) — needs its
+own explicit go-ahead. After that: 7e hostel, 7f inventory, 7g
+communication, 7h documents/certificates — each still needing its own
+go-ahead when reached.
