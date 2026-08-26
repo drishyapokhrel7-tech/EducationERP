@@ -668,3 +668,143 @@ this document for the reasoning. Next up per the Phase 7 breakdown:
 own explicit go-ahead. After that: 7e hostel, 7f inventory, 7g
 communication, 7h documents/certificates — each still needing its own
 go-ahead when reached.
+
+## Slice 7d-1 — Transport core (vehicles, drivers, routes, stops, student assignment)
+
+User asked for driver navigation via Google Maps on a mobile app, then
+said "proceed for 7d Transport." The plan's ERD list for this domain
+(docx §6) is six bare table names: `vehicles, drivers, routes, stops,
+student_transport_assignments, vehicle_tracking_events` — nothing
+about maps or navigation anywhere in the plan text (verified directly
+against the docx). Split the same way every other multi-table Phase 7
+domain has been: **7d-1 (this slice)** = the five structural tables;
+**7d-2 (confirmed next, not started)** = `vehicle_tracking_events` +
+real-time driver location + navigation. 7d-2's approach was resolved
+via `AskUserQuestion` before this slice started, so it can begin
+without further investigation: **a mobile-optimized page in this same
+web app** (not a native app — avoids a whole new client type), using
+**OpenStreetMap + Leaflet + OSRM** (not Google Maps — no API key or
+billing needed, matches this project's standing "no paid API as a hard
+dependency" rule already applied to AI). A driver's own login pattern
+is 7d-2's own design work.
+
+## What shipped
+
+**Schema** — `Vehicle` (org-level: `registrationNumber`, `type` as
+free text — not an enum, institutions name their own fleet categories
+— `capacity`, `status`). `Driver` **extends `Employee`** exactly like
+`TeacherProfile` does (`employeeId @unique`, not a parallel identity
+table) — a driver is a kind of staff member, adds `licenseNumber`/
+`licenseExpiry`. `Route` (`name`, `code`, nullable `vehicleId`/
+`driverId` — a route can exist in draft form before a vehicle/driver
+is assigned, same "assignment is a separate, optional step" reasoning
+used elsewhere). `Stop` belongs to exactly one route (not a
+many-to-many stops↔routes join — a stop genuinely shared by two routes
+in reality is just two rows, matching this project's "don't build
+unrequested flexibility" precedent), `@@unique([routeId, sequence])`.
+`StudentTransportAssignment` anchors to `studentEnrollmentId` (same
+precedent as `StudentFeeAssignment`), `@@unique` on it — one active
+assignment per enrollment, matching `Employee.salaryStructureId`'s
+"current pointer, repoint rather than stack" precedent — assigning
+again is an upsert, not a duplicate.
+
+**API** — new `transport` module: `vehicles` (+ PATCH), `drivers`,
+`routes` (+ PATCH, `:id/stops` POST/DELETE), `student-transport-
+assignments` (POST upserts, DELETE unassigns). A route's `driverId`
+is validated against a real `Driver` profile at assign time (not just
+any employee) — `assertIsDriver` 400s if the employee has no driver
+profile. Two new RBAC resources: `vehicle`, `route` (folds `driver`/
+`stop`/`student_transport_assignment` in too — same folding precedent
+as `payroll`/`payroll_items`), Super Admin/Organization Admin only.
+
+**Web UI** — new `/dashboard/transport` page, the established
+one-page-many-Cards structure: Vehicles, Drivers (employee picker +
+license fields), Routes (dynamic stop-row builder at creation time,
+same pattern as Finance's fee-structure builder), Student Assignment
+(student → enrollment → route → stop cascading pickers, matching
+Finance's own assign-to-student pattern exactly).
+
+## A real, severe bug found and fixed — not specific to this slice
+
+Verifying this slice's e2e test hit `431 Request Header Fields Too
+Large` on nearly every authenticated request (56 of 61 tests failed).
+Root cause, confirmed directly: Super Admin/Organization Admin's JWT
+bakes in the **full flat permissions array** (`issueTokens`,
+`services/api/src/modules/auth/auth.service.ts`) — as this session
+alone added RBAC/Leave/Payroll/Transport resources, the permission
+catalog grew from 549 to 585 entries, and the resulting token grew to
+**~16.2KB**, comfortably exceeding Node's default 16KB
+`--max-http-header-size` once combined with any other request headers.
+This is a real production bug, not a test artifact: any Super Admin/
+Organization Admin user's *actual login* was broken, not just this
+slice's tests — every authenticated request they made would 431.
+
+Fixed by raising the limit (`NODE_OPTIONS=--max-http-header-size=65536`,
+added to `dev`/`start`/`test:e2e` in `services/api/package.json`) —
+64KB gives real headroom for the permission catalog to keep growing
+across future slices without hitting this again soon. **This is a
+stopgap, not the real fix, stated plainly**: the architecturally
+correct answer is to stop baking the full permission list into the
+JWT and resolve permissions server-side (or cached) instead — a
+cross-cutting change to this project's entire auth model (documented
+since Phase 1 as an intentional stateless-JWT design), out of scope
+for a Transport slice to decide unilaterally. **Also flagged, not
+fixed**: `services/api/api/index.ts` (the Vercel serverless entry,
+concurrent unrelated work from another session) constructs its own
+plain `express()` instance with no `NODE_OPTIONS` equivalent — a
+Vercel-deployed instance of this app would hit the same 431 wall
+(likely worse, since Vercel's own gateway may impose a stricter header
+limit than even the unpatched Node default) and needs its own fix
+when that deployment work is picked back up.
+
+## Explicitly not in this slice
+
+- `vehicle_tracking_events`, real-time location, navigation — 7d-2,
+  confirmed next, approach already resolved above.
+- A dedicated Transport Manager RBAC permission profile (the role
+  already exists in the seeded system-role catalog, per this
+  session's "Librarian" discovery in the library-bridge slice).
+- Route-level fee integration (transport fees routing through
+  Finance) — not asked for.
+- The real JWT-size architectural fix (server-side/cached permission
+  resolution) — flagged above, needs its own scoped slice.
+
+## Verified
+
+- `pnpm -r typecheck`/`lint`/`build` clean across all six packages.
+- `services/api` e2e: one comprehensive new test — builds a vehicle,
+  rejects a non-driver employee as a route's driver (400), creates a
+  driver, rejects a duplicate driver profile on the same employee
+  (409), creates a route with vehicle+driver, adds two stops, rejects
+  a duplicate stop sequence (409), assigns a student, reassigns to a
+  different stop (upsert, same assignment id, not a duplicate),
+  updates vehicle status, unassigns (409 on a second unassign),
+  cross-tenant isolation throughout — passed clean, standalone and
+  inside the full 61-test suite (57 passing after the header-size fix;
+  4 pre-existing unrelated `services/ai`-dependent failures).
+- Full browser pass, as the demo admin: created a real vehicle,
+  driver, route with a stop, and assigned a real demo student
+  (Aarav Sharma) to it — confirmed via both the UI ("Aarav Sharma —
+  Kathmandu Route 1 / Main Gate") and a direct API call showing the
+  correctly nested response. **A genuine Browser-pane tooling
+  artifact hit during this pass, diagnosed and worked around, not a
+  product bug**: sonner toast notifications from earlier actions
+  (`position: fixed`, no auto-dismiss observed, no close button)
+  stacked directly over the page's bottom-right "Assign" button and
+  silently absorbed every click at that screen position — confirmed
+  via `document.elementFromPoint` showing the toast, not the button,
+  at the click coordinate. Same root cause as this project's own
+  long-documented Browser-pane click-reliability class, just a new
+  manifestation (an overlapping fixed-position element, not a stuck
+  render). All test data removed afterward via a one-off cleanup
+  script scoped to only what this pass created; confirmed clean via
+  direct API calls returning empty lists for vehicles/drivers/routes/
+  assignments/employees.
+
+## Next step (as of slice 7d-1)
+
+Slice 7d-1 done, stopped per plan §21 step 17. Next up, already
+scoped: **7d-2, real-time driver location + navigation** (mobile web
+page, OpenStreetMap/Leaflet/OSRM) — needs its own explicit go-ahead.
+After that: 7e hostel, 7f inventory, 7g communication, 7h
+documents/certificates.

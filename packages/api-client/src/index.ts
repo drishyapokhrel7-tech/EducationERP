@@ -193,6 +193,18 @@ import type {
   MarkPayrollPaidInput,
   PayrollStatus,
   PayrollRecord,
+  VehicleRecord,
+  CreateVehicleInput,
+  UpdateVehicleInput,
+  DriverRecord,
+  CreateDriverInput,
+  RouteRecord,
+  CreateRouteInput,
+  UpdateRouteInput,
+  AddStopInput,
+  AssignStudentTransportInput,
+  StudentTransportAssignmentRecord,
+  StopRecord,
 } from "./types";
 
 export class ApiError extends Error {
@@ -879,6 +891,34 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       request<PayrollRecord>(`/organizations/me/payroll/${id}/pay`, { method: "POST", body: JSON.stringify(input) }),
     cancelPayroll: (id: string) =>
       request<PayrollRecord>(`/organizations/me/payroll/${id}/cancel`, { method: "POST" }),
+
+    // Transport, part 1: core roster (Phase 7 slice 7d-1).
+    createVehicle: (input: CreateVehicleInput) =>
+      request<VehicleRecord>("/organizations/me/vehicles", { method: "POST", body: JSON.stringify(input) }),
+    listVehicles: () => request<VehicleRecord[]>("/organizations/me/vehicles"),
+    updateVehicle: (id: string, input: UpdateVehicleInput) =>
+      request<VehicleRecord>(`/organizations/me/vehicles/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    createDriver: (input: CreateDriverInput) =>
+      request<DriverRecord>("/organizations/me/drivers", { method: "POST", body: JSON.stringify(input) }),
+    listDrivers: () => request<DriverRecord[]>("/organizations/me/drivers"),
+    createRoute: (input: CreateRouteInput) =>
+      request<RouteRecord>("/organizations/me/routes", { method: "POST", body: JSON.stringify(input) }),
+    listRoutes: () => request<RouteRecord[]>("/organizations/me/routes"),
+    updateRoute: (id: string, input: UpdateRouteInput) =>
+      request<RouteRecord>(`/organizations/me/routes/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    addStop: (routeId: string, input: AddStopInput) =>
+      request<StopRecord>(`/organizations/me/routes/${routeId}/stops`, { method: "POST", body: JSON.stringify(input) }),
+    removeStop: (routeId: string, stopId: string) =>
+      request(`/organizations/me/routes/${routeId}/stops/${stopId}`, { method: "DELETE" }),
+    assignStudentTransport: (input: AssignStudentTransportInput) =>
+      request<StudentTransportAssignmentRecord>("/organizations/me/student-transport-assignments", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    listStudentTransportAssignments: () =>
+      request<StudentTransportAssignmentRecord[]>("/organizations/me/student-transport-assignments"),
+    unassignStudentTransport: (studentEnrollmentId: string) =>
+      request(`/organizations/me/student-transport-assignments/${studentEnrollmentId}`, { method: "DELETE" }),
   };
 }
 

@@ -26,6 +26,7 @@ import {
   Network,
   NotebookText,
   Shield,
+  Bus,
   Users,
   Wallet,
 } from "lucide-react";
@@ -39,6 +40,7 @@ const NAV = [
   { href: "/dashboard/staff", label: "Staff", icon: Users },
   { href: "/dashboard/leave", label: "Leave", icon: CalendarOff },
   { href: "/dashboard/payroll", label: "Payroll", icon: Banknote },
+  { href: "/dashboard/transport", label: "Transport", icon: Bus },
   { href: "/dashboard/academics", label: "Academics", icon: BookOpen },
   { href: "/dashboard/students", label: "Students", icon: GraduationCap },
   { href: "/dashboard/admissions", label: "Admissions", icon: ClipboardList },

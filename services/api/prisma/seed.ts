@@ -141,6 +141,11 @@ const RESOURCES = [
   // payroll_items in too, same folding precedent as leave_request above.
   "salary_structure",
   "payroll",
+  // Phase 7 slice 7d-1 (Transport, part 1: core roster) — route folds
+  // driver/stop/student_transport_assignment in too, same folding
+  // precedent as payroll/leave_request above.
+  "vehicle",
+  "route",
 ];
 const ACTIONS = Object.values(PermissionAction);
 

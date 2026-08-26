@@ -20,92 +20,97 @@ model Organization {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  campuses                 Campus[]
-  users                    User[]
-  roles                    Role[]
-  auditLogs                AuditLog[]
-  loginEvents              LoginEvent[]
-  accessPolicies           AccessPolicy[]
-  faculties                Faculty[]
-  departments              Department[]
-  programs                 Program[]
-  academicYears            AcademicYear[]
-  terms                    Term[]
-  sections                 Section[]
-  staffTypes               StaffType[]
-  designations             Designation[]
-  employees                Employee[]
-  employmentHistories      EmploymentHistory[]
-  qualifications           Qualification[]
-  teacherProfiles          TeacherProfile[]
-  subjects                 Subject[]
-  curricula                Curriculum[]
-  curriculumSubjects       CurriculumSubject[]
-  students                 Student[]
-  guardians                Guardian[]
-  studentGuardians         StudentGuardian[]
-  studentEnrollments       StudentEnrollment[]
-  studentStatusHistories   StudentStatusHistory[]
-  admissionApplications    AdmissionApplication[]
-  admissionStatusHistories AdmissionStatusHistory[]
-  rooms                    Room[]
-  periods                  Period[]
-  teachingAssignments      TeachingAssignment[]
-  classSchedules           ClassSchedule[]
-  attendanceSessions       AttendanceSession[]
-  studentAttendances       StudentAttendance[]
-  staffAttendances         StaffAttendance[]
-  attendanceExceptions     AttendanceException[]
-  syllabi                  Syllabus[]
-  syllabusNodes            SyllabusNode[]
-  learningObjectives       LearningObjective[]
-  lessonPlans              LessonPlan[]
-  classSessions            ClassSession[]
-  classMaterials           ClassMaterial[]
-  assignments              Assignment[]
-  assignmentSubmissions    AssignmentSubmission[]
-  knowledgeChecks          KnowledgeCheck[]
-  knowledgeCheckQuestions  KnowledgeCheckQuestion[]
-  knowledgeCheckAttempts   KnowledgeCheckAttempt[]
-  examTypes                ExamType[]
-  gradingSchemes           GradingScheme[]
-  questionBanks            QuestionBank[]
-  questions                Question[]
-  exams                    Exam[]
-  examSubjects             ExamSubject[]
-  examSchedules            ExamSchedule[]
-  examRooms                ExamRoom[]
-  examAttempts             ExamAttempt[]
-  marks                    Marks[]
-  grades                   Grade[]
-  reportCards              ReportCard[]
-  answers                  Answer[]
-  biometricPolicy          BiometricPolicy?
-  faceEnrollments          FaceEnrollment[]
-  cameras                  Camera[]
-  cameraEvents             CameraEvent[]
-  faceEmbeddings           FaceEmbedding[]
-  faceMatchEvents          FaceMatchEvent[]
-  feeCategories            FeeCategory[]
-  feeStructures            FeeStructure[]
-  feeStructureItems        FeeStructureItem[]
-  studentFeeAssignments    StudentFeeAssignment[]
-  invoices                 Invoice[]
-  invoiceItems             InvoiceItem[]
-  payments                 Payment[]
-  scholarships             Scholarship[]
-  studentScholarships      StudentScholarship[]
-  discounts                Discount[]
-  refunds                  Refund[]
-  financialTransactions    FinancialTransaction[]
-  esewaTransactions        EsewaTransaction[]
-  leaveTypes               LeaveType[]
-  staffLeaveBalances       StaffLeaveBalance[]
-  leaveRequests            LeaveRequest[]
-  salaryStructures         SalaryStructure[]
-  salaryStructureItems     SalaryStructureItem[]
-  payrolls                 Payroll[]
-  payrollItems             PayrollItem[]
+  campuses                    Campus[]
+  users                       User[]
+  roles                       Role[]
+  auditLogs                   AuditLog[]
+  loginEvents                 LoginEvent[]
+  accessPolicies              AccessPolicy[]
+  faculties                   Faculty[]
+  departments                 Department[]
+  programs                    Program[]
+  academicYears               AcademicYear[]
+  terms                       Term[]
+  sections                    Section[]
+  staffTypes                  StaffType[]
+  designations                Designation[]
+  employees                   Employee[]
+  employmentHistories         EmploymentHistory[]
+  qualifications              Qualification[]
+  teacherProfiles             TeacherProfile[]
+  subjects                    Subject[]
+  curricula                   Curriculum[]
+  curriculumSubjects          CurriculumSubject[]
+  students                    Student[]
+  guardians                   Guardian[]
+  studentGuardians            StudentGuardian[]
+  studentEnrollments          StudentEnrollment[]
+  studentStatusHistories      StudentStatusHistory[]
+  admissionApplications       AdmissionApplication[]
+  admissionStatusHistories    AdmissionStatusHistory[]
+  rooms                       Room[]
+  periods                     Period[]
+  teachingAssignments         TeachingAssignment[]
+  classSchedules              ClassSchedule[]
+  attendanceSessions          AttendanceSession[]
+  studentAttendances          StudentAttendance[]
+  staffAttendances            StaffAttendance[]
+  attendanceExceptions        AttendanceException[]
+  syllabi                     Syllabus[]
+  syllabusNodes               SyllabusNode[]
+  learningObjectives          LearningObjective[]
+  lessonPlans                 LessonPlan[]
+  classSessions               ClassSession[]
+  classMaterials              ClassMaterial[]
+  assignments                 Assignment[]
+  assignmentSubmissions       AssignmentSubmission[]
+  knowledgeChecks             KnowledgeCheck[]
+  knowledgeCheckQuestions     KnowledgeCheckQuestion[]
+  knowledgeCheckAttempts      KnowledgeCheckAttempt[]
+  examTypes                   ExamType[]
+  gradingSchemes              GradingScheme[]
+  questionBanks               QuestionBank[]
+  questions                   Question[]
+  exams                       Exam[]
+  examSubjects                ExamSubject[]
+  examSchedules               ExamSchedule[]
+  examRooms                   ExamRoom[]
+  examAttempts                ExamAttempt[]
+  marks                       Marks[]
+  grades                      Grade[]
+  reportCards                 ReportCard[]
+  answers                     Answer[]
+  biometricPolicy             BiometricPolicy?
+  faceEnrollments             FaceEnrollment[]
+  cameras                     Camera[]
+  cameraEvents                CameraEvent[]
+  faceEmbeddings              FaceEmbedding[]
+  faceMatchEvents             FaceMatchEvent[]
+  feeCategories               FeeCategory[]
+  feeStructures               FeeStructure[]
+  feeStructureItems           FeeStructureItem[]
+  studentFeeAssignments       StudentFeeAssignment[]
+  invoices                    Invoice[]
+  invoiceItems                InvoiceItem[]
+  payments                    Payment[]
+  scholarships                Scholarship[]
+  studentScholarships         StudentScholarship[]
+  discounts                   Discount[]
+  refunds                     Refund[]
+  financialTransactions       FinancialTransaction[]
+  esewaTransactions           EsewaTransaction[]
+  leaveTypes                  LeaveType[]
+  staffLeaveBalances          StaffLeaveBalance[]
+  leaveRequests               LeaveRequest[]
+  salaryStructures            SalaryStructure[]
+  salaryStructureItems        SalaryStructureItem[]
+  payrolls                    Payroll[]
+  payrollItems                PayrollItem[]
+  vehicles                    Vehicle[]
+  drivers                     Driver[]
+  routes                      Route[]
+  stops                       Stop[]
+  studentTransportAssignments StudentTransportAssignment[]
 
   @@map("organizations")
 }
@@ -614,6 +619,8 @@ model Employee {
   leaveBalances           StaffLeaveBalance[]
   leaveRequests           LeaveRequest[]
   payrolls                Payroll[]
+  driverProfile           Driver?
+  routesAsDriver          Route[]              @relation("routesAsDriver")
 
   @@unique([organizationId, employeeCode])
   @@unique([organizationId, email])
@@ -789,13 +796,14 @@ model StudentEnrollment {
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
-  organization   Organization           @relation(fields: [organizationId], references: [id])
-  student        Student                @relation(fields: [studentId], references: [id])
-  program        Program                @relation(fields: [programId], references: [id])
-  section        Section                @relation(fields: [sectionId], references: [id])
-  term           Term                   @relation(fields: [termId], references: [id])
-  invoices       Invoice[]
-  feeAssignments StudentFeeAssignment[]
+  organization        Organization                @relation(fields: [organizationId], references: [id])
+  student             Student                     @relation(fields: [studentId], references: [id])
+  program             Program                     @relation(fields: [programId], references: [id])
+  section             Section                     @relation(fields: [sectionId], references: [id])
+  term                Term                        @relation(fields: [termId], references: [id])
+  invoices            Invoice[]
+  feeAssignments      StudentFeeAssignment[]
+  transportAssignment StudentTransportAssignment?
 
   @@unique([studentId, termId])
   @@index([organizationId])
@@ -2539,4 +2547,120 @@ model PayrollItem {
   @@index([organizationId])
   @@index([payrollId])
   @@map("payroll_items")
+}
+
+// ── Transport, part 1: core roster (Phase 7 slice 7d-1) ─────────────────
+// vehicles/drivers/routes/stops/student_transport_assignments — the plan
+// gives no field-level spec (docx §6 lists only these bare table names,
+// plus vehicle_tracking_events which is 7d-2, layered on top of this
+// later once real-time location/navigation is scoped).
+
+enum VehicleStatus {
+  ACTIVE
+  MAINTENANCE
+  INACTIVE
+}
+
+model Vehicle {
+  id                 String        @id @default(uuid())
+  organizationId     String
+  registrationNumber String
+  type               String
+  capacity           Int
+  status             VehicleStatus @default(ACTIVE)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  routes       Route[]
+
+  @@unique([organizationId, registrationNumber])
+  @@index([organizationId])
+  @@map("vehicles")
+}
+
+// Extends Employee exactly like TeacherProfile does — a driver is a kind
+// of staff member, not a parallel identity.
+model Driver {
+  id             String   @id @default(uuid())
+  organizationId String
+  employeeId     String   @unique
+  licenseNumber  String
+  licenseExpiry  DateTime
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  employee     Employee     @relation(fields: [employeeId], references: [id])
+
+  @@index([organizationId])
+  @@map("drivers")
+}
+
+// vehicleId/driverId are nullable — a route can exist in draft form
+// before a vehicle/driver is assigned to it, same "assignment is a
+// separate, optional step" reasoning used elsewhere in this project.
+model Route {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  code           String
+  vehicleId      String?
+  driverId       String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization                 @relation(fields: [organizationId], references: [id])
+  vehicle      Vehicle?                     @relation(fields: [vehicleId], references: [id])
+  driver       Employee?                    @relation("routesAsDriver", fields: [driverId], references: [id])
+  stops        Stop[]
+  assignments  StudentTransportAssignment[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+  @@map("routes")
+}
+
+// Belongs to exactly one route (not a many-to-many stops↔routes join) —
+// simplest defensible model; a stop genuinely shared by two routes in
+// reality is just two rows, matching this project's "don't build
+// unrequested flexibility" precedent.
+model Stop {
+  id                   String @id @default(uuid())
+  organizationId       String
+  routeId              String
+  name                 String
+  sequence             Int
+  arrivalOffsetMinutes Int?
+
+  organization Organization                 @relation(fields: [organizationId], references: [id])
+  route        Route                        @relation(fields: [routeId], references: [id])
+  assignments  StudentTransportAssignment[]
+
+  @@unique([routeId, sequence])
+  @@index([organizationId])
+  @@map("stops")
+}
+
+// Anchors to studentEnrollmentId (not studentId directly), same
+// precedent as StudentFeeAssignment since the enrollment already
+// carries both. @@unique on studentEnrollmentId — one active assignment
+// per enrollment at a time, matching Employee.salaryStructureId's
+// "current pointer, repoint rather than stack history" precedent.
+model StudentTransportAssignment {
+  id                  String   @id @default(uuid())
+  organizationId      String
+  studentEnrollmentId String   @unique
+  routeId             String
+  stopId              String
+  assignedAt          DateTime @default(now())
+
+  organization      Organization      @relation(fields: [organizationId], references: [id])
+  studentEnrollment StudentEnrollment @relation(fields: [studentEnrollmentId], references: [id])
+  route             Route             @relation(fields: [routeId], references: [id])
+  stop              Stop              @relation(fields: [stopId], references: [id])
+
+  @@index([organizationId])
+  @@index([routeId])
+  @@map("student_transport_assignments")
 }

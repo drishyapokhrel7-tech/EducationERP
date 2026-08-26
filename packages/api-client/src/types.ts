@@ -1947,3 +1947,111 @@ export interface PayrollRecord {
   items: PayrollItemRecord[];
   finalizer?: { firstName: string; lastName: string } | null;
 }
+
+// Transport, part 1: core roster (Phase 7 slice 7d-1).
+export type VehicleStatus = "ACTIVE" | "MAINTENANCE" | "INACTIVE";
+
+export interface VehicleRecord {
+  id: string;
+  organizationId: string;
+  registrationNumber: string;
+  type: string;
+  capacity: number;
+  status: VehicleStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateVehicleInput {
+  registrationNumber: string;
+  type: string;
+  capacity: number;
+  status?: VehicleStatus;
+}
+
+export interface UpdateVehicleInput {
+  registrationNumber?: string;
+  type?: string;
+  capacity?: number;
+  status?: VehicleStatus;
+}
+
+export interface DriverRecord {
+  id: string;
+  organizationId: string;
+  employeeId: string;
+  licenseNumber: string;
+  licenseExpiry: string;
+  createdAt: string;
+  updatedAt: string;
+  employee: Employee;
+}
+
+export interface CreateDriverInput {
+  employeeId: string;
+  licenseNumber: string;
+  licenseExpiry: string;
+}
+
+export interface StopRecord {
+  id: string;
+  organizationId: string;
+  routeId: string;
+  name: string;
+  sequence: number;
+  arrivalOffsetMinutes: number | null;
+}
+
+export interface AddStopInput {
+  name: string;
+  sequence: number;
+  arrivalOffsetMinutes?: number;
+}
+
+export interface RouteRecord {
+  id: string;
+  organizationId: string;
+  name: string;
+  code: string;
+  vehicleId: string | null;
+  driverId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  vehicle: VehicleRecord | null;
+  driver: Employee | null;
+  stops: StopRecord[];
+}
+
+export interface CreateRouteInput {
+  name: string;
+  code: string;
+  vehicleId?: string;
+  driverId?: string;
+}
+
+export interface UpdateRouteInput {
+  name?: string;
+  code?: string;
+  vehicleId?: string;
+  driverId?: string;
+}
+
+export interface AssignStudentTransportInput {
+  studentEnrollmentId: string;
+  routeId: string;
+  stopId: string;
+}
+
+export interface StudentTransportAssignmentRecord {
+  id: string;
+  organizationId: string;
+  studentEnrollmentId: string;
+  routeId: string;
+  stopId: string;
+  assignedAt: string;
+  // Only student/id/status fields are actually fetched here — not the
+  // full StudentEnrollment shape (no program/section/term include).
+  studentEnrollment: { id: string; studentId: string; status: EnrollmentStatus; student: Student };
+  route: RouteRecord;
+  stop: StopRecord;
+}

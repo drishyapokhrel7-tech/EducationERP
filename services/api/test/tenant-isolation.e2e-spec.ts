@@ -175,6 +175,20 @@ describe("Tenant isolation (e2e)", () => {
         // specifically, but it's grouped here for readability.
         "salaryStructureItem",
         "salaryStructure",
+        // Transport (Phase 7 slice 7d-1) — studentTransportAssignment
+        // references studentEnrollment/route/stop (RESTRICT), so it leads
+        // all three (studentEnrollment itself is deleted much later, see
+        // below — this only needs to precede it, which it does here);
+        // stop references route (RESTRICT), so it precedes route; driver
+        // references employee (RESTRICT), so it must precede employee too.
+        // vehicle/route have no ordering requirement against employee
+        // (route.driverId is ON DELETE SET NULL) but are grouped here for
+        // readability.
+        "studentTransportAssignment",
+        "stop",
+        "route",
+        "driver",
+        "vehicle",
         "employee",
         "staffType",
         "designation",
@@ -5428,6 +5442,213 @@ describe("Tenant isolation (e2e)", () => {
       await request(app.getHttpServer())
         .post(`/organizations/me/payroll/${payrollId}/cancel`)
         .set(...auth(tokenB))
+        .expect(404);
+    }, 60000);
+  });
+
+  describe("Transport, part 1 (core roster — Phase 7 slice 7d-1)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    async function buildEmployee(token: string, suffix: string) {
+      const staffType = await request(app.getHttpServer())
+        .post("/organizations/me/staff-types")
+        .set(...auth(token))
+        .send({ name: `Transport Staff ${suffix}`, code: `TSTAFF${suffix}` })
+        .expect(201);
+      const designation = await request(app.getHttpServer())
+        .post("/organizations/me/designations")
+        .set(...auth(token))
+        .send({ name: `Transport Role ${suffix}`, code: `TROLE${suffix}` })
+        .expect(201);
+      const employee = await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(token))
+        .send({
+          staffTypeId: staffType.body.id,
+          designationId: designation.body.id,
+          employeeCode: `TR-EMP-${suffix}`,
+          firstName: "Transport",
+          lastName: suffix,
+          email: `transport-${suffix}@staff-e2e.test`,
+          dateOfJoining: "2026-01-01",
+        })
+        .expect(201);
+      return employee.body.id as string;
+    }
+
+    async function buildStudentEnrollment(token: string, suffix: string) {
+      const campus = await request(app.getHttpServer())
+        .post("/organizations/me/campuses")
+        .set(...auth(token))
+        .send({ name: `Transport Campus ${suffix}`, code: `TRCAMP${suffix}` })
+        .expect(201);
+      const faculty = await request(app.getHttpServer())
+        .post("/organizations/me/faculties")
+        .set(...auth(token))
+        .send({ campusId: campus.body.id, name: `Transport Faculty ${suffix}`, code: `TRFAC${suffix}` })
+        .expect(201);
+      const department = await request(app.getHttpServer())
+        .post("/organizations/me/departments")
+        .set(...auth(token))
+        .send({ facultyId: faculty.body.id, name: `Transport Dept ${suffix}`, code: `TRDEP${suffix}` })
+        .expect(201);
+      const program = await request(app.getHttpServer())
+        .post("/organizations/me/programs")
+        .set(...auth(token))
+        .send({ departmentId: department.body.id, name: `Transport Program ${suffix}`, code: `TRPROG${suffix}` })
+        .expect(201);
+      const year = await request(app.getHttpServer())
+        .post("/organizations/me/academic-years")
+        .set(...auth(token))
+        .send({ name: `Transport Year ${suffix}`, startDate: "2099-01-01", endDate: "2099-12-31" })
+        .expect(201);
+      const term = await request(app.getHttpServer())
+        .post("/organizations/me/terms")
+        .set(...auth(token))
+        .send({
+          academicYearId: year.body.id,
+          name: `Transport Term ${suffix}`,
+          code: `TRT${suffix}`,
+          sequence: 1,
+          startDate: "2099-01-01",
+          endDate: "2099-06-30",
+        })
+        .expect(201);
+      const section = await request(app.getHttpServer())
+        .post("/organizations/me/sections")
+        .set(...auth(token))
+        .send({ programId: program.body.id, termId: term.body.id, name: `Transport Section ${suffix}`, code: `TRS${suffix}` })
+        .expect(201);
+      const student = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(token))
+        .send({ studentCode: `TR-STU-${suffix}`, firstName: "Transport", lastName: suffix, dateOfBirth: "2015-01-01" })
+        .expect(201);
+      const enrollment = await request(app.getHttpServer())
+        .post(`/organizations/me/students/${student.body.id}/enrollments`)
+        .set(...auth(token))
+        .send({ programId: program.body.id, sectionId: section.body.id, termId: term.body.id, enrollmentDate: "2099-01-01" })
+        .expect(201);
+      return enrollment.body.id as string;
+    }
+
+    it("builds vehicles/drivers/routes/stops and assigns/reassigns a student, and stays tenant-scoped", async () => {
+      const employeeId = await buildEmployee(tokenA, `TR${run}`);
+      const otherEmployeeId = await buildEmployee(tokenA, `TR2${run}`);
+
+      const vehicle = await request(app.getHttpServer())
+        .post("/organizations/me/vehicles")
+        .set(...auth(tokenA))
+        .send({ registrationNumber: `BA-${run}-KA`, type: "Bus", capacity: 30 })
+        .expect(201);
+
+      // A route can't take a plain employee as driver — must have a
+      // driver profile first.
+      await request(app.getHttpServer())
+        .post("/organizations/me/routes")
+        .set(...auth(tokenA))
+        .send({ name: `Route A ${run}`, code: `RTA${run}`, vehicleId: vehicle.body.id, driverId: otherEmployeeId })
+        .expect(400);
+
+      const driver = await request(app.getHttpServer())
+        .post("/organizations/me/drivers")
+        .set(...auth(tokenA))
+        .send({ employeeId, licenseNumber: `LIC-${run}`, licenseExpiry: "2030-01-01" })
+        .expect(201);
+      expect(driver.body.employee.id).toBe(employeeId);
+
+      // An employee can't have two driver profiles.
+      await request(app.getHttpServer())
+        .post("/organizations/me/drivers")
+        .set(...auth(tokenA))
+        .send({ employeeId, licenseNumber: `LIC2-${run}`, licenseExpiry: "2030-01-01" })
+        .expect(409);
+
+      const route = await request(app.getHttpServer())
+        .post("/organizations/me/routes")
+        .set(...auth(tokenA))
+        .send({ name: `Route A ${run}`, code: `RTA${run}`, vehicleId: vehicle.body.id, driverId: employeeId })
+        .expect(201);
+      expect(route.body.driver.id).toBe(employeeId);
+      expect(route.body.vehicle.id).toBe(vehicle.body.id);
+
+      const stop1 = await request(app.getHttpServer())
+        .post(`/organizations/me/routes/${route.body.id}/stops`)
+        .set(...auth(tokenA))
+        .send({ name: "Main Gate", sequence: 1, arrivalOffsetMinutes: 0 })
+        .expect(201);
+      const stop2 = await request(app.getHttpServer())
+        .post(`/organizations/me/routes/${route.body.id}/stops`)
+        .set(...auth(tokenA))
+        .send({ name: "Market Square", sequence: 2, arrivalOffsetMinutes: 10 })
+        .expect(201);
+
+      // Two stops on the same route can't share a sequence.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/routes/${route.body.id}/stops`)
+        .set(...auth(tokenA))
+        .send({ name: "Duplicate Order", sequence: 1 })
+        .expect(409);
+
+      const enrollmentId = await buildStudentEnrollment(tokenA, `TR${run}`);
+
+      const assignment = await request(app.getHttpServer())
+        .post("/organizations/me/student-transport-assignments")
+        .set(...auth(tokenA))
+        .send({ studentEnrollmentId: enrollmentId, routeId: route.body.id, stopId: stop1.body.id })
+        .expect(201);
+      expect(assignment.body.stop.id).toBe(stop1.body.id);
+
+      // Reassigning is an upsert (a legitimate admin correction), not a
+      // duplicate — same studentEnrollmentId, different stop.
+      const reassignment = await request(app.getHttpServer())
+        .post("/organizations/me/student-transport-assignments")
+        .set(...auth(tokenA))
+        .send({ studentEnrollmentId: enrollmentId, routeId: route.body.id, stopId: stop2.body.id })
+        .expect(201);
+      expect(reassignment.body.id).toBe(assignment.body.id);
+      expect(reassignment.body.stop.id).toBe(stop2.body.id);
+
+      const list = await request(app.getHttpServer())
+        .get("/organizations/me/student-transport-assignments")
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(list.body).toHaveLength(1);
+      expect(list.body[0].stop.id).toBe(stop2.body.id);
+
+      const vehicleUpdate = await request(app.getHttpServer())
+        .patch(`/organizations/me/vehicles/${vehicle.body.id}`)
+        .set(...auth(tokenA))
+        .send({ status: "MAINTENANCE" })
+        .expect(200);
+      expect(vehicleUpdate.body.status).toBe("MAINTENANCE");
+
+      await request(app.getHttpServer())
+        .delete(`/organizations/me/student-transport-assignments/${enrollmentId}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      await request(app.getHttpServer())
+        .delete(`/organizations/me/student-transport-assignments/${enrollmentId}`)
+        .set(...auth(tokenA))
+        .expect(404);
+
+      // Cross-tenant: org B sees none of this and can't act on it by id.
+      for (const path of ["vehicles", "drivers", "routes", "student-transport-assignments"]) {
+        const res = await request(app.getHttpServer())
+          .get(`/organizations/me/${path}`)
+          .set(...auth(tokenB))
+          .expect(200);
+        expect(res.body).toEqual([]);
+      }
+      await request(app.getHttpServer())
+        .patch(`/organizations/me/vehicles/${vehicle.body.id}`)
+        .set(...auth(tokenB))
+        .send({ status: "INACTIVE" })
+        .expect(404);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/routes/${route.body.id}/stops`)
+        .set(...auth(tokenB))
+        .send({ name: "Intruder Stop", sequence: 9 })
         .expect(404);
     }, 60000);
   });
