@@ -18,6 +18,7 @@ import {
   ScrollText,
   LayoutDashboard,
   LayoutPanelTop,
+  Library,
   ListChecks,
   LogOut,
   Network,
@@ -48,6 +49,7 @@ const NAV = [
   { href: "/dashboard/exams", label: "Exams", icon: ScrollText },
   { href: "/dashboard/biometric-policy", label: "Biometric", icon: Fingerprint },
   { href: "/dashboard/cameras", label: "Cameras", icon: Camera },
+  { href: "/dashboard/library", label: "Library", icon: Library },
 ];
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
