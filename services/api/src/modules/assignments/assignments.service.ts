@@ -3,6 +3,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { CreateAssignmentDto } from "./dto/create-assignment.dto";
 import { CreateSubmissionDto } from "./dto/create-submission.dto";
 import { GradeSubmissionDto } from "./dto/grade-submission.dto";
+import { UpdateAssignmentDto } from "./dto/update-assignment.dto";
 
 const ASSIGNMENT_INCLUDE = {
   teachingAssignment: { include: { subject: true, section: true, employee: true } },
@@ -46,6 +47,26 @@ export class AssignmentsService {
       const assignment = await tx.assignment.findUnique({ where: { id: assignmentId }, include: ASSIGNMENT_INCLUDE });
       if (!assignment) throw new NotFoundException("Assignment not found");
       return assignment;
+    });
+  }
+
+  async updateAssignment(organizationId: string, assignmentId: string, dto: UpdateAssignmentDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const existing = await tx.assignment.findUnique({ where: { id: assignmentId } });
+      if (!existing) throw new NotFoundException("Assignment not found");
+
+      return tx.assignment.update({
+        where: { id: assignmentId },
+        data: {
+          title: dto.title,
+          description: dto.description,
+          dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
+          allowResubmission: dto.allowResubmission,
+          maxScore: dto.maxScore,
+          isPublished: dto.isPublished,
+        },
+        include: ASSIGNMENT_INCLUDE,
+      });
     });
   }
 

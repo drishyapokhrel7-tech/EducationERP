@@ -285,10 +285,97 @@ end-to-end.
   this demo data (module, item, Aarav Sharma's new login) was left in
   place, not cleaned up.**
 
+## Slice 3 — Self-service assignments
+
+User said "go-ahead" — approval to start the next item in the proposed
+sequencing.
+
+### Design
+
+**No new entity** — `Assignment`/`AssignmentSubmission` already
+existed (admin-recorded, per discovery). The gap was purely access:
+admin-only create/grade, no publish gate, no self-service submit path.
+This slice extends the existing tables and reuses `AssignmentsService`
+wholesale from both portals, rather than forking the grading/
+resubmission logic — the "reuse the existing service, add a
+self-service ownership check in front" precedent already used for
+`DashboardsService`/`FinanceService`.
+
+**One new field**: `Assignment.isPublished` (default `false`) — same
+publish-gating precedent as `CourseModule`/`CourseModuleItem`; every
+pre-existing admin-created assignment reads as an unpublished draft
+under the new field, not silently visible to students.
+
+**`teacher-portal`** (new methods): `listAssignments`/
+`createAssignment`/`getAssignmentDetail`/`updateAssignment`/
+`gradeSubmission` — every one ownership-checked against
+`assignment.teachingAssignment.employeeId` (or the dto's
+`teachingAssignmentId` for create) before delegating to
+`AssignmentsService`. A different teacher's assignment 404s, matching
+the IDOR-safe convention used everywhere else.
+
+**`student-portal`** (new methods): `listAssignments` (published-only,
+scoped to the student's own active enrollment's section+term, each
+annotated with `mySubmission` — never another student's), `getAssignment`
+(same published+enrolled gate), `submitAssignment` (delegates to
+`AssignmentsService.submit`, which already has resubmission/grade-reset
+logic from the earlier admin-only phase — reused, not reimplemented).
+Draft assignments and assignments outside the student's own enrolled
+course both 404, not just "not found because unpublished" as a
+distinguishable case — same "never leak existence" convention as
+course modules.
+
+**Web**: `/teacher`'s existing course picker (shared `courseId` state
+with the modules card, slice 2) gained a "My courses — assignments"
+card: assignment list with due date/submission count/publish toggle,
+expand-to-create form, expand-to-show-submissions with a per-submission
+inline grade form. `/portal/assignments` (new nav link) lists published
+assignments with a status badge (score if graded, submission status, or
+"Not submitted"); `/portal/assignments/[assignmentId]` shows
+instructions, the student's own submission/grade/feedback, and a
+submit/resubmit form (a plain Tailwind-styled `<textarea>` — no
+shadcn Textarea component exists in this project, and one wasn't
+introduced for this single use).
+
+### Verified
+
+- `pnpm -r typecheck`/`lint`/`build` clean across all six packages.
+- `services/api` e2e: one new comprehensive test (`-t "Self-service
+  assignments"`) — a different teacher can't create an assignment on
+  someone else's course (404); a draft assignment is invisible to an
+  enrolled student (empty list, 404 on direct get/submit); publishing
+  makes it visible; an unenrolled student 404s; submission succeeds
+  (201, `SUBMITTED`); resubmission is blocked when
+  `allowResubmission=false` (409); a different teacher can't grade it
+  (404); the owning teacher's `listAssignments` shows the submission
+  with the student's info; grading succeeds; the student sees the
+  `GRADED` status, score, and feedback, with the response confirmed to
+  carry no other student's submission data; cross-tenant access
+  rejected throughout (404). Passed clean (`44100 ms`) on the first
+  run — no bugs found this slice.
+- Full browser pass in the Everest Academy demo org: as the real
+  teacher (Sunita Karki), created and published "Counting Practice
+  Worksheet" (Mathematics, due 2026-09-15, 10 points, resubmission
+  off) — confirmed 201/200 via network responses; as the real student
+  (Aarav Sharma), confirmed `/portal/assignments` lists it with a "Not
+  submitted" badge, opened the detail page, submitted a real answer —
+  confirmed 201 via network response and the page updating to show
+  `SUBMITTED`; switched back to the teacher, confirmed the submission
+  appeared under the assignment (student name, submitted time, content)
+  with a grade form, graded it (9/10, written feedback) — confirmed 200
+  via network response; switched back to the student and confirmed the
+  detail page now shows `GRADED`, "Grade: 9 / 10", the feedback text,
+  and correctly blocks further resubmission. **Per the same standing
+  instruction as slices 1 and 2, this demo data (the assignment, Aarav
+  Sharma's submission, and the grade) was left in place, not cleaned
+  up.**
+
 ## Next step
 
-Teacher portal (slice 1) and course modules (slice 2) are done. The
-rest of the proposed LMS sequencing (self-service assignments, quiz
-engine, announcements, discussions, gradebook, file upload,
-notifications) is **not started** — each needs its own explicit
-go-ahead, per this project's standing rule.
+Teacher portal (slice 1), course modules (slice 2), and self-service
+assignments (slice 3) are done. The rest of the proposed LMS sequencing
+(quiz engine — adapting the exam-taking engine's proven shuffle/
+autosave/auto-score pattern — announcements, discussions, gradebook,
+file upload, notifications) is **not started**; quiz engine (#4) is
+the natural next item, but each still needs its own explicit go-ahead,
+per this project's standing rule.

@@ -790,6 +790,8 @@ export interface Assignment {
   dueDate: string | null;
   allowResubmission: boolean;
   maxScore: number | null;
+  // Added for self-service assignments (LMS discovery slice 3).
+  isPublished: boolean;
   teachingAssignment: TeachingAssignment;
   submissions: AssignmentSubmission[];
 }
@@ -804,6 +806,15 @@ export interface CreateAssignmentInput {
   maxScore?: number;
 }
 
+export interface UpdateAssignmentInput {
+  title?: string;
+  description?: string;
+  dueDate?: string;
+  allowResubmission?: boolean;
+  maxScore?: number;
+  isPublished?: boolean;
+}
+
 export interface CreateSubmissionInput {
   studentId: string;
   content?: string;
@@ -812,6 +823,46 @@ export interface CreateSubmissionInput {
 export interface GradeSubmissionInput {
   score: number;
   feedback?: string;
+}
+
+// Teacher-portal's own assignment list doesn't include the parent
+// TeachingAssignment (the caller already knows which course they
+// picked) — narrower than Assignment, not lying about the shape.
+export type TeacherPortalAssignmentListItem = Omit<Assignment, "teachingAssignment">;
+
+// Student-portal assignments (LMS discovery slice 3): never includes
+// other students' submissions, and the one submission it does include
+// (the caller's own) never includes the `student` relation — the
+// caller already knows who they are.
+export interface AssignmentTeachingAssignmentSummary {
+  id: string;
+  subjectId: string;
+  sectionId: string;
+  termId: string;
+  employeeId: string;
+  subject: Subject;
+  employee: Employee;
+}
+
+export type StudentOwnSubmission = Omit<AssignmentSubmission, "student">;
+
+export interface StudentPortalAssignment {
+  id: string;
+  organizationId: string;
+  teachingAssignmentId: string;
+  title: string;
+  description: string | null;
+  submissionType: SubmissionType;
+  dueDate: string | null;
+  allowResubmission: boolean;
+  maxScore: number | null;
+  isPublished: boolean;
+  teachingAssignment: AssignmentTeachingAssignmentSummary;
+  mySubmission: StudentOwnSubmission | null;
+}
+
+export interface SubmitAssignmentInput {
+  content?: string;
 }
 
 export type KnowledgeCheckStatus = "DRAFT" | "PUBLISHED";

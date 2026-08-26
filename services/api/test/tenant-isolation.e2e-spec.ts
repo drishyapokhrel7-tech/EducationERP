@@ -6299,4 +6299,278 @@ describe("Tenant isolation (e2e)", () => {
         .expect(404);
     }, 60000);
   });
+
+  describe("Self-service assignments (LMS discovery slice 3)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    it("lets a teacher create/publish/grade assignments on their own course, and gates student submission to published, enrolled courses only (IDOR + tenant guards)", async () => {
+      const suffix = `AS${run}`;
+
+      const campus = await request(app.getHttpServer())
+        .post("/organizations/me/campuses")
+        .set(...auth(tokenA))
+        .send({ name: `Assign Campus ${suffix}`, code: `ASCAMP${suffix}` })
+        .expect(201);
+      const faculty = await request(app.getHttpServer())
+        .post("/organizations/me/faculties")
+        .set(...auth(tokenA))
+        .send({ campusId: campus.body.id, name: `Assign Faculty ${suffix}`, code: `ASFAC${suffix}` })
+        .expect(201);
+      const department = await request(app.getHttpServer())
+        .post("/organizations/me/departments")
+        .set(...auth(tokenA))
+        .send({ facultyId: faculty.body.id, name: `Assign Dept ${suffix}`, code: `ASDEP${suffix}` })
+        .expect(201);
+      const program = await request(app.getHttpServer())
+        .post("/organizations/me/programs")
+        .set(...auth(tokenA))
+        .send({ departmentId: department.body.id, name: `Assign Program ${suffix}`, code: `ASPROG${suffix}` })
+        .expect(201);
+      const year = await request(app.getHttpServer())
+        .post("/organizations/me/academic-years")
+        .set(...auth(tokenA))
+        .send({ name: `Assign Year ${suffix}`, startDate: "2099-08-01", endDate: "2100-06-30" })
+        .expect(201);
+      const term = await request(app.getHttpServer())
+        .post("/organizations/me/terms")
+        .set(...auth(tokenA))
+        .send({
+          academicYearId: year.body.id,
+          name: `Assign Term ${suffix}`,
+          code: `AST${suffix}`,
+          sequence: 1,
+          startDate: "2099-08-01",
+          endDate: "2099-12-15",
+        })
+        .expect(201);
+      const section = await request(app.getHttpServer())
+        .post("/organizations/me/sections")
+        .set(...auth(tokenA))
+        .send({ programId: program.body.id, termId: term.body.id, name: `Assign Section ${suffix}`, code: `ASS${suffix}` })
+        .expect(201);
+      const staffType = await request(app.getHttpServer())
+        .post("/organizations/me/staff-types")
+        .set(...auth(tokenA))
+        .send({ name: `Assign Staff Type ${suffix}`, code: `ASST${suffix}` })
+        .expect(201);
+      const designation = await request(app.getHttpServer())
+        .post("/organizations/me/designations")
+        .set(...auth(tokenA))
+        .send({ name: `Assign Designation ${suffix}`, code: `ASDS${suffix}` })
+        .expect(201);
+      const subject = await request(app.getHttpServer())
+        .post("/organizations/me/subjects")
+        .set(...auth(tokenA))
+        .send({ name: `Assign Subject ${suffix}`, code: `ASSUB${suffix}` })
+        .expect(201);
+
+      const teacher = await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(tokenA))
+        .send({
+          staffTypeId: staffType.body.id,
+          designationId: designation.body.id,
+          employeeCode: `AS-TCH-${suffix}`,
+          firstName: "Assign",
+          lastName: "Teacher",
+          email: `as-teacher-${suffix}-${run}@rls-e2e.test`,
+          dateOfJoining: "2026-01-01",
+        })
+        .expect(201);
+      const otherTeacher = await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(tokenA))
+        .send({
+          staffTypeId: staffType.body.id,
+          designationId: designation.body.id,
+          employeeCode: `AS-TCH2-${suffix}`,
+          firstName: "Other",
+          lastName: "AssignTeacher",
+          email: `as-teacher2-${suffix}-${run}@rls-e2e.test`,
+          dateOfJoining: "2026-01-01",
+        })
+        .expect(201);
+
+      const teachingAssignment = await request(app.getHttpServer())
+        .post("/organizations/me/teaching-assignments")
+        .set(...auth(tokenA))
+        .send({ employeeId: teacher.body.id, subjectId: subject.body.id, sectionId: section.body.id, termId: term.body.id })
+        .expect(201);
+
+      const teacherLogin = await request(app.getHttpServer())
+        .post(`/organizations/me/employees/${teacher.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "AssignTeacherPass123" })
+        .expect(201);
+      const otherTeacherLogin = await request(app.getHttpServer())
+        .post(`/organizations/me/employees/${otherTeacher.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "OtherAssignTeacherPass123" })
+        .expect(201);
+      const teacherSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: teacherLogin.body.username, password: "AssignTeacherPass123" })
+        .expect(201);
+      const otherTeacherSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: otherTeacherLogin.body.username, password: "OtherAssignTeacherPass123" })
+        .expect(201);
+      const teacherToken = teacherSession.body.accessToken as string;
+      const otherTeacherToken = otherTeacherSession.body.accessToken as string;
+
+      // A different teacher can't create an assignment on someone
+      // else's course (404, IDOR guard).
+      await request(app.getHttpServer())
+        .post("/organizations/me/teacher-portal/assignments")
+        .set(...auth(otherTeacherToken))
+        .send({ teachingAssignmentId: teachingAssignment.body.id, title: "Intruder Assignment", submissionType: "TEXT" })
+        .expect(404);
+
+      const draftAssignment = await request(app.getHttpServer())
+        .post("/organizations/me/teacher-portal/assignments")
+        .set(...auth(teacherToken))
+        .send({
+          teachingAssignmentId: teachingAssignment.body.id,
+          title: "Essay 1",
+          submissionType: "TEXT",
+          maxScore: 10,
+          allowResubmission: false,
+        })
+        .expect(201);
+      expect(draftAssignment.body.isPublished).toBe(false);
+
+      // Build an enrolled student and an unrelated, unenrolled one.
+      const student = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({ studentCode: `AS-STU-${suffix}`, firstName: "Assign", lastName: "Student", dateOfBirth: "2015-01-01" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/students/${student.body.id}/enrollments`)
+        .set(...auth(tokenA))
+        .send({ programId: program.body.id, sectionId: section.body.id, termId: term.body.id, enrollmentDate: "2099-08-01" })
+        .expect(201);
+      const studentLogin = await request(app.getHttpServer())
+        .post(`/organizations/me/students/${student.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "AssignStudentPass123" })
+        .expect(201);
+      const studentSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: studentLogin.body.username, password: "AssignStudentPass123" })
+        .expect(201);
+      const studentToken = studentSession.body.accessToken as string;
+
+      const otherStudent = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({ studentCode: `AS-STU2-${suffix}`, firstName: "Outside", lastName: "AssignStudent", dateOfBirth: "2015-01-01" })
+        .expect(201);
+      const otherStudentLogin = await request(app.getHttpServer())
+        .post(`/organizations/me/students/${otherStudent.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "OtherAssignStudentPass123" })
+        .expect(201);
+      const otherStudentSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: otherStudentLogin.body.username, password: "OtherAssignStudentPass123" })
+        .expect(201);
+      const otherStudentToken = otherStudentSession.body.accessToken as string;
+
+      // Unpublished draft is invisible to the enrolled student.
+      const listBeforePublish = await request(app.getHttpServer())
+        .get("/organizations/me/portal/assignments")
+        .set(...auth(studentToken))
+        .expect(200);
+      expect(listBeforePublish.body).toEqual([]);
+      await request(app.getHttpServer())
+        .get(`/organizations/me/portal/assignments/${draftAssignment.body.id}`)
+        .set(...auth(studentToken))
+        .expect(404);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/portal/assignments/${draftAssignment.body.id}/submit`)
+        .set(...auth(studentToken))
+        .send({ content: "Too early" })
+        .expect(404);
+
+      await request(app.getHttpServer())
+        .put(`/organizations/me/teacher-portal/assignments/${draftAssignment.body.id}`)
+        .set(...auth(teacherToken))
+        .send({ isPublished: true })
+        .expect(200);
+
+      const listAfterPublish = await request(app.getHttpServer())
+        .get("/organizations/me/portal/assignments")
+        .set(...auth(studentToken))
+        .expect(200);
+      expect(listAfterPublish.body).toHaveLength(1);
+      expect(listAfterPublish.body[0].mySubmission).toBeNull();
+
+      // A student not enrolled in this course can't reach it (404).
+      await request(app.getHttpServer())
+        .get(`/organizations/me/portal/assignments/${draftAssignment.body.id}`)
+        .set(...auth(otherStudentToken))
+        .expect(404);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/portal/assignments/${draftAssignment.body.id}/submit`)
+        .set(...auth(otherStudentToken))
+        .send({ content: "Intruder submission" })
+        .expect(404);
+
+      const submission = await request(app.getHttpServer())
+        .post(`/organizations/me/portal/assignments/${draftAssignment.body.id}/submit`)
+        .set(...auth(studentToken))
+        .send({ content: "My first draft." })
+        .expect(201);
+      expect(submission.body.status).toBe("SUBMITTED");
+
+      // allowResubmission is false — a second submit is rejected (409).
+      await request(app.getHttpServer())
+        .post(`/organizations/me/portal/assignments/${draftAssignment.body.id}/submit`)
+        .set(...auth(studentToken))
+        .send({ content: "Trying again" })
+        .expect(409);
+
+      // A different teacher can't grade a submission on someone else's
+      // assignment (404).
+      await request(app.getHttpServer())
+        .put(`/organizations/me/teacher-portal/assignments/${draftAssignment.body.id}/submissions/${student.body.id}/grade`)
+        .set(...auth(otherTeacherToken))
+        .send({ score: 10 })
+        .expect(404);
+
+      const teacherView = await request(app.getHttpServer())
+        .get(`/organizations/me/teacher-portal/assignments?teachingAssignmentId=${teachingAssignment.body.id}`)
+        .set(...auth(teacherToken))
+        .expect(200);
+      expect(teacherView.body).toHaveLength(1);
+      expect(teacherView.body[0].submissions).toHaveLength(1);
+      expect(teacherView.body[0].submissions[0].student.id).toBe(student.body.id);
+
+      await request(app.getHttpServer())
+        .put(`/organizations/me/teacher-portal/assignments/${draftAssignment.body.id}/submissions/${student.body.id}/grade`)
+        .set(...auth(teacherToken))
+        .send({ score: 8, feedback: "Good start, needs more detail." })
+        .expect(200);
+
+      const studentAfterGrade = await request(app.getHttpServer())
+        .get(`/organizations/me/portal/assignments/${draftAssignment.body.id}`)
+        .set(...auth(studentToken))
+        .expect(200);
+      expect(studentAfterGrade.body.mySubmission.status).toBe("GRADED");
+      expect(studentAfterGrade.body.mySubmission.score).toBe(8);
+      expect(studentAfterGrade.body.mySubmission.feedback).toBe("Good start, needs more detail.");
+      // Never exposes another student's submission — mySubmission is
+      // the only submission-shaped field on this response.
+      expect(studentAfterGrade.body.submissions).toBeUndefined();
+
+      // Cross-tenant: org B can't create/publish/grade on org A's
+      // course, and org B's own student-portal has no such assignment.
+      await request(app.getHttpServer())
+        .post("/organizations/me/teacher-portal/assignments")
+        .set(...auth(tokenB))
+        .send({ teachingAssignmentId: teachingAssignment.body.id, title: "Intruder Assignment", submissionType: "TEXT" })
+        .expect(404);
+    }, 60000);
+  });
 });

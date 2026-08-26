@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { PrismaClient } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { DashboardsService } from "../dashboards/dashboards.service";
+import { AssignmentsService } from "../assignments/assignments.service";
 import { CreateClassSessionDto } from "../class-sessions/dto/create-class-session.dto";
 import { RecordProgressDto } from "../class-sessions/dto/record-progress.dto";
 import { CreateClassMaterialDto } from "../class-sessions/dto/create-class-material.dto";
@@ -9,6 +10,9 @@ import { CreateCourseModuleDto } from "./dto/create-course-module.dto";
 import { UpdateCourseModuleDto } from "./dto/update-course-module.dto";
 import { CreateCourseModuleItemDto } from "./dto/create-course-module-item.dto";
 import { UpdateCourseModuleItemDto } from "./dto/update-course-module-item.dto";
+import { CreateAssignmentDto } from "../assignments/dto/create-assignment.dto";
+import { UpdateAssignmentDto } from "../assignments/dto/update-assignment.dto";
+import { GradeSubmissionDto } from "../assignments/dto/grade-submission.dto";
 
 const SESSION_INCLUDE = {
   classSchedule: {
@@ -45,6 +49,7 @@ export class TeacherPortalService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly dashboards: DashboardsService,
+    private readonly assignments: AssignmentsService,
   ) {}
 
   async getMe(organizationId: string, userId: string) {
@@ -265,6 +270,72 @@ export class TeacherPortalService {
         where: { id: itemId },
         data: { title: dto.title, content: dto.content, sequence: dto.sequence, isPublished: dto.isPublished },
       });
+    });
+  }
+
+  // ── Assignments (LMS discovery slice 3) ─────────────────────────────
+  // Reuses AssignmentsService's already-tested create/update/grade
+  // logic wholesale (same "reuse the existing service, add a
+  // self-service ownership check in front" precedent as
+  // DashboardsService above) — each call here does its own ownership
+  // check first, then calls into AssignmentsService as an independent
+  // top-level call (never nested inside this method's own withTenant,
+  // since Prisma doesn't support nested $transaction calls).
+
+  async listAssignments(organizationId: string, userId: string, teachingAssignmentId: string) {
+    const employee = await this.getOwnEmployee(organizationId, userId);
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.assertOwnsTeachingAssignment(tx, employee.id, teachingAssignmentId);
+      return tx.assignment.findMany({
+        where: { organizationId, teachingAssignmentId },
+        include: { submissions: { include: { student: true } } },
+        orderBy: { createdAt: "desc" },
+      });
+    });
+  }
+
+  async createAssignment(organizationId: string, userId: string, dto: CreateAssignmentDto) {
+    const employee = await this.getOwnEmployee(organizationId, userId);
+    await this.prisma.withTenant(organizationId, (tx) =>
+      this.assertOwnsTeachingAssignment(tx, employee.id, dto.teachingAssignmentId),
+    );
+    return this.assignments.createAssignment(organizationId, dto);
+  }
+
+  async getAssignmentDetail(organizationId: string, userId: string, assignmentId: string) {
+    const employee = await this.getOwnEmployee(organizationId, userId);
+    await this.assertOwnsAssignment(organizationId, employee.id, assignmentId);
+    return this.assignments.getAssignment(organizationId, assignmentId);
+  }
+
+  async updateAssignment(organizationId: string, userId: string, assignmentId: string, dto: UpdateAssignmentDto) {
+    const employee = await this.getOwnEmployee(organizationId, userId);
+    await this.assertOwnsAssignment(organizationId, employee.id, assignmentId);
+    return this.assignments.updateAssignment(organizationId, assignmentId, dto);
+  }
+
+  async gradeSubmission(
+    organizationId: string,
+    userId: string,
+    assignmentId: string,
+    studentId: string,
+    dto: GradeSubmissionDto,
+  ) {
+    const employee = await this.getOwnEmployee(organizationId, userId);
+    await this.assertOwnsAssignment(organizationId, employee.id, assignmentId);
+    return this.assignments.grade(organizationId, assignmentId, studentId, dto);
+  }
+
+  private async assertOwnsAssignment(organizationId: string, employeeId: string, assignmentId: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const assignment = await tx.assignment.findUnique({
+        where: { id: assignmentId },
+        include: { teachingAssignment: true },
+      });
+      if (!assignment || assignment.teachingAssignment.employeeId !== employeeId) {
+        throw new NotFoundException("Assignment not found");
+      }
+      return assignment;
     });
   }
 

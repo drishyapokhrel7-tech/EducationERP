@@ -3,6 +3,7 @@ import { AssignmentsService } from "./assignments.service";
 import { CreateAssignmentDto } from "./dto/create-assignment.dto";
 import { CreateSubmissionDto } from "./dto/create-submission.dto";
 import { GradeSubmissionDto } from "./dto/grade-submission.dto";
+import { UpdateAssignmentDto } from "./dto/update-assignment.dto";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
@@ -30,6 +31,16 @@ export class AssignmentsController {
   @RequirePermissions("assignment:view")
   getAssignment(@CurrentUser() user: JwtPayload, @Param("assignmentId") assignmentId: string) {
     return this.assignments.getAssignment(user.organizationId, assignmentId);
+  }
+
+  @Put("assignments/:assignmentId")
+  @RequirePermissions("assignment:manage")
+  updateAssignment(
+    @CurrentUser() user: JwtPayload,
+    @Param("assignmentId") assignmentId: string,
+    @Body() dto: UpdateAssignmentDto,
+  ) {
+    return this.assignments.updateAssignment(user.organizationId, assignmentId, dto);
   }
 
   @Post("assignments/:assignmentId/submissions")

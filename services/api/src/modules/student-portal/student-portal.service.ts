@@ -3,6 +3,7 @@ import { PrismaClient } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { DashboardsService } from "../dashboards/dashboards.service";
 import { FinanceService } from "../finance/finance.service";
+import { AssignmentsService } from "../assignments/assignments.service";
 
 /**
  * Self-service, not admin-facing — studentId is derived exclusively from
@@ -19,6 +20,7 @@ export class StudentPortalService {
     private readonly prisma: PrismaService,
     private readonly dashboards: DashboardsService,
     private readonly finance: FinanceService,
+    private readonly assignments: AssignmentsService,
   ) {}
 
   async getDashboard(organizationId: string, userId: string) {
@@ -103,6 +105,63 @@ export class StudentPortalService {
         create: { organizationId, moduleItemId: itemId, studentId: student.id },
       });
     });
+  }
+
+  // ── Assignments (LMS discovery slice 3) ─────────────────────────────
+  // Never returns another student's submission/feedback — each read
+  // fetches only the calling student's own AssignmentSubmission
+  // (findUnique by the assignmentId+studentId compound key), unlike
+  // the admin/teacher views which legitimately see everyone's.
+
+  async listAssignments(organizationId: string, userId: string) {
+    const student = await this.getOwnStudent(organizationId, userId);
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const enrollment = await tx.studentEnrollment.findFirst({ where: { organizationId, studentId: student.id, status: "ACTIVE" } });
+      if (!enrollment) return [];
+
+      const teachingAssignments = await tx.teachingAssignment.findMany({
+        where: { organizationId, sectionId: enrollment.sectionId, termId: enrollment.termId },
+      });
+      const list = await tx.assignment.findMany({
+        where: { organizationId, isPublished: true, teachingAssignmentId: { in: teachingAssignments.map((t) => t.id) } },
+        include: { teachingAssignment: { include: { subject: true, employee: true } } },
+        orderBy: { dueDate: "asc" },
+      });
+
+      const submissions = await tx.assignmentSubmission.findMany({
+        where: { organizationId, studentId: student.id, assignmentId: { in: list.map((a) => a.id) } },
+      });
+      const byAssignmentId = new Map(submissions.map((s) => [s.assignmentId, s]));
+
+      return list.map((a) => ({ ...a, mySubmission: byAssignmentId.get(a.id) ?? null }));
+    });
+  }
+
+  async getAssignment(organizationId: string, userId: string, assignmentId: string) {
+    const student = await this.getOwnStudent(organizationId, userId);
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const assignment = await this.loadPublishedAssignment(tx, organizationId, student.id, assignmentId);
+      const mySubmission = await tx.assignmentSubmission.findUnique({
+        where: { assignmentId_studentId: { assignmentId, studentId: student.id } },
+      });
+      return { ...assignment, mySubmission };
+    });
+  }
+
+  async submitAssignment(organizationId: string, userId: string, assignmentId: string, content: string | undefined) {
+    const student = await this.getOwnStudent(organizationId, userId);
+    await this.prisma.withTenant(organizationId, (tx) => this.loadPublishedAssignment(tx, organizationId, student.id, assignmentId));
+    return this.assignments.submit(organizationId, assignmentId, { studentId: student.id, content });
+  }
+
+  private async loadPublishedAssignment(tx: PrismaClient, organizationId: string, studentId: string, assignmentId: string) {
+    const assignment = await tx.assignment.findUnique({
+      where: { id: assignmentId },
+      include: { teachingAssignment: { include: { subject: true, employee: true } } },
+    });
+    if (!assignment || !assignment.isPublished) throw new NotFoundException("Assignment not found");
+    await this.assertEnrolledInCourse(tx, organizationId, studentId, assignment.teachingAssignmentId);
+    return assignment;
   }
 
   private async assertEnrolledInCourse(

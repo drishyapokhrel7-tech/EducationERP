@@ -90,9 +90,13 @@ import type {
   SyllabusNodeProgress,
   Assignment,
   CreateAssignmentInput,
+  UpdateAssignmentInput,
   AssignmentSubmission,
   CreateSubmissionInput,
   GradeSubmissionInput,
+  TeacherPortalAssignmentListItem,
+  StudentPortalAssignment,
+  SubmitAssignmentInput,
   KnowledgeCheck,
   CreateKnowledgeCheckInput,
   KnowledgeCheckQuestion,
@@ -594,6 +598,11 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       request<Assignment>("/organizations/me/assignments", { method: "POST", body: JSON.stringify(input) }),
     getAssignment: (assignmentId: string) =>
       request<Assignment>(`/organizations/me/assignments/${assignmentId}`),
+    updateAssignment: (assignmentId: string, input: UpdateAssignmentInput) =>
+      request<Assignment>(`/organizations/me/assignments/${assignmentId}`, {
+        method: "PUT",
+        body: JSON.stringify(input),
+      }),
     submitAssignment: (assignmentId: string, input: CreateSubmissionInput) =>
       request<AssignmentSubmission>(`/organizations/me/assignments/${assignmentId}/submissions`, {
         method: "POST",
@@ -1019,6 +1028,39 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       request<StudentPortalModule[]>(`/organizations/me/portal/courses/${teachingAssignmentId}/modules`),
     completeModuleItem: (itemId: string) =>
       request(`/organizations/me/portal/module-items/${itemId}/complete`, { method: "POST" }),
+
+    // Assignments — teacher self-service side (LMS discovery slice 3).
+    listTeacherAssignments: (teachingAssignmentId: string) =>
+      request<TeacherPortalAssignmentListItem[]>(
+        `/organizations/me/teacher-portal/assignments?teachingAssignmentId=${encodeURIComponent(teachingAssignmentId)}`,
+      ),
+    createTeacherAssignment: (input: CreateAssignmentInput) =>
+      request<Assignment>("/organizations/me/teacher-portal/assignments", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    getTeacherAssignment: (assignmentId: string) =>
+      request<Assignment>(`/organizations/me/teacher-portal/assignments/${assignmentId}`),
+    updateTeacherAssignment: (assignmentId: string, input: UpdateAssignmentInput) =>
+      request<Assignment>(`/organizations/me/teacher-portal/assignments/${assignmentId}`, {
+        method: "PUT",
+        body: JSON.stringify(input),
+      }),
+    gradeTeacherSubmission: (assignmentId: string, studentId: string, input: GradeSubmissionInput) =>
+      request<AssignmentSubmission>(
+        `/organizations/me/teacher-portal/assignments/${assignmentId}/submissions/${studentId}/grade`,
+        { method: "PUT", body: JSON.stringify(input) },
+      ),
+
+    // Assignments — student self-service side.
+    listStudentAssignments: () => request<StudentPortalAssignment[]>("/organizations/me/portal/assignments"),
+    getStudentAssignment: (assignmentId: string) =>
+      request<StudentPortalAssignment>(`/organizations/me/portal/assignments/${assignmentId}`),
+    submitStudentAssignment: (assignmentId: string, input: SubmitAssignmentInput) =>
+      request<AssignmentSubmission>(`/organizations/me/portal/assignments/${assignmentId}/submit`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
   };
 }
 

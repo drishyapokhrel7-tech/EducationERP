@@ -10,6 +10,9 @@ import { CreateCourseModuleDto } from "./dto/create-course-module.dto";
 import { UpdateCourseModuleDto } from "./dto/update-course-module.dto";
 import { CreateCourseModuleItemDto } from "./dto/create-course-module-item.dto";
 import { UpdateCourseModuleItemDto } from "./dto/update-course-module-item.dto";
+import { CreateAssignmentDto } from "../assignments/dto/create-assignment.dto";
+import { UpdateAssignmentDto } from "../assignments/dto/update-assignment.dto";
+import { GradeSubmissionDto } from "../assignments/dto/grade-submission.dto";
 
 // Deliberately JwtAuthGuard only — no PermissionsGuard/@RequirePermissions,
 // same reasoning as StudentPortalController/DriverPortalController:
@@ -103,5 +106,39 @@ export class TeacherPortalController {
     @Body() dto: UpdateCourseModuleItemDto,
   ) {
     return this.teacherPortal.updateModuleItem(user.organizationId, user.sub, itemId, dto);
+  }
+
+  @Get("assignments")
+  listAssignments(@CurrentUser() user: JwtPayload, @Query("teachingAssignmentId") teachingAssignmentId: string) {
+    return this.teacherPortal.listAssignments(user.organizationId, user.sub, teachingAssignmentId);
+  }
+
+  @Post("assignments")
+  createAssignment(@CurrentUser() user: JwtPayload, @Body() dto: CreateAssignmentDto) {
+    return this.teacherPortal.createAssignment(user.organizationId, user.sub, dto);
+  }
+
+  @Get("assignments/:assignmentId")
+  getAssignmentDetail(@CurrentUser() user: JwtPayload, @Param("assignmentId") assignmentId: string) {
+    return this.teacherPortal.getAssignmentDetail(user.organizationId, user.sub, assignmentId);
+  }
+
+  @Put("assignments/:assignmentId")
+  updateAssignment(
+    @CurrentUser() user: JwtPayload,
+    @Param("assignmentId") assignmentId: string,
+    @Body() dto: UpdateAssignmentDto,
+  ) {
+    return this.teacherPortal.updateAssignment(user.organizationId, user.sub, assignmentId, dto);
+  }
+
+  @Put("assignments/:assignmentId/submissions/:studentId/grade")
+  gradeSubmission(
+    @CurrentUser() user: JwtPayload,
+    @Param("assignmentId") assignmentId: string,
+    @Param("studentId") studentId: string,
+    @Body() dto: GradeSubmissionDto,
+  ) {
+    return this.teacherPortal.gradeSubmission(user.organizationId, user.sub, assignmentId, studentId, dto);
   }
 }

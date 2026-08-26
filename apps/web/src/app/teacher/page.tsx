@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import { toast } from "sonner";
 import { LogOut } from "lucide-react";
-import { ApiError, type CourseModuleItemType } from "@education-erp/api-client";
+import { ApiError, type CourseModuleItemType, type SubmissionType } from "@education-erp/api-client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -70,6 +70,18 @@ export default function TeacherPage() {
     content: "",
     sequence: "1",
   });
+
+  const assignments = useSWR(courseId ? ["teacher-assignments", courseId] : null, () => api.listTeacherAssignments(courseId));
+  const [assignmentForm, setAssignmentForm] = useState<{
+    title: string;
+    description: string;
+    submissionType: SubmissionType;
+    dueDate: string;
+    maxScore: string;
+    allowResubmission: boolean;
+  }>({ title: "", description: "", submissionType: "TEXT", dueDate: "", maxScore: "", allowResubmission: false });
+  const [expandedAssignmentId, setExpandedAssignmentId] = useState<string | null>(null);
+  const [gradeForms, setGradeForms] = useState<Record<string, { score: string; feedback: string }>>({});
 
   async function openClass(classScheduleId: string) {
     try {
@@ -515,6 +527,215 @@ export default function TeacherPage() {
                       </div>
                       <Button type="submit" size="sm" disabled={!moduleForm.title}>
                         Add module
+                      </Button>
+                    </form>
+                  </>
+                ) : null}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>My courses — assignments</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <NativeSelect
+                  className="w-64"
+                  placeholder="Select a course"
+                  value={courseId}
+                  onChange={(v) => {
+                    setCourseId(v);
+                    setExpandedAssignmentId(null);
+                  }}
+                  options={me.data.teachingAssignments.map((t) => ({ value: t.id, label: t.subject.name }))}
+                />
+
+                {courseId ? (
+                  <>
+                    {!assignments.data || assignments.data.length === 0 ? (
+                      <p className="text-muted-foreground text-sm">No assignments yet.</p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {assignments.data.map((a) => (
+                          <li key={a.id} className="rounded-md border p-3 text-sm">
+                            <div className="flex items-center justify-between gap-3">
+                              <button
+                                type="button"
+                                className="text-left font-medium"
+                                onClick={() => setExpandedAssignmentId(expandedAssignmentId === a.id ? null : a.id)}
+                              >
+                                {a.title}
+                                {a.dueDate ? (
+                                  <span className="text-muted-foreground font-normal">
+                                    {" "}
+                                    — due {new Date(a.dueDate).toLocaleDateString()}
+                                  </span>
+                                ) : null}
+                              </button>
+                              <div className="flex items-center gap-2">
+                                <Badge variant="secondary">{a.submissions.length} submitted</Badge>
+                                <Badge variant={a.isPublished ? "success" : "secondary"}>
+                                  {a.isPublished ? "Published" : "Draft"}
+                                </Badge>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={async () => {
+                                    try {
+                                      await api.updateTeacherAssignment(a.id, { isPublished: !a.isPublished });
+                                      assignments.mutate();
+                                    } catch (err) {
+                                      toast.error(errorMessage(err, "Failed to update assignment"));
+                                    }
+                                  }}
+                                >
+                                  {a.isPublished ? "Unpublish" : "Publish"}
+                                </Button>
+                              </div>
+                            </div>
+                            {expandedAssignmentId === a.id ? (
+                              <div className="mt-3 space-y-2 border-t pt-3">
+                                {a.submissions.length === 0 ? (
+                                  <p className="text-muted-foreground text-xs">No submissions yet.</p>
+                                ) : (
+                                  a.submissions.map((s) => {
+                                    const isLate = a.dueDate && new Date(s.submittedAt) > new Date(a.dueDate);
+                                    const form = gradeForms[s.studentId] ?? { score: s.score?.toString() ?? "", feedback: s.feedback ?? "" };
+                                    return (
+                                      <div key={s.id} className="rounded border p-2 text-xs">
+                                        <div className="flex items-center justify-between gap-2">
+                                          <span>
+                                            {s.student.firstName} {s.student.lastName}{" "}
+                                            <span className="text-muted-foreground">
+                                              — submitted {new Date(s.submittedAt).toLocaleString()}
+                                            </span>
+                                            {isLate ? <Badge variant="warning" className="ml-1">Late</Badge> : null}
+                                            <Badge variant={statusVariant(s.status)} className="ml-1">
+                                              {s.status}
+                                            </Badge>
+                                          </span>
+                                        </div>
+                                        {s.content ? <p className="text-muted-foreground mt-1 whitespace-pre-wrap">{s.content}</p> : null}
+                                        <form
+                                          className="mt-2 flex flex-wrap items-end gap-2"
+                                          onSubmit={async (e: FormEvent) => {
+                                            e.preventDefault();
+                                            try {
+                                              await api.gradeTeacherSubmission(a.id, s.studentId, {
+                                                score: Number(form.score),
+                                                feedback: form.feedback || undefined,
+                                              });
+                                              assignments.mutate();
+                                              toast.success("Graded");
+                                            } catch (err) {
+                                              toast.error(errorMessage(err, "Failed to grade"));
+                                            }
+                                          }}
+                                        >
+                                          <div className="space-y-1">
+                                            <Label className="text-xs">Score</Label>
+                                            <Input
+                                              type="number"
+                                              className="h-7 w-20"
+                                              value={form.score}
+                                              onChange={(e) =>
+                                                setGradeForms((f) => ({ ...f, [s.studentId]: { ...form, score: e.target.value } }))
+                                              }
+                                            />
+                                          </div>
+                                          <div className="space-y-1">
+                                            <Label className="text-xs">Feedback</Label>
+                                            <Input
+                                              className="h-7 w-48"
+                                              value={form.feedback}
+                                              onChange={(e) =>
+                                                setGradeForms((f) => ({ ...f, [s.studentId]: { ...form, feedback: e.target.value } }))
+                                              }
+                                            />
+                                          </div>
+                                          <Button type="submit" size="sm" className="h-7" disabled={!form.score}>
+                                            Save grade
+                                          </Button>
+                                        </form>
+                                      </div>
+                                    );
+                                  })
+                                )}
+                              </div>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
+                    <Separator />
+
+                    <form
+                      className="flex flex-wrap items-end gap-3"
+                      onSubmit={async (e: FormEvent) => {
+                        e.preventDefault();
+                        try {
+                          await api.createTeacherAssignment({
+                            teachingAssignmentId: courseId,
+                            title: assignmentForm.title,
+                            description: assignmentForm.description || undefined,
+                            submissionType: assignmentForm.submissionType,
+                            dueDate: assignmentForm.dueDate || undefined,
+                            maxScore: assignmentForm.maxScore ? Number(assignmentForm.maxScore) : undefined,
+                            allowResubmission: assignmentForm.allowResubmission,
+                          });
+                          setAssignmentForm({
+                            title: "",
+                            description: "",
+                            submissionType: "TEXT",
+                            dueDate: "",
+                            maxScore: "",
+                            allowResubmission: false,
+                          });
+                          assignments.mutate();
+                          toast.success("Assignment created");
+                        } catch (err) {
+                          toast.error(errorMessage(err, "Failed to create assignment"));
+                        }
+                      }}
+                    >
+                      <div className="space-y-1">
+                        <Label className="text-xs">Title</Label>
+                        <Input
+                          className="w-40"
+                          value={assignmentForm.title}
+                          onChange={(e) => setAssignmentForm((f) => ({ ...f, title: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Due date</Label>
+                        <Input
+                          type="date"
+                          className="w-36"
+                          value={assignmentForm.dueDate}
+                          onChange={(e) => setAssignmentForm((f) => ({ ...f, dueDate: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Max score</Label>
+                        <Input
+                          type="number"
+                          className="w-20"
+                          value={assignmentForm.maxScore}
+                          onChange={(e) => setAssignmentForm((f) => ({ ...f, maxScore: e.target.value }))}
+                        />
+                      </div>
+                      <label className="flex items-center gap-1 text-xs">
+                        <input
+                          type="checkbox"
+                          checked={assignmentForm.allowResubmission}
+                          onChange={(e) => setAssignmentForm((f) => ({ ...f, allowResubmission: e.target.checked }))}
+                        />
+                        Allow resubmission
+                      </label>
+                      <Button type="submit" size="sm" disabled={!assignmentForm.title}>
+                        Add assignment
                       </Button>
                     </form>
                   </>

@@ -1578,6 +1578,13 @@ model Assignment {
   dueDate              DateTime?
   allowResubmission    Boolean        @default(false)
   maxScore             Float?
+  // Added for self-service assignments (LMS discovery slice 3) — a
+  // student must never see a draft assignment a teacher is still
+  // building, same publish-gating precedent as CourseModule/
+  // CourseModuleItem. Defaults false so every admin-created assignment
+  // from before this field existed reads as an unpublished draft, not
+  // silently visible to students.
+  isPublished          Boolean        @default(false)
   createdAt            DateTime       @default(now())
   updatedAt            DateTime       @updatedAt
 
