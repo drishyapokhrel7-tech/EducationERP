@@ -218,10 +218,21 @@ export class StudentsService {
     }
 
     const errors: ImportRowError[] = [];
-    const seenCodes = new Set<string>();
     let created = 0;
 
     await this.prisma.withTenant(organizationId, async (tx) => {
+      // One upfront read instead of a per-row findFirst — the whole
+      // batch runs inside this single transaction, so no concurrent
+      // write can appear between here and the loop below. A per-row
+      // round trip is what previously blew the 15s transaction
+      // timeout on a 76-row file under ordinary Neon latency.
+      const existingRows = await tx.student.findMany({
+        where: { organizationId },
+        select: { studentCode: true },
+      });
+      const existingCodes = new Set(existingRows.map((s) => s.studentCode));
+      const seenCodes = new Set<string>();
+
       for (let i = 0; i < records.length; i++) {
         const rowNumber = i + 2; // header occupies row 1
         const row = records[i];
@@ -247,8 +258,7 @@ export class StudentsService {
           errors.push({ row: rowNumber, message: `Duplicate studentCode "${studentCode}" within this file` });
           continue;
         }
-        const existing = await tx.student.findFirst({ where: { organizationId, studentCode } });
-        if (existing) {
+        if (existingCodes.has(studentCode)) {
           errors.push({ row: rowNumber, message: `studentCode "${studentCode}" already exists` });
           continue;
         }

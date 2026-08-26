@@ -211,6 +211,9 @@ import type {
   DriverPortalMe,
   CreateEmployeeLoginInput,
   CreateEmployeeLoginResult,
+  TeacherPortalMe,
+  TeacherPortalClassToday,
+  TeacherPortalSyllabusNode,
 } from "./types";
 
 export class ApiError extends Error {
@@ -946,6 +949,35 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         method: "POST",
         body: JSON.stringify(input),
       }),
+
+    // Teacher self-service portal — same JwtAuthGuard-only pattern,
+    // identity derived server-side from the caller's own token.
+    getTeacherPortalMe: () => request<TeacherPortalMe>("/organizations/me/teacher-portal/me"),
+    teacherClassesToday: (date: string) =>
+      request<TeacherPortalClassToday[]>(`/organizations/me/teacher-portal/today?date=${encodeURIComponent(date)}`),
+    createTeacherClassSession: (input: CreateClassSessionInput) =>
+      request<ClassSession>("/organizations/me/teacher-portal/class-sessions", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    getTeacherClassSession: (sessionId: string) =>
+      request<ClassSession>(`/organizations/me/teacher-portal/class-sessions/${sessionId}`),
+    recordTeacherProgress: (sessionId: string, input: RecordProgressInput) =>
+      request<ClassSession>(`/organizations/me/teacher-portal/class-sessions/${sessionId}/progress`, {
+        method: "PUT",
+        body: JSON.stringify(input),
+      }),
+    addTeacherClassMaterial: (sessionId: string, input: CreateClassMaterialInput) =>
+      request<ClassMaterial>(`/organizations/me/teacher-portal/class-sessions/${sessionId}/materials`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    completeTeacherClassSession: (sessionId: string) =>
+      request<ClassSession>(`/organizations/me/teacher-portal/class-sessions/${sessionId}/complete`, {
+        method: "POST",
+      }),
+    getTeacherSyllabusNodes: (sessionId: string) =>
+      request<TeacherPortalSyllabusNode[]>(`/organizations/me/teacher-portal/class-sessions/${sessionId}/syllabus-nodes`),
   };
 }
 

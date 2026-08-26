@@ -2104,3 +2104,18 @@ export interface CreateEmployeeLoginInput {
 export interface CreateEmployeeLoginResult extends SafeUser {
   username: string;
 }
+
+// Teacher self-service portal — same self-service pattern as
+// student-portal/driver-portal; teacherDashboard is the exact same
+// aggregate the admin-facing dashboards endpoint returns, just scoped
+// server-side to the caller's own Employee row.
+export type TeacherPortalMe = TeacherDashboard;
+
+export interface TeacherPortalClassToday {
+  classSchedule: ClassSchedule;
+  classSession: ClassSession | null;
+}
+
+// No learningObjectives include on this endpoint's query — narrower
+// than SyllabusNode, not lying about the shape.
+export type TeacherPortalSyllabusNode = Omit<SyllabusNode, "learningObjectives">;

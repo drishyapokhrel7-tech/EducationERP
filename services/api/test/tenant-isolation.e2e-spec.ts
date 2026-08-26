@@ -5806,4 +5806,235 @@ describe("Tenant isolation (e2e)", () => {
       expect(bLatestByVehicle.body).toEqual([]);
     }, 60000);
   });
+
+  describe("Teacher self-service portal (LMS discovery slice 1)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    async function buildTeacherFixture(token: string, suffix: string) {
+      const campus = await request(app.getHttpServer())
+        .post("/organizations/me/campuses")
+        .set(...auth(token))
+        .send({ name: `Teacher Campus ${suffix}`, code: `TCCAMP${suffix}` })
+        .expect(201);
+      const faculty = await request(app.getHttpServer())
+        .post("/organizations/me/faculties")
+        .set(...auth(token))
+        .send({ campusId: campus.body.id, name: `Teacher Faculty ${suffix}`, code: `TCFAC${suffix}` })
+        .expect(201);
+      const department = await request(app.getHttpServer())
+        .post("/organizations/me/departments")
+        .set(...auth(token))
+        .send({ facultyId: faculty.body.id, name: `Teacher Dept ${suffix}`, code: `TCDEP${suffix}` })
+        .expect(201);
+      const program = await request(app.getHttpServer())
+        .post("/organizations/me/programs")
+        .set(...auth(token))
+        .send({ departmentId: department.body.id, name: `Teacher Program ${suffix}`, code: `TCPROG${suffix}` })
+        .expect(201);
+      const year = await request(app.getHttpServer())
+        .post("/organizations/me/academic-years")
+        .set(...auth(token))
+        .send({ name: `Teacher Year ${suffix}`, startDate: "2099-08-01", endDate: "2100-06-30" })
+        .expect(201);
+      const term = await request(app.getHttpServer())
+        .post("/organizations/me/terms")
+        .set(...auth(token))
+        .send({
+          academicYearId: year.body.id,
+          name: `Teacher Term ${suffix}`,
+          code: `TCT${suffix}`,
+          sequence: 1,
+          startDate: "2099-08-01",
+          endDate: "2099-12-15",
+        })
+        .expect(201);
+      const section = await request(app.getHttpServer())
+        .post("/organizations/me/sections")
+        .set(...auth(token))
+        .send({ programId: program.body.id, termId: term.body.id, name: `Teacher Section ${suffix}`, code: `TCS${suffix}` })
+        .expect(201);
+      const staffType = await request(app.getHttpServer())
+        .post("/organizations/me/staff-types")
+        .set(...auth(token))
+        .send({ name: `Teacher Staff Type ${suffix}`, code: `TCST${suffix}` })
+        .expect(201);
+      const designation = await request(app.getHttpServer())
+        .post("/organizations/me/designations")
+        .set(...auth(token))
+        .send({ name: `Teacher Designation ${suffix}`, code: `TCDS${suffix}` })
+        .expect(201);
+      const subject = await request(app.getHttpServer())
+        .post("/organizations/me/subjects")
+        .set(...auth(token))
+        .send({ name: `Teacher Subject ${suffix}`, code: `TCSUB${suffix}` })
+        .expect(201);
+      const room = await request(app.getHttpServer())
+        .post("/organizations/me/rooms")
+        .set(...auth(token))
+        .send({ campusId: campus.body.id, name: `Teacher Room ${suffix}`, code: `TCRM${suffix}` })
+        .expect(201);
+      const period = await request(app.getHttpServer())
+        .post("/organizations/me/periods")
+        .set(...auth(token))
+        .send({ name: `Period ${suffix}`, code: `TCP${suffix}`, sequence: 1, startTime: "09:00", endTime: "09:45" })
+        .expect(201);
+      return {
+        termId: term.body.id,
+        sectionId: section.body.id,
+        staffTypeId: staffType.body.id,
+        designationId: designation.body.id,
+        subjectId: subject.body.id,
+        roomId: room.body.id,
+        periodId: period.body.id,
+      };
+    }
+
+    async function buildEmployee(token: string, f: { staffTypeId: string; designationId: string }, suffix: string) {
+      const employee = await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(token))
+        .send({
+          staffTypeId: f.staffTypeId,
+          designationId: f.designationId,
+          employeeCode: `TC-EMP-${suffix}`,
+          firstName: "Teacher",
+          lastName: suffix,
+          email: `teacher-${suffix}-${run}@rls-e2e.test`,
+          dateOfJoining: "2026-01-01",
+        })
+        .expect(201);
+      return employee.body.id as string;
+    }
+
+    it("gates teacher-portal to a linked, owning teacher and enforces per-session ownership (IDOR guard)", async () => {
+      const f = await buildTeacherFixture(tokenA, `TC${run}`);
+      const teacherEmployeeId = await buildEmployee(tokenA, f, `TC${run}`);
+      const otherEmployeeId = await buildEmployee(tokenA, f, `TC2${run}`);
+
+      const assignment = await request(app.getHttpServer())
+        .post("/organizations/me/teaching-assignments")
+        .set(...auth(tokenA))
+        .send({ employeeId: teacherEmployeeId, subjectId: f.subjectId, sectionId: f.sectionId, termId: f.termId })
+        .expect(201);
+      const schedule = await request(app.getHttpServer())
+        .post("/organizations/me/class-schedules")
+        .set(...auth(tokenA))
+        .send({ teachingAssignmentId: assignment.body.id, roomId: f.roomId, periodId: f.periodId, dayOfWeek: 1 })
+        .expect(201);
+
+      const login = await request(app.getHttpServer())
+        .post(`/organizations/me/employees/${teacherEmployeeId}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "TeacherPass123" })
+        .expect(201);
+      const otherLogin = await request(app.getHttpServer())
+        .post(`/organizations/me/employees/${otherEmployeeId}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "OtherPass123" })
+        .expect(201);
+
+      const teacherSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: login.body.username, password: "TeacherPass123" })
+        .expect(201);
+      const otherSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: otherLogin.body.username, password: "OtherPass123" })
+        .expect(201);
+      const teacherToken = teacherSession.body.accessToken as string;
+      const otherToken = otherSession.body.accessToken as string;
+
+      // A login with no TeachingAssignment 404s on teacher-portal/me —
+      // same IDOR-safe-by-construction shape as student/driver-portal.
+      await request(app.getHttpServer())
+        .get("/organizations/me/teacher-portal/me")
+        .set(...auth(otherToken))
+        .expect(404);
+
+      const me = await request(app.getHttpServer())
+        .get("/organizations/me/teacher-portal/me")
+        .set(...auth(teacherToken))
+        .expect(200);
+      expect(me.body.employee.id).toBe(teacherEmployeeId);
+      expect(me.body.teachingAssignments).toHaveLength(1);
+
+      const session = await request(app.getHttpServer())
+        .post("/organizations/me/teacher-portal/class-sessions")
+        .set(...auth(teacherToken))
+        .send({ classScheduleId: schedule.body.id, date: "2099-08-03" })
+        .expect(201);
+      expect(session.body.classSchedule.id).toBe(schedule.body.id);
+
+      // Opening the same schedule+date again is idempotent, not a 409.
+      const reopened = await request(app.getHttpServer())
+        .post("/organizations/me/teacher-portal/class-sessions")
+        .set(...auth(teacherToken))
+        .send({ classScheduleId: schedule.body.id, date: "2099-08-03" })
+        .expect(201);
+      expect(reopened.body.id).toBe(session.body.id);
+
+      // A different teacher (no TeachingAssignment on this schedule)
+      // can't read, progress, materialize, or complete this session.
+      await request(app.getHttpServer())
+        .get(`/organizations/me/teacher-portal/class-sessions/${session.body.id}`)
+        .set(...auth(otherToken))
+        .expect(404);
+      await request(app.getHttpServer())
+        .put(`/organizations/me/teacher-portal/class-sessions/${session.body.id}/progress`)
+        .set(...auth(otherToken))
+        .send({ progressNotes: "Intruder note" })
+        .expect(404);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/teacher-portal/class-sessions/${session.body.id}/materials`)
+        .set(...auth(otherToken))
+        .send({ title: "Intruder material" })
+        .expect(404);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/teacher-portal/class-sessions/${session.body.id}/complete`)
+        .set(...auth(otherToken))
+        .expect(404);
+
+      // Completing before a topic is recorded is rejected, matching the
+      // admin ClassSessionsService's own rule.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/teacher-portal/class-sessions/${session.body.id}/complete`)
+        .set(...auth(teacherToken))
+        .expect(400);
+
+      const progress = await request(app.getHttpServer())
+        .put(`/organizations/me/teacher-portal/class-sessions/${session.body.id}/progress`)
+        .set(...auth(teacherToken))
+        .send({ progressNotes: "Covered the introduction" })
+        .expect(200);
+      expect(progress.body.status).toBe("IN_PROGRESS");
+
+      const material = await request(app.getHttpServer())
+        .post(`/organizations/me/teacher-portal/class-sessions/${session.body.id}/materials`)
+        .set(...auth(teacherToken))
+        .send({ title: "Handout", url: "https://example.com/handout.pdf" })
+        .expect(201);
+      expect(material.body.title).toBe("Handout");
+
+      // Completing still requires a recorded topic even for the owning
+      // teacher — no actualSyllabusNodeId was set above.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/teacher-portal/class-sessions/${session.body.id}/complete`)
+        .set(...auth(teacherToken))
+        .expect(400);
+
+      const nodes = await request(app.getHttpServer())
+        .get(`/organizations/me/teacher-portal/class-sessions/${session.body.id}/syllabus-nodes`)
+        .set(...auth(teacherToken))
+        .expect(200);
+      expect(nodes.body).toEqual([]);
+
+      // Cross-tenant: org B's admin can't create a login under org A's
+      // employee, and org B has no teacher-portal data of its own.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/employees/${teacherEmployeeId}/create-login`)
+        .set(...auth(tokenB))
+        .send({ password: "IntruderPass123" })
+        .expect(404);
+    }, 60000);
+  });
 });

@@ -45,15 +45,27 @@ export default function LoginPage() {
       if (roles.includes("Student")) {
         router.push("/portal");
       } else {
-        // Driver logins carry no RBAC role at all (they only need the
-        // driver-portal, not the admin dashboard) — a 200 here is what
-        // tells them apart from every other roleless-but-staff login.
+        // Driver and Teacher logins both carry no RBAC role at all (they
+        // only need their own portal, not the admin dashboard) — a 200
+        // here is what tells them apart from every other roleless-but-
+        // staff login. Checked in sequence, not in parallel, since a
+        // 404 from one is the expected, common case, not an error to
+        // race against the other.
         try {
           await api.getDriverPortalMe();
           router.push("/driver");
+          return;
         } catch {
-          router.push("/dashboard");
+          // not a driver — fall through
         }
+        try {
+          await api.getTeacherPortalMe();
+          router.push("/teacher");
+          return;
+        } catch {
+          // not a teacher — fall through
+        }
+        router.push("/dashboard");
       }
     } catch (err) {
       const message =

@@ -16,6 +16,24 @@ export default function StaffPage() {
   const departments = useSWR("departments", () => api.listDepartments());
   const employees = useSWR("employees", () => api.listEmployees());
 
+  // Keyed by employeeId, same per-row pattern as the students page's
+  // create-login form.
+  const [loginPasswordForms, setLoginPasswordForms] = useState<Record<string, string>>({});
+  const [createdUsernames, setCreatedUsernames] = useState<Record<string, string>>({});
+
+  async function handleCreateLogin(employeeId: string) {
+    const password = loginPasswordForms[employeeId] ?? "";
+    try {
+      const result = await api.createEmployeeLogin(employeeId, { password });
+      setCreatedUsernames((m) => ({ ...m, [employeeId]: result.username }));
+      setLoginPasswordForms((f) => ({ ...f, [employeeId]: "" }));
+      employees.mutate();
+      toast.success("Login created");
+    } catch {
+      toast.error("Failed to create login — password must be at least 8 characters");
+    }
+  }
+
   const [staffTypeForm, setStaffTypeForm] = useState({ name: "", code: "" });
   const [designationForm, setDesignationForm] = useState({ name: "", code: "" });
   const [employeeForm, setEmployeeForm] = useState({
@@ -144,18 +162,52 @@ export default function StaffPage() {
         emptyLabel="No employees yet."
         items={employees.data}
         renderItem={(e: {
+          id: string;
           firstName: string;
           lastName: string;
           employeeCode: string;
+          userId: string | null;
           designation?: { name: string };
         }) => (
-          <span>
-            {e.firstName} {e.lastName}{" "}
-            <span className="text-muted-foreground">
-              {e.employeeCode}
-              {e.designation ? ` · ${e.designation.name}` : ""}
+          <div>
+            <span>
+              {e.firstName} {e.lastName}{" "}
+              <span className="text-muted-foreground">
+                {e.employeeCode}
+                {e.designation ? ` · ${e.designation.name}` : ""}
+              </span>
             </span>
-          </span>
+            {e.userId ? (
+              <p className="text-muted-foreground mt-1 text-xs">
+                Portal login: {createdUsernames[e.id] ?? "created"}
+              </p>
+            ) : (
+              <form
+                className="mt-2 flex items-end gap-2"
+                onSubmit={(ev: FormEvent) => {
+                  ev.preventDefault();
+                  handleCreateLogin(e.id);
+                }}
+              >
+                <Input
+                  type="password"
+                  className="h-7 w-40"
+                  placeholder="Set initial password"
+                  value={loginPasswordForms[e.id] ?? ""}
+                  onChange={(ev) => setLoginPasswordForms((f) => ({ ...f, [e.id]: ev.target.value }))}
+                />
+                <Button
+                  type="submit"
+                  size="sm"
+                  variant="outline"
+                  className="h-7"
+                  disabled={(loginPasswordForms[e.id] ?? "").length < 8}
+                >
+                  Create login
+                </Button>
+              </form>
+            )}
+          </div>
         )}
       >
         <form
