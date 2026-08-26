@@ -27,6 +27,7 @@ import { CameraEventsModule } from "./modules/camera-events/camera-events.module
 import { FinanceModule } from "./modules/finance/finance.module";
 import { RbacModule } from "./modules/rbac/rbac.module";
 import { LeaveModule } from "./modules/leave/leave.module";
+import { PayrollModule } from "./modules/payroll/payroll.module";
 import { QueueModule } from "./queue/queue.module";
 import { HealthController } from "./common/health.controller";
 
@@ -68,6 +69,7 @@ const queueModuleImports = process.env.REDIS_URL ? [QueueModule] : [];
     FinanceModule,
     RbacModule,
     LeaveModule,
+    PayrollModule,
     ...queueModuleImports,
   ],
   controllers: [HealthController],

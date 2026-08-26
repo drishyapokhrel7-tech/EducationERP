@@ -3,7 +3,7 @@ import type { badgeVariants } from "@/components/ui/badge";
 
 type BadgeVariant = NonNullable<VariantProps<typeof badgeVariants>["variant"]>;
 
-const SUCCESS = ["ACTIVE", "PRESENT", "IDENTIFIED", "APPROVED", "CONFIRMED", "PUBLISHED", "COMPLETED", "GRADUATED", "ENROLLED"];
+const SUCCESS = ["ACTIVE", "PRESENT", "IDENTIFIED", "APPROVED", "CONFIRMED", "PUBLISHED", "COMPLETED", "GRADUATED", "ENROLLED", "FINALIZED"];
 const WARNING = ["LATE", "POSSIBLE_MATCH", "PENDING", "HALF_DAY", "ON_LEAVE", "SUBMITTED", "DRAFT", "IN_PROGRESS"];
 const DESTRUCTIVE = ["ABSENT", "WITHDRAWN", "REJECTED", "INACTIVE", "UNKNOWN", "TRANSFERRED", "CANCELLED", "FAILED"];
 

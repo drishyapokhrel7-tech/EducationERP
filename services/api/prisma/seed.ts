@@ -137,6 +137,10 @@ const RESOURCES = [
   // financial_transactions folding under invoice.
   "leave_type",
   "leave_request",
+  // Phase 7 slice 7b-2 (HR & Payroll, part 2: Payroll) — payroll folds
+  // payroll_items in too, same folding precedent as leave_request above.
+  "salary_structure",
+  "payroll",
 ];
 const ACTIONS = Object.values(PermissionAction);
 

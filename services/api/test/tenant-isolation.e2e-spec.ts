@@ -164,6 +164,17 @@ describe("Tenant isolation (e2e)", () => {
         "leaveRequest",
         "staffLeaveBalance",
         "leaveType",
+        // Payroll (Phase 7 slice 7b-2) — payrollItem references payroll
+        // (RESTRICT), so it leads payroll; payroll references employee
+        // (RESTRICT), so both must precede employee too.
+        "payrollItem",
+        "payroll",
+        // salaryStructureItem references salaryStructure (RESTRICT);
+        // employee's FK to salaryStructure is ON DELETE SET NULL, so
+        // salaryStructure has no ordering requirement against employee
+        // specifically, but it's grouped here for readability.
+        "salaryStructureItem",
+        "salaryStructure",
         "employee",
         "staffType",
         "designation",
@@ -5189,6 +5200,233 @@ describe("Tenant isolation (e2e)", () => {
         .expect(404);
       await request(app.getHttpServer())
         .post(`/organizations/me/leave-requests/${reqC.body.id}/approve`)
+        .set(...auth(tokenB))
+        .expect(404);
+    }, 60000);
+  });
+
+  describe("Payroll (HR & Payroll, part 2 — Phase 7 slice 7b-2)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    async function buildEmployee(token: string, suffix: string) {
+      const staffType = await request(app.getHttpServer())
+        .post("/organizations/me/staff-types")
+        .set(...auth(token))
+        .send({ name: `Payroll Teaching ${suffix}`, code: `PTEACH${suffix}` })
+        .expect(201);
+      const designation = await request(app.getHttpServer())
+        .post("/organizations/me/designations")
+        .set(...auth(token))
+        .send({ name: `Payroll Teacher ${suffix}`, code: `PTCHR${suffix}` })
+        .expect(201);
+      const employee = await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(token))
+        .send({
+          staffTypeId: staffType.body.id,
+          designationId: designation.body.id,
+          employeeCode: `PR-EMP-${suffix}`,
+          firstName: "Payroll",
+          lastName: suffix,
+          email: `payroll-${suffix}@staff-e2e.test`,
+          dateOfJoining: "2026-01-01",
+        })
+        .expect(201);
+      return employee.body.id as string;
+    }
+
+    it("generates payroll from a snapshotted salary structure with an unpaid-leave deduction, and walks the DRAFT/FINALIZED/PAID/CANCELLED lifecycle", async () => {
+      const employeeId = await buildEmployee(tokenA, `PR${run}`);
+
+      const structure = await request(app.getHttpServer())
+        .post("/organizations/me/salary-structures")
+        .set(...auth(tokenA))
+        .send({
+          name: `Teacher Grade A ${run}`,
+          basicSalary: 30000,
+          items: [
+            { type: "EARNING", name: "House Rent Allowance", percentOfBasic: 10 },
+            { type: "DEDUCTION", name: "Provident Fund", amount: 1500 },
+          ],
+        })
+        .expect(201);
+      expect(structure.body.items).toHaveLength(2);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/employees/${employeeId}/salary-structure`)
+        .set(...auth(tokenA))
+        .send({ salaryStructureId: structure.body.id })
+        .expect(201);
+
+      // Nov 2026 has 30 days. A 3-day APPROVED unpaid-leave request inside
+      // it should deduct 30000/30*3 = 3000 at generation time.
+      const unpaidType = await request(app.getHttpServer())
+        .post("/organizations/me/leave-types")
+        .set(...auth(tokenA))
+        .send({ name: `Unpaid ${run}`, code: `PRUNPAID${run}`, defaultDaysPerYear: 0, isPaid: false })
+        .expect(201);
+      const leaveRequest = await request(app.getHttpServer())
+        .post("/organizations/me/leave-requests")
+        .set(...auth(tokenA))
+        .send({ employeeId, leaveTypeId: unpaidType.body.id, startDate: "2026-11-05", endDate: "2026-11-07" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/leave-requests/${leaveRequest.body.id}/approve`)
+        .set(...auth(tokenA))
+        .expect(201);
+
+      const generated = await request(app.getHttpServer())
+        .post("/organizations/me/payroll/generate")
+        .set(...auth(tokenA))
+        .send({ periodMonth: 11, periodYear: 2026 })
+        .expect(201);
+      expect(generated.body.generated).toEqual([employeeId]);
+      expect(generated.body.skipped).toEqual([]);
+
+      const list = await request(app.getHttpServer())
+        .get("/organizations/me/payroll")
+        .set(...auth(tokenA))
+        .query({ employeeId, periodMonth: 11, periodYear: 2026 })
+        .expect(200);
+      expect(list.body).toHaveLength(1);
+      const payrollId = list.body[0].id;
+      expect(list.body[0].status).toBe("DRAFT");
+      expect(list.body[0].grossPay).toBeNull();
+
+      const detail = await request(app.getHttpServer())
+        .get(`/organizations/me/payroll/${payrollId}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      const itemNames = detail.body.items.map((i: { name: string; amount: string; type: string }) => `${i.name}:${i.type}:${i.amount}`);
+      expect(itemNames).toContain("Basic Salary:EARNING:30000");
+      expect(itemNames).toContain("House Rent Allowance:EARNING:3000");
+      expect(itemNames).toContain("Provident Fund:DEDUCTION:1500");
+      expect(itemNames).toContain("Unpaid Leave (3 days):DEDUCTION:3000");
+
+      // Re-generating the same period skips the already-generated employee.
+      const regenerated = await request(app.getHttpServer())
+        .post("/organizations/me/payroll/generate")
+        .set(...auth(tokenA))
+        .send({ periodMonth: 11, periodYear: 2026 })
+        .expect(201);
+      expect(regenerated.body.generated).toEqual([]);
+      expect(regenerated.body.skipped).toEqual([{ employeeId, reason: "Already generated for this period" }]);
+
+      // Items are editable only while DRAFT.
+      const bonus = await request(app.getHttpServer())
+        .post(`/organizations/me/payroll/${payrollId}/items`)
+        .set(...auth(tokenA))
+        .send({ type: "EARNING", name: "Festival Bonus", amount: 2000 })
+        .expect(201);
+      await request(app.getHttpServer())
+        .delete(`/organizations/me/payroll/${payrollId}/items/${bonus.body.id}`)
+        .set(...auth(tokenA))
+        .expect(200);
+
+      // Finalize freezes gross/deductions/net: (30000+3000) - (1500+3000) = 28500.
+      const finalized = await request(app.getHttpServer())
+        .post(`/organizations/me/payroll/${payrollId}/finalize`)
+        .set(...auth(tokenA))
+        .expect(201);
+      expect(finalized.body.status).toBe("FINALIZED");
+      expect(finalized.body.grossPay).toBe("33000");
+      expect(finalized.body.totalDeductions).toBe("4500");
+      expect(finalized.body.netPay).toBe("28500");
+
+      // Once FINALIZED: no more item edits, no second finalize, no pay
+      // without a payment method.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/payroll/${payrollId}/items`)
+        .set(...auth(tokenA))
+        .send({ type: "EARNING", name: "Too Late", amount: 1 })
+        .expect(409);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/payroll/${payrollId}/finalize`)
+        .set(...auth(tokenA))
+        .expect(409);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/payroll/${payrollId}/pay`)
+        .set(...auth(tokenA))
+        .send({})
+        .expect(400);
+
+      const paid = await request(app.getHttpServer())
+        .post(`/organizations/me/payroll/${payrollId}/pay`)
+        .set(...auth(tokenA))
+        .send({ paymentMethod: "BANK_TRANSFER" })
+        .expect(201);
+      expect(paid.body.status).toBe("PAID");
+      expect(paid.body.paymentMethod).toBe("BANK_TRANSFER");
+      expect(paid.body.paidAt).not.toBeNull();
+
+      // A PAID payroll can never be cancelled — a real-world fact, not undoable.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/payroll/${payrollId}/cancel`)
+        .set(...auth(tokenA))
+        .expect(409);
+
+      // A second employee's payroll can be cancelled from DRAFT, and a
+      // third's from FINALIZED, but never twice.
+      const employee2Id = await buildEmployee(tokenA, `PR2${run}`);
+      const structure2 = await request(app.getHttpServer())
+        .post("/organizations/me/salary-structures")
+        .set(...auth(tokenA))
+        .send({ name: `Teacher Grade B ${run}`, basicSalary: 20000, items: [] })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/employees/${employee2Id}/salary-structure`)
+        .set(...auth(tokenA))
+        .send({ salaryStructureId: structure2.body.id })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post("/organizations/me/payroll/generate")
+        .set(...auth(tokenA))
+        .send({ periodMonth: 11, periodYear: 2026 })
+        .expect(201);
+      const list2 = await request(app.getHttpServer())
+        .get("/organizations/me/payroll")
+        .set(...auth(tokenA))
+        .query({ employeeId: employee2Id, periodMonth: 11, periodYear: 2026 })
+        .expect(200);
+      const payroll2Id = list2.body[0].id;
+
+      const cancelledDraft = await request(app.getHttpServer())
+        .post(`/organizations/me/payroll/${payroll2Id}/cancel`)
+        .set(...auth(tokenA))
+        .expect(201);
+      expect(cancelledDraft.body.status).toBe("CANCELLED");
+      await request(app.getHttpServer())
+        .post(`/organizations/me/payroll/${payroll2Id}/cancel`)
+        .set(...auth(tokenA))
+        .expect(409);
+
+      // Unassigning the salary structure means the next generate skips
+      // that employee entirely (no structure to snapshot from).
+      await request(app.getHttpServer())
+        .delete(`/organizations/me/employees/${employee2Id}/salary-structure`)
+        .set(...auth(tokenA))
+        .expect(200);
+      const decemberGenerate = await request(app.getHttpServer())
+        .post("/organizations/me/payroll/generate")
+        .set(...auth(tokenA))
+        .send({ periodMonth: 12, periodYear: 2026 })
+        .expect(201);
+      expect(decemberGenerate.body.generated).not.toContain(employee2Id);
+
+      // Cross-tenant: org B sees none of this and can't act on it by id.
+      for (const path of ["salary-structures", "payroll"]) {
+        const res = await request(app.getHttpServer())
+          .get(`/organizations/me/${path}`)
+          .set(...auth(tokenB))
+          .expect(200);
+        expect(res.body).toEqual([]);
+      }
+      await request(app.getHttpServer())
+        .get(`/organizations/me/payroll/${payrollId}`)
+        .set(...auth(tokenB))
+        .expect(404);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/payroll/${payrollId}/cancel`)
         .set(...auth(tokenB))
         .expect(404);
     }, 60000);

@@ -102,6 +102,10 @@ model Organization {
   leaveTypes               LeaveType[]
   staffLeaveBalances       StaffLeaveBalance[]
   leaveRequests            LeaveRequest[]
+  salaryStructures         SalaryStructure[]
+  salaryStructureItems     SalaryStructureItem[]
+  payrolls                 Payroll[]
+  payrollItems             PayrollItem[]
 
   @@map("organizations")
 }
@@ -375,6 +379,7 @@ model User {
   refundsProcessed           Refund[]
   esewaTransactionsInitiated EsewaTransaction[]
   leaveRequestsReviewed      LeaveRequest[]
+  payrollsFinalized          Payroll[]
 
   @@index([organizationId])
   @@map("users")
@@ -570,30 +575,35 @@ enum EmployeeStatus {
 }
 
 model Employee {
-  id             String         @id @default(uuid())
-  organizationId String
+  id                String         @id @default(uuid())
+  organizationId    String
   // Set only for staff who also log in (teachers, admins, ...); many
   // support/non-teaching staff may never get a User account.
-  userId         String?        @unique
-  staffTypeId    String
-  designationId  String
-  departmentId   String?
-  employeeCode   String
-  firstName      String
-  lastName       String
-  email          String
-  phone          String?
-  dateOfJoining  DateTime
-  status         EmployeeStatus @default(ACTIVE)
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  deletedAt      DateTime?
+  userId            String?        @unique
+  staffTypeId       String
+  designationId     String
+  departmentId      String?
+  employeeCode      String
+  firstName         String
+  lastName          String
+  email             String
+  phone             String?
+  dateOfJoining     DateTime
+  status            EmployeeStatus @default(ACTIVE)
+  // The employee's *current* compensation template (Phase 7 slice
+  // 7b-2) — a raise just repoints this FK; past Payroll rows already
+  // snapshotted their items and are never retroactively affected.
+  salaryStructureId String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  deletedAt         DateTime?
 
   organization            Organization         @relation(fields: [organizationId], references: [id])
   user                    User?                @relation(fields: [userId], references: [id])
   staffType               StaffType            @relation(fields: [staffTypeId], references: [id])
   designation             Designation          @relation(fields: [designationId], references: [id])
   department              Department?          @relation(fields: [departmentId], references: [id])
+  salaryStructure         SalaryStructure?     @relation(fields: [salaryStructureId], references: [id])
   employmentHistory       EmploymentHistory[]
   qualifications          Qualification[]
   teacherProfile          TeacherProfile?
@@ -603,6 +613,7 @@ model Employee {
   faceEnrollments         FaceEnrollment[]
   leaveBalances           StaffLeaveBalance[]
   leaveRequests           LeaveRequest[]
+  payrolls                Payroll[]
 
   @@unique([organizationId, employeeCode])
   @@unique([organizationId, email])
@@ -2339,7 +2350,7 @@ model EsewaTransaction {
 // Designation, EmploymentHistory, Qualification, TeacherProfile) was
 // already built in Phase 2 slice 2b — this section is the genuinely new
 // scope. Payroll (salary_structures/payroll/payroll_items) is slice
-// 7b-2, layered on top of this later.
+// 7b-2, layered on top of this below.
 
 model LeaveType {
   id                 String   @id @default(uuid())
@@ -2416,4 +2427,116 @@ model LeaveRequest {
   @@index([organizationId])
   @@index([employeeId])
   @@map("leave_requests")
+}
+
+// ── HR & Payroll, part 2: Payroll (Phase 7 slice 7b-2) ──────────────────
+// salary_structures/payroll/payroll_items — the plan gives no field-level
+// spec (docx §6 lists only these three bare table names). Deductions
+// (income tax, provident fund, ...) are deliberately generic
+// admin-configurable line items, not hardcoded Nepali tax-slab/SSF
+// calculation logic — that's government fiscal-year policy that changes
+// yearly, not a fixed protocol like eSewa's (7a-2); same reasoning this
+// project already applies to GradingScheme's admin-configurable bands.
+
+enum PayrollItemType {
+  EARNING
+  DEDUCTION
+}
+
+// Reusable org-level compensation template — the plan's "salary
+// structure". Employee.salaryStructureId points at the employee's
+// *current* one; Payroll snapshots items at generation time, so this can
+// be edited freely without touching already-generated payroll.
+model SalaryStructure {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  basicSalary    Decimal  @db.Decimal(12, 2)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization          @relation(fields: [organizationId], references: [id])
+  items        SalaryStructureItem[]
+  employees    Employee[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("salary_structures")
+}
+
+// Exactly one of amount/percentOfBasic is set — same XOR precedent as
+// Scholarship's percentage/amount-exclusive rule (7a-1).
+model SalaryStructureItem {
+  id                String          @id @default(uuid())
+  organizationId    String
+  salaryStructureId String
+  type              PayrollItemType
+  name              String
+  amount            Decimal?        @db.Decimal(12, 2)
+  percentOfBasic    Decimal?        @db.Decimal(5, 2)
+
+  organization    Organization    @relation(fields: [organizationId], references: [id])
+  salaryStructure SalaryStructure @relation(fields: [salaryStructureId], references: [id])
+
+  @@index([organizationId])
+  @@index([salaryStructureId])
+  @@map("salary_structure_items")
+}
+
+enum PayrollStatus {
+  DRAFT
+  FINALIZED
+  PAID
+  CANCELLED
+}
+
+// One row per employee per period. grossPay/totalDeductions/netPay are
+// computed and frozen at finalize time — an immutable snapshot, same
+// reasoning as Invoice.totalAmount never being live-recomputed.
+model Payroll {
+  id              String         @id @default(uuid())
+  organizationId  String
+  employeeId      String
+  periodMonth     Int
+  periodYear      Int
+  status          PayrollStatus  @default(DRAFT)
+  grossPay        Decimal?       @db.Decimal(12, 2)
+  totalDeductions Decimal?       @db.Decimal(12, 2)
+  netPay          Decimal?       @db.Decimal(12, 2)
+  paymentMethod   PaymentMethod?
+  paidAt          DateTime?
+  finalizedAt     DateTime?
+  finalizedBy     String?
+  notes           String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id])
+  employee     Employee      @relation(fields: [employeeId], references: [id])
+  finalizer    User?         @relation(fields: [finalizedBy], references: [id])
+  items        PayrollItem[]
+
+  @@unique([employeeId, periodMonth, periodYear])
+  @@index([organizationId])
+  @@map("payroll")
+}
+
+// Snapshotted from SalaryStructureItem at generation time (mirrors
+// InvoiceItem mirroring FeeStructureItem), plus one auto-generated
+// unpaid-leave deduction item when applicable. Editable only while the
+// parent Payroll is DRAFT.
+model PayrollItem {
+  id             String          @id @default(uuid())
+  organizationId String
+  payrollId      String
+  type           PayrollItemType
+  name           String
+  amount         Decimal         @db.Decimal(12, 2)
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  payroll      Payroll      @relation(fields: [payrollId], references: [id])
+
+  @@index([organizationId])
+  @@index([payrollId])
+  @@map("payroll_items")
 }

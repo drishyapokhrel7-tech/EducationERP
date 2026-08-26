@@ -503,3 +503,160 @@ reject/cancel). New `CalendarOff` nav entry.
 Slice 7b-1 done, stopped per plan §21 step 17. Next up per the
 confirmed roadmap: **7b-2, Payroll** (`salary_structures`/`payroll`/
 `payroll_items`) — needs its own explicit go-ahead to start.
+
+## Slice 7b-2 — Payroll (HR & Payroll, part 2)
+
+User said "start now" to the 7b-1 check-in. Docx §6's ERD list gives
+three bare table names, no field-level spec, no tax/statutory rules,
+no payslip-generation spec (payslip/document generation belongs to the
+plan's separate, not-yet-started documents/certificates domain, 7h) —
+verified directly against the docx before planning, confirming nothing
+else in the plan text touches payroll. Used `EnterPlanMode` given the
+genuinely open design questions (salary structure shape, payroll
+lifecycle, how to handle statutory deductions) that the plan's three
+bare table names don't answer.
+
+**Key design call, stated explicitly since the plan doesn't address
+it**: deductions (income tax, provident fund, ...) are modeled as
+generic, admin-configurable line items (fixed amount or % of basic),
+not hardcoded Nepali tax-slab/SSF calculation logic. Real tax brackets
+are government fiscal-year policy that changes annually — encoding
+today's rates as literal code would silently go stale. Mirrors this
+project's own `GradingScheme` precedent (admin-configurable bands in
+JSON, not hardcoded cutoffs) applied to the same class of problem.
+
+## What shipped
+
+**Schema** — `SalaryStructure` (org-level reusable template: `name`,
+`basicSalary`) + `SalaryStructureItem` (`type` `EARNING`/`DEDUCTION`,
+`name`, and exactly one of `amount`/`percentOfBasic` — same XOR
+precedent as `Scholarship`'s percentage/amount-exclusive rule).
+`Employee.salaryStructureId` (new nullable FK on the Phase-2 model,
+same "later slice adds a field to an earlier phase's model" precedent
+as `ExamSubject.questionBankId`) — a raise just repoints the FK, no
+date-ranged assignment history needed since `Payroll` snapshots its
+items at generation time. `Payroll` (one row per employee+period,
+`status` `DRAFT`/`FINALIZED`/`PAID`/`CANCELLED`, `grossPay`/
+`totalDeductions`/`netPay` computed and frozen at finalize time — same
+immutable-snapshot precedent as `Invoice.totalAmount`, reuses the
+existing `PaymentMethod` enum from Finance) + `PayrollItem` (snapshotted
+from the structure at generation, mirrors `InvoiceItem`/
+`FeeStructureItem`).
+
+**A real correctness gap caught while writing the e2e test, fixed
+before it shipped**: the first version of `generatePayroll` only
+snapshotted the salary structure's own earning/deduction *items* —
+the employee's actual basic salary itself never became a payable line,
+so `grossPay` would have summed only allowances, silently omitting the
+core salary from every payroll ever generated. Fixed by always adding
+a "Basic Salary" `EARNING` item first, with the structure's own items
+layered on top of it.
+
+**Unpaid-leave integration** — the reason 7b-2 was ordered after
+7b-1: at generation time, sums `LeaveRequest` days where
+`status=APPROVED` and `leaveType.isPaid=false` starting within the
+target month (reuses 7b-1's `usedDaysFor` query shape), adds one
+auto-generated `DEDUCTION` item (`basicSalary / daysInMonth × days`) if
+nonzero. This item behaves like any other — HR can remove/adjust it
+while the payroll is still `DRAFT`.
+
+**Lifecycle**, mirroring `LeaveRequest`'s explicit-transition/
+409-on-invalid-transition precedent: **Generate** (bulk per period,
+mirrors Finance's `assign-bulk` — skips an employee who already has a
+`Payroll` row for that period, same skip-semantics as bulk fee
+assignment) → **Finalize** (`DRAFT` only, freezes the three computed
+totals) → **Mark paid** (`FINALIZED` only, requires a `paymentMethod`)
+→ **Cancel** (`DRAFT` or `FINALIZED` only — never `PAID`, since money
+already disbursed is a real-world fact, not undoable here). Item
+add/remove is `DRAFT`-only.
+
+**API** — new `payroll` module under `organizations/me/`:
+`salary-structures` (+ `:id/items`), `employees/:id/salary-structure`
+(assign/unassign), `payroll/generate`, `payroll` (list/detail),
+`payroll/:id/items`, `/finalize`, `/pay`, `/cancel`. Two new RBAC
+resources, `salary_structure` and `payroll` (the latter folds
+`payroll_items` in too — same folding precedent as `leave_request`/
+`invoice`), Super Admin/Organization Admin only.
+
+**Web UI** — new `/dashboard/payroll` page, the established
+one-page-many-Cards structure: Salary Structures (dynamic
+earning/deduction item-row builder, same pattern as Finance's
+fee-structure builder), employee assignment, a Generate-payroll form
+(month/year → bulk create, shows generated/skipped counts), a Payroll
+list (status filter) with an expandable detail view (items,
+Finalize/Mark-paid/Cancel).
+
+## Explicitly not in this slice
+
+- Real Nepali income-tax-slab or SSF calculation logic — deductions
+  stay generic, admin-configurable line items (see above).
+- Payslip/PDF generation — belongs to the plan's separate
+  documents/certificates domain (7h), not started.
+- A staff self-service portal (viewing one's own payslips) — admin/HR
+  only, matching 7b-1's precedent.
+- Date-ranged salary-structure history — a structure change only
+  affects future payroll generation.
+- Half-day/partial-day unpaid-leave proration — whole days only, same
+  scope line 7b-1 drew for leave itself.
+
+## Verified
+
+- `pnpm -r typecheck` clean across all six packages; `pnpm -r lint`
+  clean for everything this slice touched (the one pre-existing
+  `apps/web` `sso/page.tsx` failure is untouched by this slice, same
+  as noted in 7b-1).
+- `services/api` e2e: one comprehensive new test — creates a salary
+  structure with a fixed-amount deduction and a percent-of-basic
+  earning, assigns it, generates payroll for a period with an
+  in-period approved unpaid-leave request and confirms the exact
+  snapshotted items (including the auto unpaid-leave deduction) and
+  correct gross/deductions/net math, confirms re-generating the same
+  period skips the employee, walks item add/remove (DRAFT-only, 409
+  once `FINALIZED`), finalize (locks and freezes totals, rejects a
+  second finalize), mark-paid (requires a payment method), cancel from
+  both `DRAFT` and `FINALIZED` but rejected from `PAID` (409),
+  unassigning a structure excludes an employee from the next generate,
+  and cross-tenant isolation throughout — passed cleanly on the first
+  run, both standalone and inside the full 60-test suite (56 passing,
+  4 pre-existing unrelated `services/ai`-dependent failures).
+- Verification against the real running system: created a real
+  employee, salary structure, and generated/finalized/paid a real
+  payroll via direct authenticated API calls, confirming byte-exact
+  correct responses at every step (structure creation, item
+  snapshotting, gross/deduction/net computation, status transitions).
+  The web UI itself was confirmed correct piecemeal rather than in one
+  continuous click-through: the Payroll list rendered the real
+  generated record correctly ("Ramesh Verify — 8/2026 · net — DRAFT")
+  on repeated loads, and clicking it correctly targeted the exact
+  right resource id in the network request. **A session-level Browser
+  pane tooling limitation prevented a single continuous UI
+  click-through this pass**: concurrent `fetch()` calls to the API
+  origin from within the harness's browser intermittently failed with
+  a misleading "CORS policy" error (reproduced directly — two
+  concurrent `fetch()`s to the same origin both fail with `TypeError:
+  Failed to fetch`, while sequential ones and direct `curl` calls
+  succeed every time; the API server's own CORS headers were confirmed
+  correct via `curl -i`). This is a tooling artifact of this session's
+  Browser pane, not a product bug — stated plainly per this project's
+  standing precedent (same class of limitation as 7a-2's eSewa
+  CAPTCHA gate) rather than claimed as a full clean pass it wasn't.
+  All test data (payroll + items, salary structure + items, employee,
+  designation, staff type) removed afterward via a one-off cleanup
+  script; confirmed clean via direct API calls returning empty lists
+  for employees/salary-structures/payroll.
+
+## Next step (as of slice 7b-2)
+
+Slice 7b-2 done, stopped per plan §21 step 17. **This closes Phase
+7's HR & Payroll domain** (7b-1 leave + 7b-2 payroll) — Staff & HR
+(plan §5/§6) is now fully built out: employees/designations (Phase 2b)
++ leave + payroll. Next up per the Phase 7 breakdown in this
+document's intro: **7c, Library** — though note the standalone
+`~/librarysystem` project was already integrated into this ERP's own
+`apps/web` as a cross-cutting bridge feature (see
+`docs/LIBRARY_SYSTEM_INTEGRATION_NOTES.md`), so if the user raises "library"
+next, check whether they mean extending that integration further
+(the already-identified next steps there) rather than restarting 7c
+as if nothing exists yet. After that: 7d transport, 7e hostel, 7f
+inventory, 7g communication, 7h documents/certificates — each still
+needing its own go-ahead when reached.

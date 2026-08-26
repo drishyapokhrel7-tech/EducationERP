@@ -198,6 +198,8 @@ export interface Employee {
   phone: string | null;
   dateOfJoining: string;
   status: EmployeeStatus;
+  // Set once a salary structure is assigned (Phase 7 slice 7b-2).
+  salaryStructureId?: string | null;
   staffType?: StaffType;
   designation?: Designation;
   department?: Department | null;
@@ -1858,4 +1860,90 @@ export interface LeaveRequestRecord {
   employee: Employee;
   leaveType: LeaveTypeRecord;
   reviewer?: { firstName: string; lastName: string } | null;
+}
+
+// HR & Payroll, part 2: Payroll (Phase 7 slice 7b-2).
+export type PayrollItemType = "EARNING" | "DEDUCTION";
+export type PayrollStatus = "DRAFT" | "FINALIZED" | "PAID" | "CANCELLED";
+
+export interface SalaryStructureItemInput {
+  type: PayrollItemType;
+  name: string;
+  amount?: number;
+  percentOfBasic?: number;
+}
+
+export interface SalaryStructureItemRecord {
+  id: string;
+  salaryStructureId: string;
+  type: PayrollItemType;
+  name: string;
+  amount: string | null;
+  percentOfBasic: string | null;
+}
+
+export interface CreateSalaryStructureInput {
+  name: string;
+  basicSalary: number;
+  items: SalaryStructureItemInput[];
+}
+
+export interface SalaryStructureRecord {
+  id: string;
+  organizationId: string;
+  name: string;
+  basicSalary: string;
+  createdAt: string;
+  updatedAt: string;
+  items: SalaryStructureItemRecord[];
+}
+
+export interface GeneratePayrollInput {
+  periodMonth: number;
+  periodYear: number;
+}
+
+export interface GeneratePayrollResult {
+  generated: string[];
+  skipped: { employeeId: string; reason: string }[];
+}
+
+export interface AddPayrollItemInput {
+  type: PayrollItemType;
+  name: string;
+  amount: number;
+}
+
+export interface PayrollItemRecord {
+  id: string;
+  payrollId: string;
+  type: PayrollItemType;
+  name: string;
+  amount: string;
+}
+
+export interface MarkPayrollPaidInput {
+  paymentMethod: PaymentMethod;
+}
+
+export interface PayrollRecord {
+  id: string;
+  organizationId: string;
+  employeeId: string;
+  periodMonth: number;
+  periodYear: number;
+  status: PayrollStatus;
+  grossPay: string | null;
+  totalDeductions: string | null;
+  netPay: string | null;
+  paymentMethod: PaymentMethod | null;
+  paidAt: string | null;
+  finalizedAt: string | null;
+  finalizedBy: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  employee: Employee;
+  items: PayrollItemRecord[];
+  finalizer?: { firstName: string; lastName: string } | null;
 }

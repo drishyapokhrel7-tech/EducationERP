@@ -184,6 +184,15 @@ import type {
   AssignScholarshipInput,
   StudentScholarshipRecord,
   FinancialTransactionRecord,
+  SalaryStructureItemInput,
+  CreateSalaryStructureInput,
+  SalaryStructureRecord,
+  GeneratePayrollInput,
+  GeneratePayrollResult,
+  AddPayrollItemInput,
+  MarkPayrollPaidInput,
+  PayrollStatus,
+  PayrollRecord,
 } from "./types";
 
 export class ApiError extends Error {
@@ -830,6 +839,46 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       }),
     cancelLeaveRequest: (id: string) =>
       request<LeaveRequestRecord>(`/organizations/me/leave-requests/${id}/cancel`, { method: "POST" }),
+
+    // HR & Payroll, part 2: Payroll (Phase 7 slice 7b-2).
+    createSalaryStructure: (input: CreateSalaryStructureInput) =>
+      request<SalaryStructureRecord>("/organizations/me/salary-structures", { method: "POST", body: JSON.stringify(input) }),
+    listSalaryStructures: () => request<SalaryStructureRecord[]>("/organizations/me/salary-structures"),
+    addSalaryStructureItem: (structureId: string, input: SalaryStructureItemInput) =>
+      request(`/organizations/me/salary-structures/${structureId}/items`, { method: "POST", body: JSON.stringify(input) }),
+    removeSalaryStructureItem: (structureId: string, itemId: string) =>
+      request(`/organizations/me/salary-structures/${structureId}/items/${itemId}`, { method: "DELETE" }),
+    assignSalaryStructure: (employeeId: string, salaryStructureId: string) =>
+      request(`/organizations/me/employees/${employeeId}/salary-structure`, {
+        method: "POST",
+        body: JSON.stringify({ salaryStructureId }),
+      }),
+    unassignSalaryStructure: (employeeId: string) =>
+      request(`/organizations/me/employees/${employeeId}/salary-structure`, { method: "DELETE" }),
+    generatePayroll: (input: GeneratePayrollInput) =>
+      request<GeneratePayrollResult>("/organizations/me/payroll/generate", { method: "POST", body: JSON.stringify(input) }),
+    listPayroll: (
+      params: { employeeId?: string; periodMonth?: number; periodYear?: number; status?: PayrollStatus } = {},
+    ) => {
+      const q = new URLSearchParams();
+      if (params.employeeId) q.set("employeeId", params.employeeId);
+      if (params.periodMonth != null) q.set("periodMonth", String(params.periodMonth));
+      if (params.periodYear != null) q.set("periodYear", String(params.periodYear));
+      if (params.status) q.set("status", params.status);
+      const qs = q.toString();
+      return request<PayrollRecord[]>(`/organizations/me/payroll${qs ? `?${qs}` : ""}`);
+    },
+    getPayroll: (id: string) => request<PayrollRecord>(`/organizations/me/payroll/${id}`),
+    addPayrollItem: (id: string, input: AddPayrollItemInput) =>
+      request(`/organizations/me/payroll/${id}/items`, { method: "POST", body: JSON.stringify(input) }),
+    removePayrollItem: (id: string, itemId: string) =>
+      request(`/organizations/me/payroll/${id}/items/${itemId}`, { method: "DELETE" }),
+    finalizePayroll: (id: string) =>
+      request<PayrollRecord>(`/organizations/me/payroll/${id}/finalize`, { method: "POST" }),
+    markPayrollPaid: (id: string, input: MarkPayrollPaidInput) =>
+      request<PayrollRecord>(`/organizations/me/payroll/${id}/pay`, { method: "POST", body: JSON.stringify(input) }),
+    cancelPayroll: (id: string) =>
+      request<PayrollRecord>(`/organizations/me/payroll/${id}/cancel`, { method: "POST" }),
   };
 }
 
