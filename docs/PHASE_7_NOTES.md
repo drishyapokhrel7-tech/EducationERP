@@ -808,3 +808,165 @@ scoped: **7d-2, real-time driver location + navigation** (mobile web
 page, OpenStreetMap/Leaflet/OSRM) — needs its own explicit go-ahead.
 After that: 7e hostel, 7f inventory, 7g communication, 7h
 documents/certificates.
+
+## Slice 7d-2 — driver location + navigation
+
+## Context
+
+User said "proceed," read as approval to start the already-scoped
+7d-2 (its design forks — mobile web page vs. native, OSM/Leaflet/OSRM
+vs. Google Maps — were pre-resolved via `AskUserQuestion` before 7d-1
+shipped). Builds the plan's last remaining Transport ERD table,
+`vehicle_tracking_events`, plus the driver-facing page and admin
+live map it exists to serve.
+
+**Honest scope framing, stated up front and held to**: this is a live
+map + a drawn route line + straight-line/road distance and ETA to the
+next stop, refreshed periodically — not voice-guided turn-by-turn like
+a native maps app.
+
+## What shipped
+
+- **Schema**: `VehicleTrackingEvent` (`vehicleId` required,
+  `routeId` nullable — a ping might arrive between route assignments,
+  `latitude`/`longitude` as `Decimal(9,6)`, `recordedAt`), RLS as
+  usual. **A necessary gap found and closed while building this**:
+  `Stop` (from 7d-1) had no coordinates at all — "the route's stops as
+  markers" is meaningless without them. Added nullable
+  `latitude`/`longitude` to `Stop` (`Decimal(9,6)`, same precision as
+  tracking events) via a second, purely-additive migration — not
+  scope creep, a direct precondition of what this slice was already
+  asked to build.
+- **Employee login**: `POST organizations/me/employees/:id/create-
+  login` (`employee:manage` — already existed, every resource gets
+  every `PermissionAction` seeded automatically, no seed.ts change
+  needed), mirrors `StudentsService.createLogin` almost exactly
+  (`username = ${orgSlug}.${employeeCode}`, pseudo-email
+  `${username}@employee.local`) except **no RBAC role is assigned** —
+  this login only ever needs to reach the JwtAuthGuard-only
+  driver-portal routes below, not a dashboard.
+- **`driver-portal` module**, mirrors `student-portal` file-for-file:
+  `GET organizations/me/driver-portal/me` (own driver + current route
+  + ordered stops, 404 if the caller isn't a linked driver — private
+  `getOwnDriver` helper: `employee.findUnique({where:{userId}})` →
+  `driver.findUnique({where:{employeeId}})`), `POST
+  organizations/me/driver-portal/tracking` (`{routeId, latitude,
+  longitude}`, validates `route.driverId` matches the caller's own
+  employee id, 404 otherwise; 400 if the route has no vehicle assigned
+  yet since `vehicleId` is required on the event).
+- **Admin read**: `GET organizations/me/vehicles/:id/tracking/latest`
+  and `GET organizations/me/vehicles/tracking/latest` (one row per
+  vehicle, its most recent ping — via Prisma `distinct` after
+  `orderBy: recordedAt desc`), both `route:view`, folded into the
+  existing `transport.service.ts`/`transport.controller.ts`.
+- **New dependencies**: `leaflet`, `react-leaflet@5`, `@types/leaflet`
+  in `apps/web`. Default marker icons pointed at unpkg's CDN copy of
+  leaflet's own image assets (matching the installed version) rather
+  than wiring up a bundler asset-import path for icons only — a
+  pragmatic call, not a design principle; tiles were already an
+  external dependency (OpenStreetMap) so this doesn't add a new class
+  of dependency, just one more static asset host.
+- **Web UI**: `apps/web/src/app/driver/page.tsx` (new top-level route,
+  not under `/dashboard` or `/portal`) — mobile-first, loads
+  `driver-portal/me` (clear message on 404), `navigator.geolocation.
+  watchPosition` for live position with a clear message on permission
+  denial (doesn't crash), posts tracking every ~20s via a ref (so the
+  interval always sends the latest fix, not a stale closure), computes
+  the nearest stop with coordinates by straight-line distance and
+  fetches an OSRM route to it (throttled to once per 15s), shows
+  distance/ETA text (OSRM road distance/duration when available,
+  straight-line fallback otherwise). `/dashboard/transport` gained a
+  "Live Tracking" card — Leaflet map of every vehicle's latest known
+  position, SWR-polled every 25s, same cadence as every other
+  near-real-time view in this project (no websocket infra exists
+  here). `/dashboard/staff`'s existing Employee list (actually
+  `/dashboard/transport`'s Drivers card) gained the create-login
+  control, same per-row password-then-submit pattern as the students
+  page's existing one.
+- **Login redirect**: `/login` already branches by decoded JWT role
+  (`Student` → `/portal`). Extended: for any non-Student login, it now
+  also tries `getDriverPortalMe()` and routes to `/driver` on success,
+  falling back to `/dashboard` on 404 — otherwise a driver's roleless
+  login would land on a dashboard nearly every card of which 403s.
+- **api-client**: `VehicleTrackingEventRecord`,
+  `VehicleTrackingEventWithVehicle`, `SubmitTrackingInput`,
+  `DriverPortalMe`, `CreateEmployeeLoginInput`/`Result`, plus
+  `latitude`/`longitude` added to `StopRecord`/`AddStopInput`, and the
+  new endpoint methods.
+
+## Explicitly not in this slice
+
+- A native mobile app, or Google Maps — both already declined via the
+  earlier `AskUserQuestion`.
+- Voice-guided turn-by-turn — stated as the honest ceiling above.
+- Background/service-worker location tracking while the driver's
+  browser tab isn't open — foreground-only.
+- A general "give any employee a dashboard login" feature — the new
+  `create-login` endpoint assigns no role, scoped to exactly what
+  driver-portal needs.
+- Historical route playback/analytics over `VehicleTrackingEvent` —
+  only the latest position is surfaced; a report over the full history
+  is a future, unasked-for addition.
+- "Next stop" progression logic (marking a stop visited) — the driver
+  page always shows the *nearest* stop with coordinates by straight-
+  line distance, not a stateful "next unvisited" sequence; building
+  visited-tracking wasn't asked for and would be real scope creep on
+  top of an already-honest "live map, not turn-by-turn" framing.
+
+## Verified
+
+- `pnpm -r typecheck`/`lint`/`build` clean across all six packages.
+- `services/api` e2e: one new comprehensive test (Transport, part 2) —
+  creates an employee login, rejects a duplicate (409), gates
+  `driver-portal/me` to a linked driver (404 for a non-driver
+  employee), returns the correct route+stops for the real driver,
+  rejects posting tracking against a route that isn't theirs (404),
+  accepts one for their own route (201), confirms both admin
+  tracking-read endpoints return it, cross-tenant isolation throughout
+  (can't create a login under another org's employee, can't read
+  another org's tracking data). Passed clean alongside 7d-1's test,
+  standalone (`-t "Transport"`, 2/2 passed, 191s including the full
+  Nest bootstrap + auth flow).
+- Full browser pass, as the demo admin: created a real vehicle, a real
+  employee promoted to driver with a license, a route with a
+  coordinate-bearing stop, and a driver login — then, in a separate
+  tab, logged in with that driver's generated username/password and
+  confirmed the `/login` redirect landed on `/driver` (not
+  `/dashboard`), which correctly showed the driver's name, route,
+  vehicle, and a Leaflet map with the stop marker plotted at its real
+  coordinates. Geolocation was denied by the automation environment
+  (expected — no real GPS in a headless browser pane), and the page
+  showed a clear "allow it in your browser" message instead of
+  crashing, confirming that failure path. Posted one tracking event
+  directly via `fetch` (the plan's own documented fallback for this
+  exact case) and confirmed it appeared on the admin's Live Tracking
+  card, and via a direct read of `vehicles/tracking/latest`'s
+  response. All test data (vehicle, driver, route, stop, tracking
+  event, employee, staff type, designation, the driver's User/Session
+  rows) removed afterward via a one-off Prisma script, confirmed empty
+  via both the UI and a fresh page load.
+- **Two genuine environment issues hit and resolved during this
+  pass, both already-documented failure classes, not new bugs**: (1) a
+  stray `node dist/src/main` process from earlier in the day (started
+  2:40 PM, this pass's server started 8:15 PM) was independently
+  holding its own Prisma connection pool against the same Neon
+  database, producing repeated `P2028: Unable to start a transaction`
+  500s on route creation — killed via `ps aux`/`kill`, matching the
+  standing "enumerate every listener, not just the obvious one" lesson
+  from Phase 3. (2) The API server's own pool still didn't recover
+  cleanly afterward (same request kept 500ing) — resolved by
+  restarting just that one process (`preview_stop`/`preview_start`),
+  matching the established "restart the process holding the stuck
+  pool, don't keep retrying against it" pattern from Phase 4. Also hit
+  the already-documented UI stale-render timing artifact (a freshly
+  created route briefly showed "No routes yet" right after a 201) —
+  confirmed via the raw network response before concluding anything,
+  not treated as a bug.
+
+## Next step (as of slice 7d-2)
+
+Slice 7d-2 done, stopped per plan §21 step 17. Transport (7d) is now
+fully complete — core roster (7d-1) and live location/navigation
+(7d-2). Remaining Phase 7 domains, none started: 7e hostel, 7f
+inventory, 7g communication, 7h documents/certificates — next one
+needs its own explicit go-ahead.

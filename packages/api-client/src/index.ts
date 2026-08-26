@@ -205,6 +205,12 @@ import type {
   AssignStudentTransportInput,
   StudentTransportAssignmentRecord,
   StopRecord,
+  VehicleTrackingEventRecord,
+  VehicleTrackingEventWithVehicle,
+  SubmitTrackingInput,
+  DriverPortalMe,
+  CreateEmployeeLoginInput,
+  CreateEmployeeLoginResult,
 } from "./types";
 
 export class ApiError extends Error {
@@ -355,6 +361,11 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
     listEmployees: () => request<Employee[]>("/organizations/me/employees"),
     createEmployee: (input: CreateEmployeeInput) =>
       request<Employee>("/organizations/me/employees", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    createEmployeeLogin: (employeeId: string, input: CreateEmployeeLoginInput) =>
+      request<CreateEmployeeLoginResult>(`/organizations/me/employees/${employeeId}/create-login`, {
         method: "POST",
         body: JSON.stringify(input),
       }),
@@ -919,6 +930,22 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       request<StudentTransportAssignmentRecord[]>("/organizations/me/student-transport-assignments"),
     unassignStudentTransport: (studentEnrollmentId: string) =>
       request(`/organizations/me/student-transport-assignments/${studentEnrollmentId}`, { method: "DELETE" }),
+
+    // Transport, part 2: driver location + navigation (Phase 7 slice 7d-2).
+    getLatestTracking: (vehicleId: string) =>
+      request<VehicleTrackingEventRecord | null>(`/organizations/me/vehicles/${vehicleId}/tracking/latest`),
+    listLatestTrackingByVehicle: () =>
+      request<VehicleTrackingEventWithVehicle[]>("/organizations/me/vehicles/tracking/latest"),
+
+    // Driver self-service portal — mirrors the student-portal pattern,
+    // JwtAuthGuard-only endpoints, the driver's identity is derived
+    // server-side from the caller's own token.
+    getDriverPortalMe: () => request<DriverPortalMe>("/organizations/me/driver-portal/me"),
+    submitDriverTracking: (input: SubmitTrackingInput) =>
+      request<VehicleTrackingEventRecord>("/organizations/me/driver-portal/tracking", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
   };
 }
 

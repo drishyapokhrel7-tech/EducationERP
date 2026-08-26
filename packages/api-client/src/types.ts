@@ -2000,12 +2000,16 @@ export interface StopRecord {
   name: string;
   sequence: number;
   arrivalOffsetMinutes: number | null;
+  latitude: string | null;
+  longitude: string | null;
 }
 
 export interface AddStopInput {
   name: string;
   sequence: number;
   arrivalOffsetMinutes?: number;
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface RouteRecord {
@@ -2054,4 +2058,49 @@ export interface StudentTransportAssignmentRecord {
   studentEnrollment: { id: string; studentId: string; status: EnrollmentStatus; student: Student };
   route: RouteRecord;
   stop: StopRecord;
+}
+
+// Transport, part 2: driver location + navigation (Phase 7 slice 7d-2).
+export interface VehicleTrackingEventRecord {
+  id: string;
+  organizationId: string;
+  vehicleId: string;
+  routeId: string | null;
+  latitude: string;
+  longitude: string;
+  recordedAt: string;
+}
+
+export interface VehicleTrackingEventWithVehicle extends VehicleTrackingEventRecord {
+  vehicle: VehicleRecord;
+}
+
+export interface SubmitTrackingInput {
+  routeId: string;
+  latitude: number;
+  longitude: number;
+}
+
+export interface DriverPortalDriver {
+  id: string;
+  organizationId: string;
+  employeeId: string;
+  licenseNumber: string;
+  licenseExpiry: string;
+  employee: Employee;
+}
+
+export interface DriverPortalMe {
+  driver: DriverPortalDriver;
+  route: RouteRecord | null;
+}
+
+export interface CreateEmployeeLoginInput {
+  password: string;
+}
+
+// Never includes the password back — it was supplied by the admin, not
+// generated. `username` is what the admin relays to the employee.
+export interface CreateEmployeeLoginResult extends SafeUser {
+  username: string;
 }

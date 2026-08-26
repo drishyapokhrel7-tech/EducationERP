@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/auth-context";
 import { getAccessToken } from "@/lib/auth-storage";
+import { api } from "@/lib/api";
 
 // Payload decode only, no signature check — this is purely a client-side
 // routing convenience (which landing page to show), never an
@@ -41,7 +42,19 @@ export default function LoginPage() {
       await login({ identifier, password });
       const accessToken = getAccessToken();
       const roles = accessToken ? decodeJwtRoles(accessToken) : [];
-      router.push(roles.includes("Student") ? "/portal" : "/dashboard");
+      if (roles.includes("Student")) {
+        router.push("/portal");
+      } else {
+        // Driver logins carry no RBAC role at all (they only need the
+        // driver-portal, not the admin dashboard) — a 200 here is what
+        // tells them apart from every other roleless-but-staff login.
+        try {
+          await api.getDriverPortalMe();
+          router.push("/driver");
+        } catch {
+          router.push("/dashboard");
+        }
+      }
     } catch (err) {
       const message =
         err instanceof ApiError && err.status === 401

@@ -29,6 +29,7 @@ import { RbacModule } from "./modules/rbac/rbac.module";
 import { LeaveModule } from "./modules/leave/leave.module";
 import { PayrollModule } from "./modules/payroll/payroll.module";
 import { TransportModule } from "./modules/transport/transport.module";
+import { DriverPortalModule } from "./modules/driver-portal/driver-portal.module";
 import { QueueModule } from "./queue/queue.module";
 import { HealthController } from "./common/health.controller";
 
@@ -72,6 +73,7 @@ const queueModuleImports = process.env.REDIS_URL ? [QueueModule] : [];
     LeaveModule,
     PayrollModule,
     TransportModule,
+    DriverPortalModule,
     ...queueModuleImports,
   ],
   controllers: [HealthController],

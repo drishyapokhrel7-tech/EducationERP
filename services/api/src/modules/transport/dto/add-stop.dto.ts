@@ -1,4 +1,4 @@
-import { IsInt, IsOptional, IsString, Min, MinLength } from "class-validator";
+import { IsInt, IsLatitude, IsLongitude, IsOptional, IsString, Min, MinLength } from "class-validator";
 
 export class AddStopDto {
   @IsString()
@@ -13,4 +13,12 @@ export class AddStopDto {
   @IsInt()
   @Min(0)
   arrivalOffsetMinutes?: number;
+
+  @IsOptional()
+  @IsLatitude()
+  latitude?: number;
+
+  @IsOptional()
+  @IsLongitude()
+  longitude?: number;
 }

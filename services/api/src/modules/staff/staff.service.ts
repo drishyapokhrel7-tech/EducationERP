@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import * as argon2 from "argon2";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateStaffTypeDto } from "./dto/create-staff-type.dto";
 import { CreateDesignationDto } from "./dto/create-designation.dto";
@@ -6,6 +7,7 @@ import { CreateEmployeeDto } from "./dto/create-employee.dto";
 import { CreateEmploymentHistoryDto } from "./dto/create-employment-history.dto";
 import { CreateQualificationDto } from "./dto/create-qualification.dto";
 import { UpsertTeacherProfileDto } from "./dto/upsert-teacher-profile.dto";
+import { CreateEmployeeLoginDto } from "./dto/create-employee-login.dto";
 
 /**
  * Same load-bearing pattern as org-structure.service.ts: every create*
@@ -165,5 +167,43 @@ export class StaffService {
         create: { organizationId, employeeId, bio: dto.bio, specialization: dto.specialization },
       }),
     );
+  }
+
+  /**
+   * Mirrors StudentsService.createLogin almost exactly — same
+   * pseudo-email-under-username-namespace reasoning (User.email stays
+   * required+unique, this slice doesn't touch that). Unlike Student,
+   * no role is assigned: this login only ever needs to reach the
+   * JwtAuthGuard-only driver-portal routes, which check "is this the
+   * right driver," not a permission string.
+   */
+  async createLogin(organizationId: string, employeeId: string, dto: CreateEmployeeLoginDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const employee = await tx.employee.findUnique({ where: { id: employeeId } });
+      if (!employee) throw new NotFoundException("Employee not found");
+      if (employee.userId) throw new ConflictException("This employee already has a login");
+
+      const organization = await tx.organization.findUnique({ where: { id: organizationId } });
+      if (!organization) throw new NotFoundException("Organization not found");
+
+      const username = `${organization.slug}.${employee.employeeCode}`;
+      const passwordHash = await argon2.hash(dto.password);
+
+      const user = await tx.user.create({
+        data: {
+          organizationId,
+          email: `${username}@employee.local`,
+          username,
+          passwordHash,
+          firstName: employee.firstName,
+          lastName: employee.lastName,
+          status: "ACTIVE",
+        },
+      });
+      await tx.employee.update({ where: { id: employeeId }, data: { userId: user.id } });
+
+      const { passwordHash: _passwordHash, ...safeUser } = user;
+      return { ...safeUser, username };
+    });
   }
 }

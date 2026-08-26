@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import dynamic from "next/dynamic";
 import useSWR from "swr";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +13,11 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
 import type { StudentEnrollment } from "@education-erp/api-client";
+
+const LiveTrackingMap = dynamic(
+  () => import("@/components/transport/live-tracking-map").then((m) => m.LiveTrackingMap),
+  { ssr: false },
+);
 
 function errorMessage(err: unknown, fallback: string) {
   const message =
@@ -44,10 +50,30 @@ export default function TransportPage() {
 
   // ── Drivers ───────────────────────────────────────────────────────
   const [driverForm, setDriverForm] = useState({ employeeId: "", licenseNumber: "", licenseExpiry: "" });
+  // Keyed by employeeId, same per-row pattern as the students page's
+  // create-login form.
+  const [driverLoginPasswordForms, setDriverLoginPasswordForms] = useState<Record<string, string>>({});
+  const [driverCreatedUsernames, setDriverCreatedUsernames] = useState<Record<string, string>>({});
+
+  async function handleCreateDriverLogin(employeeId: string) {
+    const password = driverLoginPasswordForms[employeeId] ?? "";
+    try {
+      const result = await api.createEmployeeLogin(employeeId, { password });
+      setDriverCreatedUsernames((m) => ({ ...m, [employeeId]: result.username }));
+      setDriverLoginPasswordForms((f) => ({ ...f, [employeeId]: "" }));
+      drivers.mutate();
+      employees.mutate();
+      toast.success("Login created");
+    } catch {
+      toast.error("Failed to create login — password must be at least 8 characters");
+    }
+  }
 
   // ── Routes ────────────────────────────────────────────────────────
   const [routeForm, setRouteForm] = useState({ name: "", code: "", vehicleId: "", driverId: "" });
-  const [routeStops, setRouteStops] = useState([{ name: "", sequence: "1", arrivalOffsetMinutes: "" }]);
+  const [routeStops, setRouteStops] = useState([
+    { name: "", sequence: "1", arrivalOffsetMinutes: "", latitude: "", longitude: "" },
+  ]);
 
   // ── Student assignment ────────────────────────────────────────────
   const [assignStudentId, setAssignStudentId] = useState("");
@@ -140,10 +166,44 @@ export default function TransportPage() {
             <ul className="divide-y text-sm">
               {drivers.data.map((d) => (
                 <li key={d.id} className="py-2">
-                  {d.employee.firstName} {d.employee.lastName}{" "}
-                  <span className="text-muted-foreground">
-                    — license {d.licenseNumber}, expires {new Date(d.licenseExpiry).toLocaleDateString()}
-                  </span>
+                  <div>
+                    {d.employee.firstName} {d.employee.lastName}{" "}
+                    <span className="text-muted-foreground">
+                      — license {d.licenseNumber}, expires {new Date(d.licenseExpiry).toLocaleDateString()}
+                    </span>
+                  </div>
+                  {d.employee.userId ? (
+                    <p className="text-muted-foreground mt-1 text-xs">
+                      Driver login: {driverCreatedUsernames[d.employeeId] ?? "created"}
+                    </p>
+                  ) : (
+                    <form
+                      className="mt-2 flex items-end gap-2"
+                      onSubmit={(e: FormEvent) => {
+                        e.preventDefault();
+                        handleCreateDriverLogin(d.employeeId);
+                      }}
+                    >
+                      <Input
+                        type="password"
+                        className="h-7 w-40"
+                        placeholder="Set initial password"
+                        value={driverLoginPasswordForms[d.employeeId] ?? ""}
+                        onChange={(e) =>
+                          setDriverLoginPasswordForms((f) => ({ ...f, [d.employeeId]: e.target.value }))
+                        }
+                      />
+                      <Button
+                        type="submit"
+                        size="sm"
+                        variant="outline"
+                        className="h-7"
+                        disabled={(driverLoginPasswordForms[d.employeeId] ?? "").length < 8}
+                      >
+                        Create driver login
+                      </Button>
+                    </form>
+                  )}
                 </li>
               ))}
             </ul>
@@ -243,11 +303,13 @@ export default function TransportPage() {
                       name: stop.name,
                       sequence: Number(stop.sequence),
                       arrivalOffsetMinutes: stop.arrivalOffsetMinutes ? Number(stop.arrivalOffsetMinutes) : undefined,
+                      latitude: stop.latitude ? Number(stop.latitude) : undefined,
+                      longitude: stop.longitude ? Number(stop.longitude) : undefined,
                     });
                   }
                 }
                 setRouteForm({ name: "", code: "", vehicleId: "", driverId: "" });
-                setRouteStops([{ name: "", sequence: "1", arrivalOffsetMinutes: "" }]);
+                setRouteStops([{ name: "", sequence: "1", arrivalOffsetMinutes: "", latitude: "", longitude: "" }]);
                 routes.mutate();
                 toast.success("Saved");
               } catch (err) {
@@ -317,6 +379,28 @@ export default function TransportPage() {
                       }
                     />
                   </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Latitude</Label>
+                    <Input
+                      type="number"
+                      step="any"
+                      className="w-28"
+                      placeholder="optional"
+                      value={stop.latitude}
+                      onChange={(e) => setRouteStops((rows) => rows.map((r, i) => (i === idx ? { ...r, latitude: e.target.value } : r)))}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Longitude</Label>
+                    <Input
+                      type="number"
+                      step="any"
+                      className="w-28"
+                      placeholder="optional"
+                      value={stop.longitude}
+                      onChange={(e) => setRouteStops((rows) => rows.map((r, i) => (i === idx ? { ...r, longitude: e.target.value } : r)))}
+                    />
+                  </div>
                   {routeStops.length > 1 ? (
                     <Button type="button" size="sm" variant="outline" onClick={() => setRouteStops((rows) => rows.filter((_, i) => i !== idx))}>
                       Remove
@@ -329,7 +413,10 @@ export default function TransportPage() {
                 size="sm"
                 variant="outline"
                 onClick={() =>
-                  setRouteStops((rows) => [...rows, { name: "", sequence: String(rows.length + 1), arrivalOffsetMinutes: "" }])
+                  setRouteStops((rows) => [
+                    ...rows,
+                    { name: "", sequence: String(rows.length + 1), arrivalOffsetMinutes: "", latitude: "", longitude: "" },
+                  ])
                 }
               >
                 Add stop
@@ -440,6 +527,45 @@ export default function TransportPage() {
           </form>
         </CardContent>
       </Card>
+
+      <LiveTrackingCard />
     </div>
+  );
+}
+
+// Live Tracking (Phase 7 slice 7d-2) — a Leaflet map plotting every
+// vehicle's most recent known position. SWR polling, same ~20-30s
+// cadence as everywhere else in this project — no websocket
+// infrastructure exists here, and one isn't being introduced for this.
+function LiveTrackingCard() {
+  const tracking = useSWR("vehicle-tracking-latest", () => api.listLatestTrackingByVehicle(), {
+    refreshInterval: 25_000,
+  });
+
+  const points = (tracking.data ?? []).map((t) => ({
+    id: t.vehicleId,
+    lat: Number(t.latitude),
+    lng: Number(t.longitude),
+    label: `${t.vehicle.registrationNumber} — ${new Date(t.recordedAt).toLocaleTimeString()}`,
+  }));
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Live Tracking</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {points.length === 0 ? (
+          <p className="text-muted-foreground text-sm">No vehicle position updates yet.</p>
+        ) : (
+          <LiveTrackingMap
+            center={[points[0].lat, points[0].lng]}
+            markers={points}
+            zoom={12}
+            heightClassName="h-96"
+          />
+        )}
+      </CardContent>
+    </Card>
   );
 }

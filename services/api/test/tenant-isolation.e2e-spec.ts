@@ -185,6 +185,10 @@ describe("Tenant isolation (e2e)", () => {
         // (route.driverId is ON DELETE SET NULL) but are grouped here for
         // readability.
         "studentTransportAssignment",
+        // vehicleTrackingEvent.vehicleId is RESTRICT (must precede
+        // vehicle); its routeId is ON DELETE SET NULL, no ordering
+        // requirement against route.
+        "vehicleTrackingEvent",
         "stop",
         "route",
         "driver",
@@ -5650,6 +5654,156 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(tokenB))
         .send({ name: "Intruder Stop", sequence: 9 })
         .expect(404);
+    }, 60000);
+  });
+
+  describe("Transport, part 2 (driver location + navigation — Phase 7 slice 7d-2)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    async function buildEmployee(token: string, suffix: string) {
+      const staffType = await request(app.getHttpServer())
+        .post("/organizations/me/staff-types")
+        .set(...auth(token))
+        .send({ name: `Driver Staff ${suffix}`, code: `DSTAFF${suffix}` })
+        .expect(201);
+      const designation = await request(app.getHttpServer())
+        .post("/organizations/me/designations")
+        .set(...auth(token))
+        .send({ name: `Driver Role ${suffix}`, code: `DROLE${suffix}` })
+        .expect(201);
+      const employee = await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(token))
+        .send({
+          staffTypeId: staffType.body.id,
+          designationId: designation.body.id,
+          employeeCode: `DR-EMP-${suffix}`,
+          firstName: "Driver",
+          lastName: suffix,
+          email: `driver-${suffix}@staff-e2e.test`,
+          dateOfJoining: "2026-01-01",
+        })
+        .expect(201);
+      return employee.body.id as string;
+    }
+
+    it("creates an employee login, gates driver-portal to linked drivers, and records/reads tracking events (IDOR + tenant guards)", async () => {
+      const employeeId = await buildEmployee(tokenA, `DR${run}`);
+      const nonDriverEmployeeId = await buildEmployee(tokenA, `DR2${run}`);
+
+      const login = await request(app.getHttpServer())
+        .post(`/organizations/me/employees/${employeeId}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "DriverPass123" })
+        .expect(201);
+      expect(login.body.username).toBe(`${orgASlug}.DR-EMP-DR${run}`);
+      expect(login.body).not.toHaveProperty("passwordHash");
+
+      // An employee can't get a second login.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/employees/${employeeId}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "AnotherPass123" })
+        .expect(409);
+
+      const nonDriverLogin = await request(app.getHttpServer())
+        .post(`/organizations/me/employees/${nonDriverEmployeeId}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "OtherPass123" })
+        .expect(201);
+
+      const driverSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: login.body.username, password: "DriverPass123" })
+        .expect(201);
+      const nonDriverSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: nonDriverLogin.body.username, password: "OtherPass123" })
+        .expect(201);
+
+      // A login with no linked Driver profile 404s on driver-portal/me —
+      // same IDOR-safe-by-construction shape as student-portal.
+      await request(app.getHttpServer())
+        .get("/organizations/me/driver-portal/me")
+        .set(...auth(nonDriverSession.body.accessToken))
+        .expect(404);
+
+      const vehicle = await request(app.getHttpServer())
+        .post("/organizations/me/vehicles")
+        .set(...auth(tokenA))
+        .send({ registrationNumber: `BA-DR-${run}-KA`, type: "Bus", capacity: 20 })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post("/organizations/me/drivers")
+        .set(...auth(tokenA))
+        .send({ employeeId, licenseNumber: `LIC-DR-${run}`, licenseExpiry: "2030-01-01" })
+        .expect(201);
+      const route = await request(app.getHttpServer())
+        .post("/organizations/me/routes")
+        .set(...auth(tokenA))
+        .send({ name: `Driver Route ${run}`, code: `DRT${run}`, vehicleId: vehicle.body.id, driverId: employeeId })
+        .expect(201);
+      const otherRoute = await request(app.getHttpServer())
+        .post("/organizations/me/routes")
+        .set(...auth(tokenA))
+        .send({ name: `Other Route ${run}`, code: `ORT${run}` })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/routes/${route.body.id}/stops`)
+        .set(...auth(tokenA))
+        .send({ name: "Stop One", sequence: 1, latitude: 27.7, longitude: 85.32 })
+        .expect(201);
+
+      const me = await request(app.getHttpServer())
+        .get("/organizations/me/driver-portal/me")
+        .set(...auth(driverSession.body.accessToken))
+        .expect(200);
+      expect(me.body.driver.employeeId).toBe(employeeId);
+      expect(me.body.route.id).toBe(route.body.id);
+      expect(me.body.route.stops).toHaveLength(1);
+
+      // Can't post tracking against a route that isn't theirs.
+      await request(app.getHttpServer())
+        .post("/organizations/me/driver-portal/tracking")
+        .set(...auth(driverSession.body.accessToken))
+        .send({ routeId: otherRoute.body.id, latitude: 27.71, longitude: 85.33 })
+        .expect(404);
+
+      const tracked = await request(app.getHttpServer())
+        .post("/organizations/me/driver-portal/tracking")
+        .set(...auth(driverSession.body.accessToken))
+        .send({ routeId: route.body.id, latitude: 27.71, longitude: 85.33 })
+        .expect(201);
+      expect(tracked.body.vehicleId).toBe(vehicle.body.id);
+
+      const latest = await request(app.getHttpServer())
+        .get(`/organizations/me/vehicles/${vehicle.body.id}/tracking/latest`)
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(latest.body.id).toBe(tracked.body.id);
+
+      const latestByVehicle = await request(app.getHttpServer())
+        .get("/organizations/me/vehicles/tracking/latest")
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(latestByVehicle.body.some((t: { id: string }) => t.id === tracked.body.id)).toBe(true);
+
+      // Cross-tenant: org B can't create a login under org A's employee,
+      // can't reach org A's driver-portal, and sees no tracking data.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/employees/${employeeId}/create-login`)
+        .set(...auth(tokenB))
+        .send({ password: "IntruderPass123" })
+        .expect(404);
+      await request(app.getHttpServer())
+        .get(`/organizations/me/vehicles/${vehicle.body.id}/tracking/latest`)
+        .set(...auth(tokenB))
+        .expect(404);
+      const bLatestByVehicle = await request(app.getHttpServer())
+        .get("/organizations/me/vehicles/tracking/latest")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(bLatestByVehicle.body).toEqual([]);
     }, 60000);
   });
 });

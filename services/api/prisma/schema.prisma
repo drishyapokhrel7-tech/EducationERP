@@ -111,6 +111,7 @@ model Organization {
   routes                      Route[]
   stops                       Stop[]
   studentTransportAssignments StudentTransportAssignment[]
+  vehicleTrackingEvents       VehicleTrackingEvent[]
 
   @@map("organizations")
 }
@@ -2571,8 +2572,9 @@ model Vehicle {
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
-  routes       Route[]
+  organization   Organization           @relation(fields: [organizationId], references: [id])
+  routes         Route[]
+  trackingEvents VehicleTrackingEvent[]
 
   @@unique([organizationId, registrationNumber])
   @@index([organizationId])
@@ -2610,11 +2612,12 @@ model Route {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization                 @relation(fields: [organizationId], references: [id])
-  vehicle      Vehicle?                     @relation(fields: [vehicleId], references: [id])
-  driver       Employee?                    @relation("routesAsDriver", fields: [driverId], references: [id])
-  stops        Stop[]
-  assignments  StudentTransportAssignment[]
+  organization   Organization                 @relation(fields: [organizationId], references: [id])
+  vehicle        Vehicle?                     @relation(fields: [vehicleId], references: [id])
+  driver         Employee?                    @relation("routesAsDriver", fields: [driverId], references: [id])
+  stops          Stop[]
+  assignments    StudentTransportAssignment[]
+  trackingEvents VehicleTrackingEvent[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -2626,12 +2629,18 @@ model Route {
 // reality is just two rows, matching this project's "don't build
 // unrequested flexibility" precedent.
 model Stop {
-  id                   String @id @default(uuid())
+  id                   String   @id @default(uuid())
   organizationId       String
   routeId              String
   name                 String
   sequence             Int
   arrivalOffsetMinutes Int?
+  // Nullable — a stop can be recorded before its coordinates are known;
+  // added in slice 7d-2 so the driver map can plot stops and route a
+  // line to the next one. Same Decimal(9,6) GPS precision as
+  // VehicleTrackingEvent.
+  latitude             Decimal? @db.Decimal(9, 6)
+  longitude            Decimal? @db.Decimal(9, 6)
 
   organization Organization                 @relation(fields: [organizationId], references: [id])
   route        Route                        @relation(fields: [routeId], references: [id])
@@ -2663,4 +2672,25 @@ model StudentTransportAssignment {
   @@index([organizationId])
   @@index([routeId])
   @@map("student_transport_assignments")
+}
+
+// ── Transport, part 2: driver location + navigation (Phase 7 slice 7d-2) ─
+// vehicle_tracking_events — the plan's last remaining Transport ERD table.
+// routeId is nullable — a ping might arrive between route assignments.
+model VehicleTrackingEvent {
+  id             String   @id @default(uuid())
+  organizationId String
+  vehicleId      String
+  routeId        String?
+  latitude       Decimal  @db.Decimal(9, 6)
+  longitude      Decimal  @db.Decimal(9, 6)
+  recordedAt     DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  vehicle      Vehicle      @relation(fields: [vehicleId], references: [id])
+  route        Route?       @relation(fields: [routeId], references: [id])
+
+  @@index([organizationId])
+  @@index([vehicleId, recordedAt])
+  @@map("vehicle_tracking_events")
 }

@@ -95,4 +95,16 @@ export class TransportController {
   unassignStudentTransport(@CurrentUser() user: JwtPayload, @Param("studentEnrollmentId") studentEnrollmentId: string) {
     return this.transport.unassignStudentTransport(user.organizationId, studentEnrollmentId);
   }
+
+  @Get("vehicles/:id/tracking/latest")
+  @RequirePermissions("route:view")
+  getLatestTracking(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.transport.getLatestTracking(user.organizationId, id);
+  }
+
+  @Get("vehicles/tracking/latest")
+  @RequirePermissions("route:view")
+  listLatestTrackingByVehicle(@CurrentUser() user: JwtPayload) {
+    return this.transport.listLatestTrackingByVehicle(user.organizationId);
+  }
 }

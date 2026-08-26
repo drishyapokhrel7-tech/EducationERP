@@ -6,6 +6,7 @@ import { CreateEmployeeDto } from "./dto/create-employee.dto";
 import { CreateEmploymentHistoryDto } from "./dto/create-employment-history.dto";
 import { CreateQualificationDto } from "./dto/create-qualification.dto";
 import { UpsertTeacherProfileDto } from "./dto/upsert-teacher-profile.dto";
+import { CreateEmployeeLoginDto } from "./dto/create-employee-login.dto";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
@@ -51,6 +52,16 @@ export class StaffController {
   @RequirePermissions("employee:create")
   createEmployee(@CurrentUser() user: JwtPayload, @Body() dto: CreateEmployeeDto) {
     return this.staff.createEmployee(user.organizationId, dto);
+  }
+
+  @Post("employees/:employeeId/create-login")
+  @RequirePermissions("employee:manage")
+  createLogin(
+    @CurrentUser() user: JwtPayload,
+    @Param("employeeId") employeeId: string,
+    @Body() dto: CreateEmployeeLoginDto,
+  ) {
+    return this.staff.createLogin(user.organizationId, employeeId, dto);
   }
 
   @Get("employees/:employeeId/employment-history")

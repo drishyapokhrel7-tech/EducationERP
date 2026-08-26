@@ -42,6 +42,32 @@ export class TransportService {
     return vehicle;
   }
 
+  // ── Live tracking (Phase 7 slice 7d-2) ───────────────────────────────
+
+  async getLatestTracking(organizationId: string, vehicleId: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadVehicle(tx, organizationId, vehicleId);
+      return tx.vehicleTrackingEvent.findFirst({
+        where: { organizationId, vehicleId },
+        orderBy: { recordedAt: "desc" },
+      });
+    });
+  }
+
+  // One row per vehicle, its most recent ping — feeds the admin
+  // Live Tracking map. `distinct` after `orderBy: recordedAt desc`
+  // keeps only the first (i.e. latest) row per vehicleId.
+  listLatestTrackingByVehicle(organizationId: string) {
+    return this.prisma.withTenant(organizationId, (tx) =>
+      tx.vehicleTrackingEvent.findMany({
+        where: { organizationId },
+        distinct: ["vehicleId"],
+        orderBy: { recordedAt: "desc" },
+        include: { vehicle: true },
+      }),
+    );
+  }
+
   // ── Drivers ───────────────────────────────────────────────────────
 
   async createDriver(organizationId: string, dto: CreateDriverDto) {
@@ -110,7 +136,15 @@ export class TransportService {
       if (existing) throw new ConflictException(`This route already has a stop at sequence ${dto.sequence}`);
 
       return tx.stop.create({
-        data: { organizationId, routeId, name: dto.name, sequence: dto.sequence, arrivalOffsetMinutes: dto.arrivalOffsetMinutes },
+        data: {
+          organizationId,
+          routeId,
+          name: dto.name,
+          sequence: dto.sequence,
+          arrivalOffsetMinutes: dto.arrivalOffsetMinutes,
+          latitude: dto.latitude,
+          longitude: dto.longitude,
+        },
       });
     });
   }
