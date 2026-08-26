@@ -10,6 +10,7 @@ import {
   CalendarCheck,
   CalendarClock,
   CheckCircle2,
+  ChevronDown,
   ClipboardCheck,
   ClipboardList,
   FileQuestion,
@@ -29,41 +30,103 @@ import {
   Bus,
   Users,
   Wallet,
+  type LucideIcon,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth-context";
 
-const NAV = [
-  { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
-  { href: "/dashboard/org-structure", label: "Org structure", icon: Network },
-  { href: "/dashboard/staff", label: "Staff", icon: Users },
-  { href: "/dashboard/leave", label: "Leave", icon: CalendarOff },
-  { href: "/dashboard/payroll", label: "Payroll", icon: Banknote },
-  { href: "/dashboard/transport", label: "Transport", icon: Bus },
-  { href: "/dashboard/academics", label: "Academics", icon: BookOpen },
-  { href: "/dashboard/students", label: "Students", icon: GraduationCap },
-  { href: "/dashboard/admissions", label: "Admissions", icon: ClipboardList },
-  { href: "/dashboard/finance", label: "Finance", icon: Wallet },
-  { href: "/dashboard/timetable", label: "Timetable", icon: CalendarClock },
-  { href: "/dashboard/attendance", label: "Attendance", icon: CalendarCheck },
-  { href: "/dashboard/syllabus", label: "Syllabus", icon: NotebookText },
-  { href: "/dashboard/my-classes-today", label: "My Classes Today", icon: CheckCircle2 },
-  { href: "/dashboard/assignments", label: "Assignments", icon: ClipboardCheck },
-  { href: "/dashboard/knowledge-checks", label: "Knowledge Checks", icon: ListChecks },
-  { href: "/dashboard/learning-dashboards", label: "Learning Dashboards", icon: LayoutPanelTop },
-  { href: "/dashboard/exam-setup", label: "Exam Setup", icon: FileQuestion },
-  { href: "/dashboard/exams", label: "Exams", icon: ScrollText },
-  { href: "/dashboard/biometric-policy", label: "Biometric", icon: Fingerprint },
-  { href: "/dashboard/cameras", label: "Cameras", icon: Camera },
-  { href: "/dashboard/library", label: "Library", icon: Library },
-  { href: "/dashboard/roles-permissions", label: "Roles & Permissions", icon: Shield },
+interface NavItem {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+}
+
+interface NavGroup {
+  label: string;
+  items: NavItem[];
+}
+
+// Groups mirror the platform's own domain boundaries (roughly this
+// project's phase breakdown) rather than an arbitrary A-Z split —
+// each group is a set of modules the same kind of staff member
+// actually works across day to day.
+const NAV_GROUPS: NavGroup[] = [
+  {
+    label: "Organization",
+    items: [
+      { href: "/dashboard/org-structure", label: "Org structure", icon: Network },
+      { href: "/dashboard/roles-permissions", label: "Roles & Permissions", icon: Shield },
+    ],
+  },
+  {
+    label: "People",
+    items: [
+      { href: "/dashboard/staff", label: "Staff", icon: Users },
+      { href: "/dashboard/students", label: "Students", icon: GraduationCap },
+      { href: "/dashboard/admissions", label: "Admissions", icon: ClipboardList },
+    ],
+  },
+  {
+    label: "HR & Payroll",
+    items: [
+      { href: "/dashboard/leave", label: "Leave", icon: CalendarOff },
+      { href: "/dashboard/payroll", label: "Payroll", icon: Banknote },
+    ],
+  },
+  {
+    label: "Teaching & Learning",
+    items: [
+      { href: "/dashboard/academics", label: "Academics", icon: BookOpen },
+      { href: "/dashboard/syllabus", label: "Syllabus", icon: NotebookText },
+      { href: "/dashboard/timetable", label: "Timetable", icon: CalendarClock },
+      { href: "/dashboard/attendance", label: "Attendance", icon: CalendarCheck },
+      { href: "/dashboard/my-classes-today", label: "My Classes Today", icon: CheckCircle2 },
+    ],
+  },
+  {
+    label: "Assessment",
+    items: [
+      { href: "/dashboard/assignments", label: "Assignments", icon: ClipboardCheck },
+      { href: "/dashboard/knowledge-checks", label: "Knowledge Checks", icon: ListChecks },
+      { href: "/dashboard/exam-setup", label: "Exam Setup", icon: FileQuestion },
+      { href: "/dashboard/exams", label: "Exams", icon: ScrollText },
+      { href: "/dashboard/learning-dashboards", label: "Learning Dashboards", icon: LayoutPanelTop },
+    ],
+  },
+  {
+    label: "Finance",
+    items: [{ href: "/dashboard/finance", label: "Finance", icon: Wallet }],
+  },
+  {
+    label: "Operations",
+    items: [
+      { href: "/dashboard/transport", label: "Transport", icon: Bus },
+      { href: "/dashboard/library", label: "Library", icon: Library },
+    ],
+  },
+  {
+    label: "Security",
+    items: [
+      { href: "/dashboard/biometric-policy", label: "Biometric", icon: Fingerprint },
+      { href: "/dashboard/cameras", label: "Cameras", icon: Camera },
+    ],
+  },
 ];
+
+function isActivePath(pathname: string | null, href: string) {
+  return href === "/dashboard" ? pathname === href : pathname === href || pathname?.startsWith(`${href}/`);
+}
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  // Every group starts expanded — grouping is for scanability, not to
+  // hide modules by default. Collapsing is a per-group user choice.
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(NAV_GROUPS.map((g) => [g.label, true])),
+  );
   // On a cold full-page load, useSyncExternalStore's client snapshot isn't
   // guaranteed to have replaced the (always-null) server snapshot before
   // this component's effects run — observed in practice as a real bug:
@@ -101,22 +164,53 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           </div>
           <span className="font-heading font-semibold">Education ERP</span>
         </div>
-        <nav className="flex flex-1 flex-col gap-1">
-          {NAV.map(({ href, label, icon: Icon }) => {
-            const isActive = href === "/dashboard" ? pathname === href : pathname === href || pathname?.startsWith(`${href}/`);
+        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto">
+          <Link
+            href="/dashboard"
+            className={
+              isActivePath(pathname, "/dashboard")
+                ? "bg-sidebar-primary text-sidebar-primary-foreground flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium shadow-sm"
+                : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground text-sidebar-foreground/80 flex items-center gap-2 rounded-full px-3 py-2 text-sm"
+            }
+          >
+            <LayoutDashboard className="size-4" />
+            Overview
+          </Link>
+
+          {NAV_GROUPS.map((group) => {
+            const isOpen = openGroups[group.label] ?? true;
             return (
-              <Link
-                key={href}
-                href={href}
-                className={
-                  isActive
-                    ? "bg-sidebar-primary text-sidebar-primary-foreground flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium shadow-sm"
-                    : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground text-sidebar-foreground/80 flex items-center gap-2 rounded-full px-3 py-2 text-sm"
-                }
-              >
-                <Icon className="size-4" />
-                {label}
-              </Link>
+              <div key={group.label} className="mt-2">
+                <button
+                  type="button"
+                  onClick={() => setOpenGroups((prev) => ({ ...prev, [group.label]: !isOpen }))}
+                  className="text-sidebar-foreground/60 hover:text-sidebar-foreground flex w-full items-center justify-between px-3 py-1 text-xs font-semibold tracking-wide uppercase"
+                >
+                  {group.label}
+                  <ChevronDown className={`size-3.5 transition-transform ${isOpen ? "" : "-rotate-90"}`} />
+                </button>
+                {isOpen ? (
+                  <div className="flex flex-col gap-1">
+                    {group.items.map(({ href, label, icon: Icon }) => {
+                      const isActive = isActivePath(pathname, href);
+                      return (
+                        <Link
+                          key={href}
+                          href={href}
+                          className={
+                            isActive
+                              ? "bg-sidebar-primary text-sidebar-primary-foreground flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium shadow-sm"
+                              : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground text-sidebar-foreground/80 flex items-center gap-2 rounded-full px-3 py-2 text-sm"
+                          }
+                        >
+                          <Icon className="size-4" />
+                          {label}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
             );
           })}
         </nav>
