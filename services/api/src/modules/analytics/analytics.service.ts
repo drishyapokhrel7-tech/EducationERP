@@ -163,7 +163,126 @@ export class AnalyticsService {
     });
   }
 
-  // ── Export (CSV/Excel, shared) ────────────────────────────────────
+  // ── Financial (Phase 8 slice 8d, part 2) ──────────────────────────
+
+  async financial(organizationId: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const invoices = await tx.invoice.findMany({
+        where: { organizationId, status: { not: "CANCELLED" } },
+        include: {
+          discounts: true,
+          payments: { include: { refunds: true } },
+        },
+      });
+
+      let totalInvoiced = 0;
+      let totalCollected = 0;
+      let totalDiscounted = 0;
+      const byMethod = new Map<string, number>();
+      for (const invoice of invoices) {
+        totalInvoiced += toNumber(invoice.totalAmount);
+        totalDiscounted += invoice.discounts.reduce((s, d) => s + toNumber(d.amount), 0);
+        for (const p of invoice.payments) {
+          const refunded = p.refunds.reduce((rs, r) => rs + toNumber(r.amount), 0);
+          const net = toNumber(p.amount) - refunded;
+          totalCollected += net;
+          byMethod.set(p.method, (byMethod.get(p.method) ?? 0) + net);
+        }
+      }
+
+      return {
+        totalInvoiced: Math.round(totalInvoiced * 100) / 100,
+        totalCollected: Math.round(totalCollected * 100) / 100,
+        totalDiscounted: Math.round(totalDiscounted * 100) / 100,
+        totalOutstanding: Math.round((totalInvoiced - totalDiscounted - totalCollected) * 100) / 100,
+        collectionsByMethod: Array.from(byMethod.entries()).map(([method, amount]) => ({
+          method,
+          amount: Math.round(amount * 100) / 100,
+        })),
+      };
+    });
+  }
+
+  // ── Examination ────────────────────────────────────────────────────
+
+  async examination(organizationId: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const [attempts, grades] = await Promise.all([
+        tx.examAttempt.findMany({
+          where: { organizationId, status: "PRESENT" },
+          include: { marks: true, examSubject: true },
+        }),
+        tx.grade.findMany({ where: { organizationId } }),
+      ]);
+
+      const scored = attempts.filter((a) => a.marks);
+      const passed = scored.filter((a) => a.marks!.obtainedMarks >= a.examSubject.passMarks);
+      const passRate = scored.length === 0 ? null : Math.round((passed.length / scored.length) * 1000) / 10;
+      const averagePercentage =
+        grades.length === 0 ? null : Math.round((grades.reduce((s, g) => s + g.percentage, 0) / grades.length) * 10) / 10;
+
+      const byGrade = new Map<string, number>();
+      for (const g of grades) byGrade.set(g.grade, (byGrade.get(g.grade) ?? 0) + 1);
+
+      return {
+        attemptsScored: scored.length,
+        passRate,
+        averagePercentage,
+        gradeDistribution: Array.from(byGrade.entries()).map(([grade, count]) => ({ grade, count })),
+      };
+    });
+  }
+
+  // ── Continuous learning ────────────────────────────────────────────
+
+  async continuousLearning(organizationId: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const [submissions, quizAttempts] = await Promise.all([
+        tx.assignmentSubmission.findMany({ where: { organizationId } }),
+        tx.knowledgeCheckAttempt.findMany({ where: { organizationId, submittedAt: { not: null } } }),
+      ]);
+
+      const gradedSubmissions = submissions.filter((s) => s.status === "GRADED");
+      const submissionGradedRate =
+        submissions.length === 0 ? null : Math.round((gradedSubmissions.length / submissions.length) * 1000) / 10;
+
+      const scoredQuizzes = quizAttempts.filter((a) => a.score !== null);
+      const averageQuizScore =
+        scoredQuizzes.length === 0
+          ? null
+          : Math.round((scoredQuizzes.reduce((s, a) => s + (a.score ?? 0), 0) / scoredQuizzes.length) * 10) / 10;
+
+      return {
+        totalSubmissions: submissions.length,
+        gradedSubmissions: gradedSubmissions.length,
+        submissionGradedRate,
+        totalQuizAttempts: quizAttempts.length,
+        averageQuizScore,
+      };
+    });
+  }
+
+  // ── Alumni & graduate outcomes ─────────────────────────────────────
+
+  async alumniOutcomes(organizationId: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const [totalAlumni, outcomes] = await Promise.all([
+        tx.alumniProfile.count({ where: { organizationId } }),
+        tx.graduateOutcome.findMany({ where: { organizationId } }),
+      ]);
+
+      const byStatus = new Map<string, number>();
+      for (const o of outcomes) byStatus.set(o.employmentStatus, (byStatus.get(o.employmentStatus) ?? 0) + 1);
+
+      return {
+        totalAlumni,
+        outcomesRecorded: outcomes.length,
+        employmentStatus: Array.from(byStatus.entries()).map(([status, count]) => ({ status, count })),
+      };
+    });
+  }
+
+  // ── Export (CSV/Excel/PDF, shared) ────────────────────────────────
 
   async exportOperational(organizationId: string) {
     const data = await this.operational(organizationId);
@@ -203,6 +322,53 @@ export class AnalyticsService {
       ...data.enrollmentTrend.map((t) => ["Enrollment trend", t.academicYear, t.count]),
     ];
     return { headers: ["Category", "Label", "Count"], rows };
+  }
+
+  async exportFinancial(organizationId: string) {
+    const data = await this.financial(organizationId);
+    const rows: (string | number)[][] = [
+      ["Total invoiced", data.totalInvoiced],
+      ["Total collected", data.totalCollected],
+      ["Total discounted", data.totalDiscounted],
+      ["Total outstanding", data.totalOutstanding],
+      ...data.collectionsByMethod.map((m) => [`Collected via ${m.method}`, m.amount]),
+    ];
+    return { headers: ["Metric", "Value"], rows };
+  }
+
+  async exportExamination(organizationId: string) {
+    const data = await this.examination(organizationId);
+    const rows: (string | number)[][] = [
+      ["Attempts scored", data.attemptsScored],
+      ["Pass rate (%)", data.passRate ?? ""],
+      ["Average percentage", data.averagePercentage ?? ""],
+      ...data.gradeDistribution.map((g) => [`Grade ${g.grade}`, g.count]),
+    ];
+    return { headers: ["Metric", "Value"], rows };
+  }
+
+  async exportContinuousLearning(organizationId: string) {
+    const data = await this.continuousLearning(organizationId);
+    return {
+      headers: ["Metric", "Value"],
+      rows: [
+        ["Total submissions", data.totalSubmissions],
+        ["Graded submissions", data.gradedSubmissions],
+        ["Submission graded rate (%)", data.submissionGradedRate ?? ""],
+        ["Total quiz attempts", data.totalQuizAttempts],
+        ["Average quiz score (%)", data.averageQuizScore ?? ""],
+      ],
+    };
+  }
+
+  async exportAlumniOutcomes(organizationId: string) {
+    const data = await this.alumniOutcomes(organizationId);
+    const rows: (string | number)[][] = [
+      ["Total alumni", data.totalAlumni],
+      ["Outcomes recorded", data.outcomesRecorded],
+      ...data.employmentStatus.map((s) => [s.status, s.count]),
+    ];
+    return { headers: ["Metric", "Value"], rows };
   }
 }
 

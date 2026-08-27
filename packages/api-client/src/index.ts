@@ -216,6 +216,11 @@ import type {
   AcademicAnalytics,
   AttendanceAnalytics,
   EnrollmentAnalytics,
+  FinancialAnalytics,
+  ExaminationAnalytics,
+  ContinuousLearningAnalytics,
+  AlumniOutcomesAnalytics,
+  AnalyticsExportFormat,
   TeacherDashboard,
   StudentDashboard,
   ParentDashboard,
@@ -1631,18 +1636,33 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       return request<AttendanceAnalytics>(`/organizations/me/analytics/attendance${qs ? `?${qs}` : ""}`);
     },
     getEnrollmentAnalytics: () => request<EnrollmentAnalytics>("/organizations/me/analytics/enrollment"),
-    exportOperationalAnalytics: (format: "csv" | "xlsx") =>
+    exportOperationalAnalytics: (format: AnalyticsExportFormat) =>
       requestBlob(`/organizations/me/analytics/operational/export?format=${format}`),
-    exportAcademicAnalytics: (format: "csv" | "xlsx", examId?: string) =>
+    exportAcademicAnalytics: (format: AnalyticsExportFormat, examId?: string) =>
       requestBlob(`/organizations/me/analytics/academic/export?format=${format}${examId ? `&examId=${examId}` : ""}`),
-    exportAttendanceAnalytics: (format: "csv" | "xlsx", from?: string, to?: string) => {
+    exportAttendanceAnalytics: (format: AnalyticsExportFormat, from?: string, to?: string) => {
       const params = new URLSearchParams({ format });
       if (from) params.set("from", from);
       if (to) params.set("to", to);
       return requestBlob(`/organizations/me/analytics/attendance/export?${params.toString()}`);
     },
-    exportEnrollmentAnalytics: (format: "csv" | "xlsx") =>
+    exportEnrollmentAnalytics: (format: AnalyticsExportFormat) =>
       requestBlob(`/organizations/me/analytics/enrollment/export?format=${format}`),
+
+    // Analytics & Reports (Phase 8 slice 8d, part 2)
+    getFinancialAnalytics: () => request<FinancialAnalytics>("/organizations/me/analytics/financial"),
+    getExaminationAnalytics: () => request<ExaminationAnalytics>("/organizations/me/analytics/examination"),
+    getContinuousLearningAnalytics: () =>
+      request<ContinuousLearningAnalytics>("/organizations/me/analytics/continuous-learning"),
+    getAlumniOutcomesAnalytics: () => request<AlumniOutcomesAnalytics>("/organizations/me/analytics/alumni-outcomes"),
+    exportFinancialAnalytics: (format: AnalyticsExportFormat) =>
+      requestBlob(`/organizations/me/analytics/financial/export?format=${format}`),
+    exportExaminationAnalytics: (format: AnalyticsExportFormat) =>
+      requestBlob(`/organizations/me/analytics/examination/export?format=${format}`),
+    exportContinuousLearningAnalytics: (format: AnalyticsExportFormat) =>
+      requestBlob(`/organizations/me/analytics/continuous-learning/export?format=${format}`),
+    exportAlumniOutcomesAnalytics: (format: AnalyticsExportFormat) =>
+      requestBlob(`/organizations/me/analytics/alumni-outcomes/export?format=${format}`),
   };
 }
 

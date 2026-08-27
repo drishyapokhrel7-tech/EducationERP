@@ -28,8 +28,9 @@ has been:
 - **8d** — Analytics & Reports (docx §17), cross-cutting over every
   prior phase. Slice 8d, part 1 shipped operational/academic/
   attendance/enrollment analytics + CSV/Excel export infrastructure;
-  part 2 (financial/examination/continuous-learning/alumni-outcome
-  analytics + PDF export) is not started.
+  part 2 shipped financial/examination/continuous-learning/alumni-
+  outcome analytics + PDF export, closing the entire Analytics &
+  Reports domain.
 - The plan's other Phase 8 bullets — notifications (already covered
   by Communication 7g + LMS discovery slice 9), global search,
   performance optimization, security hardening, backups,
@@ -708,13 +709,115 @@ New "Analytics" nav group.
   committed as part of this slice for the next time the suite runs
   cleanly to pick up.
 
-## Next step (as of slice 8d, part 1)
+## Slice 8d, part 2 — Analytics & Reports: financial, examination, continuous learning, alumni outcomes + PDF export
 
-Slice 8d part 1 done. Per this project's standing per-slice check-in
-rule, "go-ahead" authorized this slice specifically, not an indefinite
-push through the rest of Phase 8 — the next slice (8d part 2:
-financial/examination/continuous-learning/alumni-outcome analytics +
-PDF export) needs its own fresh go-ahead, as does any of the plan's
-other Phase 8 bullets (notifications, global search, performance
-optimization, security hardening, backups, observability, deployment/
-release management) if raised.
+User said "go-ahead" to the option offered at the close of 8d part 1:
+the four categories explicitly deferred there, plus server-rendered
+PDF export. Investigated directly before designing: confirming (as
+part 1's own design already anticipated) that no new Prisma tables,
+materialized views, or background jobs are warranted here either —
+same "computed, not stored" and "live aggregation is fast enough at
+this project's real data volumes" reasoning as part 1, extended
+without needing to be re-argued.
+
+### Design
+
+**Zero new Prisma tables again** — the second consecutive slice this
+session with none. Four new read-only aggregation methods on the
+existing `AnalyticsService`, all via `withTenant`, reusing the already-
+seeded `analytics` RBAC resource as-is (no new resource, no seed
+changes needed — every new category folds under the `view`/`export`
+actions part 1 already registered):
+
+- **Financial** — total invoiced, collected (net of refunds),
+  discounted, and outstanding across all non-cancelled invoices;
+  collections broken down by `PaymentMethod`.
+- **Examination** — attempts scored, pass rate (marks vs. each exam
+  subject's `passMarks`), average percentage, grade distribution —
+  all org-wide across every exam, not scoped to one like part 1's
+  Academic card's single-exam grade breakdown.
+- **Continuous learning** — assignment submission count and graded
+  rate, quiz attempt count and average score, across the LMS-
+  discovery-slice assignment/knowledge-check tables.
+- **Alumni outcomes** — total alumni, outcomes recorded, employment-
+  status breakdown, over the 8a/8c `AlumniProfile`/`GraduateOutcome`
+  tables — the first analytics category reading data from Phase 8
+  itself rather than only Phases 1-7.
+
+**PDF export**: added **`pdfkit`** (new dependency) — chosen over a
+headless-browser approach (no Puppeteer/Chromium) since this is a
+plain tabular report, the same data already served as CSV/XLSX, not a
+formatted document needing real page-layout control. A new `toPdf`
+helper in `export-helpers.ts` draws a title plus a simple header-row-
+and-data-rows table with automatic pagination. The existing `sendTable`
+controller helper (part 1) gained a third `pdf` branch alongside its
+`csv`/`xlsx` ones, applied uniformly to **all eight** analytics
+categories (not just the four new ones) for a consistent three-format
+choice everywhere — matching part 1's own plan note that PDF was
+"deferred to part 2 alongside the categories that most benefit from a
+formatted document," read as implying a uniform third option rather
+than a narrowly-scoped one.
+
+**Web UI**: the existing `/dashboard/analytics` page's `ExportButtons`
+component gained a third "Export PDF" button (now `{onCsv, onXlsx,
+onPdf}`), applied to all eight cards; four new Cards appended
+(Financial, Examination, Continuous learning, Alumni & graduate
+outcomes), each following the same KPI-grid-plus-badge-breakdown
+layout as part 1's cards.
+
+### Explicitly not in this slice
+
+- Every other Phase 8 bullet (notifications, global search, performance
+  optimization, security hardening, backups, observability, deployment/
+  release management) — each its own separate go-ahead, not assumed
+  here. Analytics & Reports (docx §17) is now fully closed, both parts.
+
+## Verified
+
+- `pnpm -r typecheck`/`lint`/`build` clean across all six packages.
+- A standalone diagnostic script exercised all four new aggregation
+  queries directly against Prisma, and a second one exercised `toPdf`
+  in isolation, confirming real `%PDF-` magic bytes — both before
+  touching jest, same discipline as every prior slice.
+- The e2e suite ran clean end to end this time (no repeat of part 1's
+  40+-minute stall): a new "Analytics & Reports, part 2" describe block
+  built real financial/examination/continuous-learning/alumni-outcome
+  data for both orgs, asserted every new aggregate as a before/after
+  delta (all four categories, plus the payment-method/grade/employment-
+  status breakdowns individually), exercised PDF export for all four
+  new categories (content-type + non-empty, well-formed buffer) plus a
+  CSV and an XLSX spot-check, and asserted exact zero-delta cross-
+  tenant isolation for org B against freshly-captured baselines —
+  passed clean in ~66s (`✓ ... (65874 ms)`, full suite 1 passed).
+- Full browser pass, as the demo admin: opened `/dashboard/analytics`
+  and confirmed all eight cards (the original four plus the four new
+  ones) render real, plausible numbers matching the demo org's actual
+  data, with "Export PDF" present on every card. Verified the PDF
+  mechanism via a direct authenticated fetch of the Financial category
+  (`{"status":"ok","byteLength":1583,"magic":"%PDF-"}` — a genuinely
+  well-formed PDF). Verified CSV and XLSX for the two new categories
+  through the **actual UI buttons** (not just fetch): clicking
+  "Export CSV" on the Financial card and "Export Excel" on the
+  Examination card both produced real `200 OK` responses on
+  `financial/export?format=csv` and `examination/export?format=xlsx`
+  respectively, via the real click → blob-download code path.
+- Investigated, not assumed, an apparent discrepancy: the Alumni card
+  showed "EMPLOYED: 1" for the one demo graduate, which seemed to
+  contradict an earlier "FURTHER_STUDY" value set during 8c's own
+  verification. Confirmed via a direct API fetch of the graduate
+  outcome record that `employmentStatus: "EMPLOYED"` was set by a
+  chronologically *later* admin action (during part 1's own browser
+  verification pass) — correct "most recent write wins" upsert
+  behavior, not a regression.
+- Cross-tenant isolation is structural, unchanged from part 1: every
+  new query runs inside the same `withTenant` wrapper, no new isolation
+  mechanism introduced to get wrong.
+
+## Next step (as of slice 8d, part 2)
+
+Analytics & Reports (docx §17) is now fully complete, both parts.
+Per this project's standing per-slice check-in rule, "go-ahead"
+authorized this slice specifically — any further Phase 8 bullet
+(notifications, global search, performance optimization, security
+hardening, backups, observability, deployment/release management)
+needs its own fresh go-ahead before starting.

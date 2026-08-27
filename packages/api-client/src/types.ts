@@ -3308,3 +3308,36 @@ export interface EnrollmentAnalytics {
   admissionsFunnel: { status: string; count: number }[];
   enrollmentTrend: { academicYear: string; count: number }[];
 }
+
+// ── Phase 8 slice 8d, part 2 ───────────────────────────────────────
+
+export interface FinancialAnalytics {
+  totalInvoiced: number;
+  totalCollected: number;
+  totalDiscounted: number;
+  totalOutstanding: number;
+  collectionsByMethod: { method: string; amount: number }[];
+}
+
+export interface ExaminationAnalytics {
+  attemptsScored: number;
+  passRate: number | null;
+  averagePercentage: number | null;
+  gradeDistribution: { grade: string; count: number }[];
+}
+
+export interface ContinuousLearningAnalytics {
+  totalSubmissions: number;
+  gradedSubmissions: number;
+  submissionGradedRate: number | null;
+  totalQuizAttempts: number;
+  averageQuizScore: number | null;
+}
+
+export interface AlumniOutcomesAnalytics {
+  totalAlumni: number;
+  outcomesRecorded: number;
+  employmentStatus: { status: string; count: number }[];
+}
+
+export type AnalyticsExportFormat = "csv" | "xlsx" | "pdf";
