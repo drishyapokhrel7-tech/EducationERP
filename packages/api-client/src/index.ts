@@ -1161,6 +1161,12 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         method: "POST",
         body: JSON.stringify(input),
       }),
+
+    // Gradebook (LMS discovery slice 7) — the only new endpoint; the
+    // rest of the grid is built client-side from listTeacherAssignments/
+    // listTeacherQuizzes' existing submissions/attempts data.
+    getTeacherCourseRoster: (teachingAssignmentId: string) =>
+      request<Student[]>(`/organizations/me/teacher-portal/courses/${teachingAssignmentId}/roster`),
   };
 }
 

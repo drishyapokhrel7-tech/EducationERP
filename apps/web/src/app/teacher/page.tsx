@@ -111,6 +111,11 @@ export default function TeacherPage() {
   );
   const [replyBody, setReplyBody] = useState("");
 
+  // Gradebook (LMS discovery slice 7) — the grid is built from the
+  // roster plus the same `assignments`/`quizzes` data already fetched
+  // above for those cards; no separate fetch of grade data.
+  const roster = useSWR(courseId ? ["teacher-roster", courseId] : null, () => api.getTeacherCourseRoster(courseId));
+
   async function openClass(classScheduleId: string) {
     try {
       const session = await api.createTeacherClassSession({ classScheduleId, date });
@@ -1253,6 +1258,87 @@ export default function TeacherPage() {
                       </Button>
                     </form>
                   </>
+                ) : null}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Gradebook</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <NativeSelect
+                  className="w-64"
+                  placeholder="Select a course"
+                  value={courseId}
+                  onChange={(v) => setCourseId(v)}
+                  options={me.data.teachingAssignments.map((t) => ({ value: t.id, label: t.subject.name }))}
+                />
+
+                {courseId ? (
+                  !roster.data || !assignments.data || !quizzes.data ? (
+                    <p className="text-muted-foreground text-sm">Loading…</p>
+                  ) : roster.data.length === 0 ? (
+                    <p className="text-muted-foreground text-sm">No students enrolled in this course yet.</p>
+                  ) : (
+                    (() => {
+                      const publishedAssignments = assignments.data!.filter((a) => a.isPublished);
+                      const publishedQuizzes = quizzes.data!.filter((q) => q.status === "PUBLISHED");
+                      if (publishedAssignments.length === 0 && publishedQuizzes.length === 0) {
+                        return <p className="text-muted-foreground text-sm">No published assignments or quizzes yet.</p>;
+                      }
+                      return (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b text-left">
+                                <th className="p-2 font-medium">Student</th>
+                                {publishedAssignments.map((a) => (
+                                  <th key={a.id} className="p-2 font-medium whitespace-nowrap">
+                                    {a.title}
+                                  </th>
+                                ))}
+                                {publishedQuizzes.map((q) => (
+                                  <th key={q.id} className="p-2 font-medium whitespace-nowrap">
+                                    {q.title}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {roster.data!.map((student) => (
+                                <tr key={student.id} className="border-b last:border-0">
+                                  <td className="p-2 whitespace-nowrap">
+                                    {student.firstName} {student.lastName}
+                                  </td>
+                                  {publishedAssignments.map((a) => {
+                                    const submission = a.submissions.find((s) => s.studentId === student.id);
+                                    return (
+                                      <td key={a.id} className="text-muted-foreground p-2">
+                                        {submission
+                                          ? submission.status === "GRADED"
+                                            ? `${submission.score}${a.maxScore ? ` / ${a.maxScore}` : ""}`
+                                            : "Submitted"
+                                          : "—"}
+                                      </td>
+                                    );
+                                  })}
+                                  {publishedQuizzes.map((q) => {
+                                    const attempt = q.attempts.find((att) => att.studentId === student.id);
+                                    return (
+                                      <td key={q.id} className="text-muted-foreground p-2">
+                                        {attempt ? (attempt.submittedAt ? `${attempt.score?.toFixed(0)}%` : "In progress") : "—"}
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      );
+                    })()
+                  )
                 ) : null}
               </CardContent>
             </Card>

@@ -229,4 +229,9 @@ export class TeacherPortalController {
   ) {
     return this.teacherPortal.createDiscussionPost(user.organizationId, user.sub, topicId, dto);
   }
+
+  @Get("courses/:teachingAssignmentId/roster")
+  getCourseRoster(@CurrentUser() user: JwtPayload, @Param("teachingAssignmentId") teachingAssignmentId: string) {
+    return this.teacherPortal.getCourseRoster(user.organizationId, user.sub, teachingAssignmentId);
+  }
 }

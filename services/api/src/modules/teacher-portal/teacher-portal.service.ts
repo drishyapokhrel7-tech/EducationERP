@@ -514,6 +514,31 @@ export class TeacherPortalService {
     });
   }
 
+  // ── Gradebook (LMS discovery slice 7) ────────────────────────────────
+  // No new grade data of any kind — this closes the discovery gap
+  // flagged as "AssignmentSubmission.score and KnowledgeCheckAttempt.
+  // score are two disconnected grading shapes" by giving the teacher one
+  // roster-shaped view over data that already exists (listAssignments/
+  // listQuizzes' own queries, reused as-is by the web client alongside
+  // this one new roster endpoint — no other new backend surface).
+  // Exam Marks/Grade are a deliberately separate domain (their own
+  // admin-facing grading/report-card module already exists, scoped to
+  // ExamSubject/CurriculumSubject rather than TeachingAssignment) and
+  // are out of scope here.
+
+  async getCourseRoster(organizationId: string, userId: string, teachingAssignmentId: string) {
+    const employee = await this.getOwnEmployee(organizationId, userId);
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const ta = await this.assertOwnsTeachingAssignment(tx, employee.id, teachingAssignmentId);
+      const enrollments = await tx.studentEnrollment.findMany({
+        where: { organizationId, sectionId: ta.sectionId, termId: ta.termId, status: "ACTIVE" },
+        include: { student: true },
+        orderBy: { student: { firstName: "asc" } },
+      });
+      return enrollments.map((e) => e.student);
+    });
+  }
+
   private async assertOwnsTeachingAssignment(tx: PrismaClient, employeeId: string, teachingAssignmentId: string) {
     const ta = await tx.teachingAssignment.findUnique({ where: { id: teachingAssignmentId } });
     if (!ta || ta.employeeId !== employeeId) {

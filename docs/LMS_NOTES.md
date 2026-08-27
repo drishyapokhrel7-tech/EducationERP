@@ -687,12 +687,84 @@ mini-forum thread, but still flat, no reply-to-reply nesting.
   1–5, this demo data (the topic and both replies) was left in place,
   not cleaned up.**
 
+## Slice 7 — Gradebook
+
+User said "go-ahead" — approval to start the next item in the proposed
+sequencing.
+
+### Design
+
+**No new grade data of any kind.** This slice closes the exact gap the
+discovery pass flagged — *"Marks/Grade vs. AssignmentSubmission.score
+are two disconnected grading shapes"* — not by inventing a third
+shape, but by giving each side a single roster-shaped view over data
+that already exists: `AssignmentSubmission.score` (slice 3) and
+`KnowledgeCheckAttempt.score` (slice 4), reusing `listTeacherAssignments`/
+`listTeacherQuizzes`/`listStudentAssignments`/`listStudentQuizzes`
+wholesale. **Exam `Marks`/`Grade` are deliberately excluded** — that's
+a separate domain scoped to `ExamSubject`/`CurriculumSubject` rather
+than `TeachingAssignment`, with its own admin-facing grading/report-
+card module already built (Phase 4); folding it into a
+`TeachingAssignment`-scoped gradebook would need a real
+`CurriculumSubject`↔`Subject`↔`TeachingAssignment` bridge that wasn't
+asked for and isn't attempted here.
+
+**Exactly one new backend endpoint**: `GET teacher-portal/courses/
+:teachingAssignmentId/roster` — the full list of actively-enrolled
+students for that course (same `sectionId`+`termId` derivation as
+`listCourses`/`listAssignments`/`listQuizzes`), ownership-checked
+against the caller's own `TeachingAssignment`. Everything else is
+composed **client-side**: the teacher's gradebook grid is built in the
+browser from three parallel fetches (roster + the already-existing
+assignments-with-submissions + quizzes-with-attempts), and the
+student's grades page is two of their own already-existing list calls
+rendered on one page instead of two separate nav destinations.
+
+**Web**: `/teacher` gains a "Gradebook" card (course picker → a
+spreadsheet-style table: one row per enrolled student, one column per
+*published* assignment/quiz, each cell showing a graded score, "Submitted"/
+"In progress" for an ungraded-but-attempted item, or "—" for nothing
+yet — draft assignments/quizzes are excluded from the columns entirely,
+matching the same "students never see draft content" rule this data
+already enforces on the student side). `/portal/grades` (new nav link)
+is a two-section page — Assignments, Quizzes — each row reusing the
+exact same status-badge convention as `/portal/assignments`/
+`/portal/quizzes` individually.
+
+### Verified
+
+- `pnpm -r typecheck`/`lint`/`build` clean across all six packages
+  (the same pre-existing, unrelated `apps/web/src/app/sso/page.tsx`
+  lint failure is still there, still out of scope).
+- `services/api` e2e: one new, deliberately narrow test (`-t
+  "Gradebook"`) — since the grade grid itself is just a client-side
+  recombination of data slices 3 and 4 already cover end-to-end, this
+  test only needs to prove the one new roster endpoint's own guards:
+  a different teacher can't read another teacher's course roster
+  (404, IDOR guard); the roster returns exactly the students actively
+  enrolled in that course's section+term, correctly excluding an
+  unrelated student who was created but never enrolled; cross-tenant
+  access from org B is rejected (404). Passed clean (`16952 ms`) on
+  the first run — no bugs found.
+- Full browser pass in the Everest Academy demo org: as the real
+  teacher (Sunita Karki), selected Mathematics in the new Gradebook
+  card and confirmed the grid shows Aarav Sharma's row with the exact
+  scores already on record from slices 3 and 4 ("9 / 10" for Counting
+  Practice Worksheet, "50%" for Addition Basics Quiz) — confirmed via
+  the rendered page text; as the real student (Aarav Sharma), confirmed
+  `/portal/grades` shows both scores on one consolidated page with the
+  correct course label and status-colored badges — confirmed via both
+  the rendered page text and a screenshot. No new demo data was created
+  this slice (the endpoint is read-only over slices 3/4's existing
+  data), so there was nothing new to leave in place or clean up.
+
 ## Next step
 
 Teacher portal (slice 1), course modules (slice 2), self-service
 assignments (slice 3), the quiz engine (slice 4), announcements
-(slice 5), and discussions (slice 6) are done. The rest of the
-proposed LMS sequencing — gradebook, file upload (blocked on the
-still-open storage decision), notifications — is **not started**;
-gradebook (#7) is the natural next item, but each still needs its own
+(slice 5), discussions (slice 6), and the gradebook (slice 7) are done.
+The rest of the proposed LMS sequencing — file upload (blocked on the
+still-open storage decision) and notifications — is **not started**;
+notifications (#9) is the natural next item to actually attempt (file
+upload's blocker hasn't been resolved), but each still needs its own
 explicit go-ahead, per this project's standing rule.

@@ -7427,4 +7427,179 @@ describe("Tenant isolation (e2e)", () => {
         .expect(404);
     }, 90000);
   });
+
+  describe("Gradebook (LMS discovery slice 7)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    // The only new backend surface this slice adds is the roster
+    // endpoint — the grade grid itself is built client-side from
+    // listTeacherAssignments/listTeacherQuizzes, both already covered by
+    // slices 3 and 4's own e2e tests. This test only needs to prove the
+    // roster endpoint's own ownership/tenant guards and correctness.
+    it("returns a teacher's own course roster (enrolled students only), gated to their own course (IDOR + tenant guards)", async () => {
+      const suffix = `GB${run}`;
+
+      const campus = await request(app.getHttpServer())
+        .post("/organizations/me/campuses")
+        .set(...auth(tokenA))
+        .send({ name: `Gradebook Campus ${suffix}`, code: `GBCAMP${suffix}` })
+        .expect(201);
+      const faculty = await request(app.getHttpServer())
+        .post("/organizations/me/faculties")
+        .set(...auth(tokenA))
+        .send({ campusId: campus.body.id, name: `Gradebook Faculty ${suffix}`, code: `GBFAC${suffix}` })
+        .expect(201);
+      const department = await request(app.getHttpServer())
+        .post("/organizations/me/departments")
+        .set(...auth(tokenA))
+        .send({ facultyId: faculty.body.id, name: `Gradebook Dept ${suffix}`, code: `GBDEP${suffix}` })
+        .expect(201);
+      const program = await request(app.getHttpServer())
+        .post("/organizations/me/programs")
+        .set(...auth(tokenA))
+        .send({ departmentId: department.body.id, name: `Gradebook Program ${suffix}`, code: `GBPROG${suffix}` })
+        .expect(201);
+      const year = await request(app.getHttpServer())
+        .post("/organizations/me/academic-years")
+        .set(...auth(tokenA))
+        .send({ name: `Gradebook Year ${suffix}`, startDate: "2099-08-01", endDate: "2100-06-30" })
+        .expect(201);
+      const term = await request(app.getHttpServer())
+        .post("/organizations/me/terms")
+        .set(...auth(tokenA))
+        .send({
+          academicYearId: year.body.id,
+          name: `Gradebook Term ${suffix}`,
+          code: `GBT${suffix}`,
+          sequence: 1,
+          startDate: "2099-08-01",
+          endDate: "2099-12-15",
+        })
+        .expect(201);
+      const section = await request(app.getHttpServer())
+        .post("/organizations/me/sections")
+        .set(...auth(tokenA))
+        .send({ programId: program.body.id, termId: term.body.id, name: `Gradebook Section ${suffix}`, code: `GBS${suffix}` })
+        .expect(201);
+      const staffType = await request(app.getHttpServer())
+        .post("/organizations/me/staff-types")
+        .set(...auth(tokenA))
+        .send({ name: `Gradebook Staff Type ${suffix}`, code: `GBST${suffix}` })
+        .expect(201);
+      const designation = await request(app.getHttpServer())
+        .post("/organizations/me/designations")
+        .set(...auth(tokenA))
+        .send({ name: `Gradebook Designation ${suffix}`, code: `GBDS${suffix}` })
+        .expect(201);
+      const subject = await request(app.getHttpServer())
+        .post("/organizations/me/subjects")
+        .set(...auth(tokenA))
+        .send({ name: `Gradebook Subject ${suffix}`, code: `GBSUB${suffix}` })
+        .expect(201);
+
+      const teacher = await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(tokenA))
+        .send({
+          staffTypeId: staffType.body.id,
+          designationId: designation.body.id,
+          employeeCode: `GB-TCH-${suffix}`,
+          firstName: "Gradebook",
+          lastName: "Teacher",
+          email: `gb-teacher-${suffix}-${run}@rls-e2e.test`,
+          dateOfJoining: "2026-01-01",
+        })
+        .expect(201);
+      const otherTeacher = await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(tokenA))
+        .send({
+          staffTypeId: staffType.body.id,
+          designationId: designation.body.id,
+          employeeCode: `GB-TCH2-${suffix}`,
+          firstName: "Other",
+          lastName: "GradebookTeacher",
+          email: `gb-teacher2-${suffix}-${run}@rls-e2e.test`,
+          dateOfJoining: "2026-01-01",
+        })
+        .expect(201);
+
+      const teachingAssignment = await request(app.getHttpServer())
+        .post("/organizations/me/teaching-assignments")
+        .set(...auth(tokenA))
+        .send({ employeeId: teacher.body.id, subjectId: subject.body.id, sectionId: section.body.id, termId: term.body.id })
+        .expect(201);
+
+      const teacherLogin = await request(app.getHttpServer())
+        .post(`/organizations/me/employees/${teacher.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "GradebookTeacherPass123" })
+        .expect(201);
+      const otherTeacherLogin = await request(app.getHttpServer())
+        .post(`/organizations/me/employees/${otherTeacher.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "OtherGradebookTeacherPass123" })
+        .expect(201);
+      const teacherSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: teacherLogin.body.username, password: "GradebookTeacherPass123" })
+        .expect(201);
+      const otherTeacherSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: otherTeacherLogin.body.username, password: "OtherGradebookTeacherPass123" })
+        .expect(201);
+      const teacherToken = teacherSession.body.accessToken as string;
+      const otherTeacherToken = otherTeacherSession.body.accessToken as string;
+
+      // Two enrolled students, one unrelated student never enrolled in
+      // this section+term (must never appear in the roster).
+      const student1 = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({ studentCode: `GB-STU1-${suffix}`, firstName: "Aabha", lastName: "GradebookStudent", dateOfBirth: "2015-01-01" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/students/${student1.body.id}/enrollments`)
+        .set(...auth(tokenA))
+        .send({ programId: program.body.id, sectionId: section.body.id, termId: term.body.id, enrollmentDate: "2099-08-01" })
+        .expect(201);
+      const student2 = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({ studentCode: `GB-STU2-${suffix}`, firstName: "Zubin", lastName: "GradebookStudent", dateOfBirth: "2015-01-01" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/students/${student2.body.id}/enrollments`)
+        .set(...auth(tokenA))
+        .send({ programId: program.body.id, sectionId: section.body.id, termId: term.body.id, enrollmentDate: "2099-08-01" })
+        .expect(201);
+      const outsideStudent = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({ studentCode: `GB-STU3-${suffix}`, firstName: "Outside", lastName: "GradebookStudent", dateOfBirth: "2015-01-01" })
+        .expect(201);
+
+      // A different teacher can't read the roster of someone else's
+      // course (404, IDOR guard).
+      await request(app.getHttpServer())
+        .get(`/organizations/me/teacher-portal/courses/${teachingAssignment.body.id}/roster`)
+        .set(...auth(otherTeacherToken))
+        .expect(404);
+
+      const roster = await request(app.getHttpServer())
+        .get(`/organizations/me/teacher-portal/courses/${teachingAssignment.body.id}/roster`)
+        .set(...auth(teacherToken))
+        .expect(200);
+      expect(roster.body).toHaveLength(2);
+      const rosterIds = roster.body.map((s: { id: string }) => s.id);
+      expect(rosterIds).toEqual(expect.arrayContaining([student1.body.id, student2.body.id]));
+      expect(rosterIds).not.toContain(outsideStudent.body.id);
+
+      // Cross-tenant: org B can't read org A's course roster.
+      await request(app.getHttpServer())
+        .get(`/organizations/me/teacher-portal/courses/${teachingAssignment.body.id}/roster`)
+        .set(...auth(tokenB))
+        .expect(404);
+    }, 60000);
+  });
 });
