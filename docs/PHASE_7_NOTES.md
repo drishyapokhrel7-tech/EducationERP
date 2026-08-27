@@ -970,3 +970,194 @@ fully complete — core roster (7d-1) and live location/navigation
 (7d-2). Remaining Phase 7 domains, none started: 7e hostel, 7f
 inventory, 7g communication, 7h documents/certificates — next one
 needs its own explicit go-ahead.
+
+## Slice 7e — Hostel
+
+User said "complete all," authorizing all four remaining Phase 7
+domains (7e Hostel, 7f Inventory, 7g Communication, 7h Documents &
+Certificates) in one continuous pass, each still getting this file's
+full per-slice treatment. The plan's ERD list for this domain (docx
+§14) is `hostels, buildings, rooms, beds, allocations,
+hostel_attendance, hostel_payments, hostel_visitors,
+hostel_complaints, hostel_maintenance` — nine tables, with this file's
+own earlier intro already noting the design call: "same fee-routing
+story as 7c" — hostel fees reuse Finance's existing
+`FeeStructure`/`assignFeeStructure`/`Invoice` machinery as-is, so
+there is deliberately no `hostel_payments` table.
+
+## What shipped
+
+**Schema** — `Hostel → HostelBuilding → HostelRoom → HostelBed →
+HostelAllocation`, one nesting level deeper than Transport's
+`Route → Stop` to match the plan's own ERD. `HostelBedStatus` is a
+two-state enum (`AVAILABLE`/`MAINTENANCE`, no `OCCUPIED`) — occupancy
+is computed by checking for a `HostelAllocation` row referencing the
+bed, same "computed, not stored" precedent as `syllabus_progress`
+and `CourseModuleItemCompletion`, avoiding a third state that could
+drift out of sync with the actual allocation data.
+`HostelAllocation.studentEnrollmentId`/`bedId` are both `@unique` —
+same "current pointer, repoint rather than stack" precedent as
+`StudentTransportAssignment`/`Employee.salaryStructureId`;
+reassigning a student is an upsert on `studentEnrollmentId`, not a
+new row, and frees the old bed automatically. `HostelAttendance`
+(`@@unique([hostelAllocationId, date])`, upsert on re-mark, same
+pattern as staff attendance), `HostelVisitor` (check-in/check-out
+timestamps), `HostelComplaint` (`OPEN`/`IN_PROGRESS`/`RESOLVED`,
+auto-sets `resolvedAt`), `HostelMaintenanceRequest` (room-level, not
+allocation-level — a room needs upkeep independent of who's currently
+assigned to it).
+
+**API** — new `hostel` module: `hostels`, `hostel-buildings`,
+`hostel-rooms`, `hostel-beds` (+ `/vacant`, + PATCH for
+status/maintenance), `hostel-allocations` (POST upserts/reassigns,
+DELETE unassigns), `:id/attendance`, `:id/visitors` (+
+`/checkout`), `:id/complaints`, `hostel-complaints/:id` (PATCH),
+`hostel-maintenance` (+ PATCH). Every `create*` does the standard
+FK-vs-RLS parent-guard check. `allocateBed` rejects a bed that's
+already allocated to someone else and a bed under `MAINTENANCE`
+(both 409). One new RBAC resource, `hostel` (folds
+building/room/bed/allocation/attendance/visitor/complaint/maintenance
+in too — same folding precedent as `route`/`payroll`), Super
+Admin/Organization Admin only. No dedicated fee/payment endpoints —
+hostel billing reuses Finance's existing endpoints exactly as-is.
+
+**Web UI** — new `/dashboard/hostel` page, the established
+one-page-many-Cards structure: Hostels, Buildings (per-hostel
+picker), Rooms & beds (per-building picker, inline "Add bed here"
+per room), Allocations (student/enrollment/vacant-bed pickers, an
+expandable per-allocation panel for attendance/visitors/raising a
+complaint), Complaints (status actions + resolution notes),
+Maintenance (status actions).
+
+## A real bug found and fixed via the e2e test
+
+`unallocateBed` did a plain `hostelAllocation.delete()`. Once a
+student's stay had any attendance/visitor/complaint history, the
+delete 500'd — Postgres' default RESTRICT FK from those three tables
+onto `hostelAllocationId` blocked it (`23001: violates RESTRICT
+setting of foreign key constraint`). Fixed by having `unallocateBed`
+clear the three child tables for that allocation first, inside the
+same transaction, before deleting the allocation row — attendance/
+visitor/complaint history only makes sense in the context of one
+specific stay, and this project already made the exact same "no
+history kept" call for the allocation row itself, so clearing its
+children alongside it is the same decision applied consistently, not
+a new one. Re-verified via both the e2e test and a real browser pass
+(raised a complaint, resolved it, then unassigned the student, then
+confirmed via a fresh page load — not the stale post-action render —
+that the complaint list was genuinely empty, not just visually
+stale).
+
+## Explicitly not in this slice
+
+- Any hostel-specific payment/invoice table — fees route through
+  Finance's existing `FeeStructure`/`Invoice` machinery unchanged,
+  per the plan's own stated intent for this domain.
+- Allocation history (who stayed in which bed previously) — only the
+  current allocation is kept, matching `StudentTransportAssignment`'s
+  precedent; a future slice could add a history table if that's
+  actually asked for.
+- A dedicated Hostel Warden RBAC permission profile — Super
+  Admin/Organization Admin only, matching every resource seeded this
+  session.
+
+## Standardization lookups (mid-slice user feedback)
+
+User flagged, while this slice was still in progress: "in hostel some
+data need to have look up list for standardization like relation,
+room(bed) type." Room type (`HostelRoom.roomType`) and visitor
+relation (`HostelVisitor.relation`) were both plain free-text
+strings — the same real value ("Standard" vs "standard" vs "Std")
+could get typo'd a dozen ways across data entry. Complaint category
+(`HostelComplaint.category`) has the identical problem and was
+standardized too, on the same reasoning, even though it wasn't named
+explicitly — the user's "like ..." phrasing reads as examples of a
+pattern, not an exhaustive list, and complaint categories are the
+same kind of field.
+
+**One small catalog table, not three near-identical ones**: added
+`HostelLookup` (`kind` enum `ROOM_TYPE`/`VISITOR_RELATION`/
+`COMPLAINT_CATEGORY`, `name`, `@@unique([organizationId, kind,
+name])`), org-scoped and admin-configurable — same "admin-configurable,
+not hardcoded" reasoning as `FeeCategory`/`StaffType`/
+`SalaryStructureItem` elsewhere in this project, just generalized
+across a `kind` discriminator instead of duplicated per field.
+`createLookup` is an upsert-by-name (not a plain create), so two
+people adding the same new value at once resolves to one row, not a
+409 or a duplicate. The room/visitor/complaint rows themselves keep
+storing a plain string, not a hard FK — sourcing the UI's dropdown
+from this catalog gets the standardization; not having a hard FK
+means a lookup value being renamed or removed later never orphans or
+blocks deleting historical data. New endpoints
+`POST`/`GET organizations/me/hostel-lookups` (folds under the
+existing `hostel` RBAC resource, no new one needed).
+
+**Web UI**: a new small `LookupSelect` component (`apps/web/src/app/
+dashboard/hostel/page.tsx`) replaces the three plain `Input`s — a
+`<select>` sourced from the org's catalog for that `kind`, plus a
+"+ Add new…" option that reveals an inline text field + Add/Cancel,
+posts the new value, and selects it immediately. Used for the "Add
+room" form's room type, the visitor log-in form's relation, and the
+"Raise a complaint" form's category.
+
+## Verified
+
+- `pnpm -r typecheck`/`lint`/`build` clean across all six packages
+  (one pre-existing, unrelated lint failure in `apps/web/src/app/
+  sso/page.tsx` — untouched by this slice, working tree clean on it,
+  flagged separately as its own follow-up task rather than fixed
+  inline here).
+- `services/api` e2e: two new tests (Hostel). The first — builds
+  hostel→building→room→3 beds, rejects allocating an already-occupied
+  bed (409) and a bed under maintenance (409), reassigns a student to
+  a different bed (frees the old one, same allocation row/id),
+  attendance upsert-on-date, visitor check-in/check-out, a complaint
+  through OPEN→IN_PROGRESS→RESOLVED with notes, a room-level
+  maintenance request through OPEN→RESOLVED, unassigns (frees the
+  bed, 404 on a second unassign), and cross-tenant isolation (org B
+  can't create a building under org A's hostel, doesn't see it in its
+  own list). The second (added for the standardization lookups) —
+  creates a lookup, re-creates the exact same `(kind, name)` and
+  confirms it upserts to the same row rather than 409ing or
+  duplicating, filters the list by `kind`, and confirms cross-tenant
+  isolation on the catalog itself. Both passed clean standalone
+  (`-t "Hostel"`, 73/73 including 71 skipped, 37.9s + 4.9s) — the
+  first after the `unallocateBed` fix above.
+- Full browser pass, as the demo admin: created a real hostel
+  ("Everest Boys Hostel"), a building, a room, and a bed, all through
+  the actual UI forms — allocated a real demo student (Aarav Sharma)
+  to the bed, marked attendance, logged a visitor in and checked them
+  out, raised a complaint and walked it through to Resolved with
+  notes, raised and resolved a room-level maintenance request, then
+  unassigned the student and confirmed (via a fresh page load, not
+  the immediate stale render) that the bed's allocation and its
+  complaint history were both genuinely gone — every step confirmed
+  against the real network response, not just what the UI showed
+  immediately after the click. Re-verified after the standardization
+  lookups landed: added a "Deluxe" room type via the "+ Add new…"
+  flow and used it on a new room, added a "Mother" visitor relation
+  and logged a visitor with it, added a "Noise" complaint category
+  and raised a complaint with it — all three confirmed via the real
+  network response, not just what the dropdown showed. All demo data
+  left in place per this project's standing "don't clean up test/demo
+  data" instruction.
+- One genuine environment gotcha hit during this re-verification,
+  already a documented failure class, not a new one: `resize_window`
+  with a custom width/height left the tab rendering at a much wider
+  viewport than the 800px screenshot raster, so long text stopped
+  wrapping and appeared cut off — looked like a layout bug at first
+  glance. Confirmed it wasn't (the same page had rendered correctly
+  at 800px before any resize call) by closing the tab and reopening a
+  fresh one, then setting the viewport explicitly back to 800×900;
+  rendering returned to normal immediately. Also hit the standing
+  "browser-pane click silently no-ops" issue on the inline "Add"
+  button for a new lookup value (button was correctly enabled, ref
+  and coordinate both looked right) — same established workaround as
+  documented in past phases: dispatch a real `.click()` via
+  `javascript_tool` instead of retrying the same coordinate.
+
+## Next step (as of slice 7e)
+
+Slice 7e done. Per "complete all," proceeding directly to 7f
+(Inventory) next with no further check-in, then 7g (Communication),
+then 7h (Documents & Certificates).

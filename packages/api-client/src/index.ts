@@ -120,6 +120,31 @@ import type {
   StudentPortalDiscussionTopic,
   Notification,
   UploadResult,
+  HostelRecord,
+  CreateHostelInput,
+  HostelBuildingRecord,
+  CreateHostelBuildingInput,
+  HostelRoomRecord,
+  CreateHostelRoomInput,
+  HostelBedRecord,
+  CreateHostelBedInput,
+  UpdateHostelBedInput,
+  VacantHostelBedRecord,
+  AllocateHostelBedInput,
+  HostelAllocationRecord,
+  MarkHostelAttendanceInput,
+  HostelAttendanceRecord,
+  LogHostelVisitorInput,
+  HostelVisitorRecord,
+  CreateHostelComplaintInput,
+  UpdateHostelComplaintInput,
+  HostelComplaintRecord,
+  CreateHostelMaintenanceRequestInput,
+  UpdateHostelMaintenanceRequestInput,
+  HostelMaintenanceRequestRecord,
+  HostelLookupKind,
+  CreateHostelLookupInput,
+  HostelLookupRecord,
   TeacherDashboard,
   StudentDashboard,
   ParentDashboard,
@@ -1169,6 +1194,72 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
     // listTeacherQuizzes' existing submissions/attempts data.
     getTeacherCourseRoster: (teachingAssignmentId: string) =>
       request<Student[]>(`/organizations/me/teacher-portal/courses/${teachingAssignmentId}/roster`),
+
+    // Hostel (Phase 7 slice 7e) — no fee/payment methods here
+    // deliberately; hostel billing reuses listFeeStructures/
+    // assignFeeStructure above as-is.
+    createHostel: (input: CreateHostelInput) =>
+      request<HostelRecord>("/organizations/me/hostels", { method: "POST", body: JSON.stringify(input) }),
+    listHostels: () => request<HostelRecord[]>("/organizations/me/hostels"),
+    createHostelBuilding: (input: CreateHostelBuildingInput) =>
+      request<HostelBuildingRecord>("/organizations/me/hostel-buildings", { method: "POST", body: JSON.stringify(input) }),
+    createHostelRoom: (input: CreateHostelRoomInput) =>
+      request<HostelRoomRecord>("/organizations/me/hostel-rooms", { method: "POST", body: JSON.stringify(input) }),
+    createHostelBed: (input: CreateHostelBedInput) =>
+      request<HostelBedRecord>("/organizations/me/hostel-beds", { method: "POST", body: JSON.stringify(input) }),
+    listVacantHostelBeds: () => request<VacantHostelBedRecord[]>("/organizations/me/hostel-beds/vacant"),
+    updateHostelBed: (bedId: string, input: UpdateHostelBedInput) =>
+      request<HostelBedRecord>(`/organizations/me/hostel-beds/${bedId}`, { method: "PATCH", body: JSON.stringify(input) }),
+    allocateHostelBed: (input: AllocateHostelBedInput) =>
+      request<HostelAllocationRecord>("/organizations/me/hostel-allocations", { method: "POST", body: JSON.stringify(input) }),
+    listHostelAllocations: () => request<HostelAllocationRecord[]>("/organizations/me/hostel-allocations"),
+    unallocateHostelBed: (studentEnrollmentId: string) =>
+      request(`/organizations/me/hostel-allocations/${studentEnrollmentId}`, { method: "DELETE" }),
+    markHostelAttendance: (allocationId: string, input: MarkHostelAttendanceInput) =>
+      request<HostelAttendanceRecord>(`/organizations/me/hostel-allocations/${allocationId}/attendance`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    listHostelAttendance: (allocationId: string) =>
+      request<HostelAttendanceRecord[]>(`/organizations/me/hostel-allocations/${allocationId}/attendance`),
+    logHostelVisitorIn: (allocationId: string, input: LogHostelVisitorInput) =>
+      request<HostelVisitorRecord>(`/organizations/me/hostel-allocations/${allocationId}/visitors`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    logHostelVisitorOut: (visitorId: string) =>
+      request<HostelVisitorRecord>(`/organizations/me/hostel-visitors/${visitorId}/checkout`, { method: "PATCH" }),
+    listHostelVisitors: (allocationId: string) =>
+      request<HostelVisitorRecord[]>(`/organizations/me/hostel-allocations/${allocationId}/visitors`),
+    createHostelComplaint: (allocationId: string, input: CreateHostelComplaintInput) =>
+      request<HostelComplaintRecord>(`/organizations/me/hostel-allocations/${allocationId}/complaints`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    listHostelComplaints: () => request<HostelComplaintRecord[]>("/organizations/me/hostel-complaints"),
+    updateHostelComplaint: (complaintId: string, input: UpdateHostelComplaintInput) =>
+      request<HostelComplaintRecord>(`/organizations/me/hostel-complaints/${complaintId}`, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      }),
+    createHostelMaintenanceRequest: (input: CreateHostelMaintenanceRequestInput) =>
+      request<HostelMaintenanceRequestRecord>("/organizations/me/hostel-maintenance", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    listHostelMaintenanceRequests: () => request<HostelMaintenanceRequestRecord[]>("/organizations/me/hostel-maintenance"),
+    updateHostelMaintenanceRequest: (requestId: string, input: UpdateHostelMaintenanceRequestInput) =>
+      request<HostelMaintenanceRequestRecord>(`/organizations/me/hostel-maintenance/${requestId}`, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      }),
+    createHostelLookup: (input: CreateHostelLookupInput) =>
+      request<HostelLookupRecord>("/organizations/me/hostel-lookups", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    listHostelLookups: (kind?: HostelLookupKind) =>
+      request<HostelLookupRecord[]>(`/organizations/me/hostel-lookups${kind ? `?kind=${kind}` : ""}`),
 
     // Notifications (LMS discovery slice 9) — one shared endpoint set,
     // not split per portal; a notification is for whoever is logged in.

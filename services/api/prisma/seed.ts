@@ -146,6 +146,12 @@ const RESOURCES = [
   // precedent as payroll/leave_request above.
   "vehicle",
   "route",
+  // Phase 7 slice 7e (Hostel) — hostel folds building/room/bed/
+  // allocation/attendance/visitor/complaint/maintenance in too, same
+  // folding precedent as route above. No dedicated fee resource —
+  // hostel fees reuse Finance's existing fee_structure/invoice
+  // permissions as-is.
+  "hostel",
 ];
 const ACTIONS = Object.values(PermissionAction);
 

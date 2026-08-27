@@ -2405,3 +2405,183 @@ export interface UploadResult {
   url: string;
   key: string;
 }
+
+// ── Hostel (Phase 7 slice 7e) ───────────────────────────────────────
+
+export type HostelBedStatus = "AVAILABLE" | "MAINTENANCE";
+export type HostelAttendanceStatus = "PRESENT" | "ABSENT" | "ON_LEAVE";
+export type HostelComplaintStatus = "OPEN" | "IN_PROGRESS" | "RESOLVED";
+export type HostelMaintenanceStatus = "OPEN" | "IN_PROGRESS" | "RESOLVED";
+
+export interface HostelBedRecord {
+  id: string;
+  organizationId: string;
+  roomId: string;
+  label: string;
+  status: HostelBedStatus;
+}
+
+export interface HostelRoomRecord {
+  id: string;
+  organizationId: string;
+  buildingId: string;
+  roomNumber: string;
+  roomType: string | null;
+  beds: HostelBedRecord[];
+}
+
+export interface HostelBuildingRecord {
+  id: string;
+  organizationId: string;
+  hostelId: string;
+  name: string;
+  code: string;
+  rooms: HostelRoomRecord[];
+}
+
+export interface HostelRecord {
+  id: string;
+  organizationId: string;
+  name: string;
+  code: string;
+  address: string | null;
+  buildings: HostelBuildingRecord[];
+}
+
+export interface CreateHostelInput {
+  name: string;
+  code: string;
+  address?: string;
+}
+
+export interface CreateHostelBuildingInput {
+  hostelId: string;
+  name: string;
+  code: string;
+}
+
+export interface CreateHostelRoomInput {
+  buildingId: string;
+  roomNumber: string;
+  roomType?: string;
+}
+
+export interface CreateHostelBedInput {
+  roomId: string;
+  label: string;
+}
+
+export interface UpdateHostelBedInput {
+  status?: HostelBedStatus;
+}
+
+// A vacant bed's own record, with its full room -> building -> hostel
+// chain, for the allocation form's picker.
+export interface VacantHostelBedRecord extends HostelBedRecord {
+  room: HostelRoomRecord & { building: HostelBuildingRecord & { hostel: HostelRecord } };
+}
+
+export interface AllocateHostelBedInput {
+  studentEnrollmentId: string;
+  bedId: string;
+}
+
+export interface HostelAllocationRecord {
+  id: string;
+  organizationId: string;
+  studentEnrollmentId: string;
+  bedId: string;
+  allocatedAt: string;
+  studentEnrollment: { id: string; studentId: string; status: EnrollmentStatus; student: Student };
+  bed: VacantHostelBedRecord;
+}
+
+export interface MarkHostelAttendanceInput {
+  date: string;
+  status: HostelAttendanceStatus;
+}
+
+export interface HostelAttendanceRecord {
+  id: string;
+  organizationId: string;
+  hostelAllocationId: string;
+  date: string;
+  status: HostelAttendanceStatus;
+  markedAt: string;
+}
+
+export interface LogHostelVisitorInput {
+  visitorName: string;
+  relation?: string;
+}
+
+export interface HostelVisitorRecord {
+  id: string;
+  organizationId: string;
+  hostelAllocationId: string;
+  visitorName: string;
+  relation: string | null;
+  checkInAt: string;
+  checkOutAt: string | null;
+}
+
+export interface CreateHostelComplaintInput {
+  category: string;
+  description: string;
+}
+
+export interface UpdateHostelComplaintInput {
+  status: HostelComplaintStatus;
+  resolutionNotes?: string;
+}
+
+export interface HostelComplaintRecord {
+  id: string;
+  organizationId: string;
+  hostelAllocationId: string;
+  category: string;
+  description: string;
+  status: HostelComplaintStatus;
+  raisedAt: string;
+  resolvedAt: string | null;
+  resolutionNotes: string | null;
+  hostelAllocation: HostelAllocationRecord;
+}
+
+export interface CreateHostelMaintenanceRequestInput {
+  roomId: string;
+  description: string;
+}
+
+export interface UpdateHostelMaintenanceRequestInput {
+  status: HostelMaintenanceStatus;
+}
+
+export interface HostelMaintenanceRequestRecord {
+  id: string;
+  organizationId: string;
+  roomId: string;
+  description: string;
+  status: HostelMaintenanceStatus;
+  reportedAt: string;
+  resolvedAt: string | null;
+  room: HostelRoomRecord & { building: HostelBuildingRecord & { hostel: HostelRecord } };
+}
+
+// Standardization lookups (room type / visitor relation / complaint
+// category) — one small org-scoped catalog, not three near-identical
+// ones. See the `HostelLookup` model comment in schema.prisma for why.
+export type HostelLookupKind = "ROOM_TYPE" | "VISITOR_RELATION" | "COMPLAINT_CATEGORY";
+
+export interface CreateHostelLookupInput {
+  kind: HostelLookupKind;
+  name: string;
+}
+
+export interface HostelLookupRecord {
+  id: string;
+  organizationId: string;
+  kind: HostelLookupKind;
+  name: string;
+  createdAt: string;
+}

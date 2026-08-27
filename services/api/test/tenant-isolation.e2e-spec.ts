@@ -247,6 +247,26 @@ describe("Tenant isolation (e2e)", () => {
         "admissionStatusHistory",
         "admissionApplication",
         "studentStatusHistory",
+        // Hostel (Phase 7 slice 7e) — hostelAttendance/hostelVisitor/
+        // hostelComplaint all reference hostelAllocation (RESTRICT), so
+        // all three lead it; hostelAllocation itself references
+        // studentEnrollment + hostelBed (both RESTRICT), so it must
+        // precede both. hostelMaintenanceRequest/hostelBed reference
+        // hostelRoom (RESTRICT), hostelRoom references hostelBuilding
+        // (RESTRICT), hostelBuilding references hostel (RESTRICT) —
+        // the whole chain must finish before studentEnrollment below.
+        "hostelAttendance",
+        "hostelVisitor",
+        "hostelComplaint",
+        "hostelAllocation",
+        "hostelMaintenanceRequest",
+        "hostelBed",
+        "hostelRoom",
+        "hostelBuilding",
+        "hostel",
+        // hostelLookup only FKs to organization — no ordering
+        // requirement against anything else in this list.
+        "hostelLookup",
         "studentEnrollment",
         "studentGuardian",
         "student",
@@ -8105,5 +8125,311 @@ describe("Tenant isolation (e2e)", () => {
         .expect(201);
       expect(item.body.content).toBe(uploaded.body.url);
     }, 60000);
+  });
+
+  describe("Hostel (Phase 7 slice 7e)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    async function buildStudentEnrollment(token: string, suffix: string) {
+      const campus = await request(app.getHttpServer())
+        .post("/organizations/me/campuses")
+        .set(...auth(token))
+        .send({ name: `Hostel Campus ${suffix}`, code: `HSCAMP${suffix}` })
+        .expect(201);
+      const faculty = await request(app.getHttpServer())
+        .post("/organizations/me/faculties")
+        .set(...auth(token))
+        .send({ campusId: campus.body.id, name: `Hostel Faculty ${suffix}`, code: `HSFAC${suffix}` })
+        .expect(201);
+      const department = await request(app.getHttpServer())
+        .post("/organizations/me/departments")
+        .set(...auth(token))
+        .send({ facultyId: faculty.body.id, name: `Hostel Dept ${suffix}`, code: `HSDEP${suffix}` })
+        .expect(201);
+      const program = await request(app.getHttpServer())
+        .post("/organizations/me/programs")
+        .set(...auth(token))
+        .send({ departmentId: department.body.id, name: `Hostel Program ${suffix}`, code: `HSPROG${suffix}` })
+        .expect(201);
+      const year = await request(app.getHttpServer())
+        .post("/organizations/me/academic-years")
+        .set(...auth(token))
+        .send({ name: `Hostel Year ${suffix}`, startDate: "2099-01-01", endDate: "2099-12-31" })
+        .expect(201);
+      const term = await request(app.getHttpServer())
+        .post("/organizations/me/terms")
+        .set(...auth(token))
+        .send({
+          academicYearId: year.body.id,
+          name: `Hostel Term ${suffix}`,
+          code: `HST${suffix}`,
+          sequence: 1,
+          startDate: "2099-01-01",
+          endDate: "2099-06-30",
+        })
+        .expect(201);
+      const section = await request(app.getHttpServer())
+        .post("/organizations/me/sections")
+        .set(...auth(token))
+        .send({ programId: program.body.id, termId: term.body.id, name: `Hostel Section ${suffix}`, code: `HSS${suffix}` })
+        .expect(201);
+      const student = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(token))
+        .send({ studentCode: `HS-STU-${suffix}`, firstName: "Hostel", lastName: suffix, dateOfBirth: "2015-01-01" })
+        .expect(201);
+      const enrollment = await request(app.getHttpServer())
+        .post(`/organizations/me/students/${student.body.id}/enrollments`)
+        .set(...auth(token))
+        .send({ programId: program.body.id, sectionId: section.body.id, termId: term.body.id, enrollmentDate: "2099-01-01" })
+        .expect(201);
+      return { enrollmentId: enrollment.body.id as string, studentId: student.body.id as string };
+    }
+
+    it("builds hostel/building/room/beds, allocates/reassigns/unassigns a student, tracks attendance/visitors/complaints/maintenance, and stays tenant-scoped", async () => {
+      const suffix = `HS${run}`;
+
+      const hostel = await request(app.getHttpServer())
+        .post("/organizations/me/hostels")
+        .set(...auth(tokenA))
+        .send({ name: `Hostel ${suffix}`, code: `HOSTEL${suffix}` })
+        .expect(201);
+      const building = await request(app.getHttpServer())
+        .post("/organizations/me/hostel-buildings")
+        .set(...auth(tokenA))
+        .send({ hostelId: hostel.body.id, name: `Building A ${suffix}`, code: `BLDG${suffix}` })
+        .expect(201);
+      const room = await request(app.getHttpServer())
+        .post("/organizations/me/hostel-rooms")
+        .set(...auth(tokenA))
+        .send({ buildingId: building.body.id, roomNumber: "101", roomType: "Standard" })
+        .expect(201);
+      const bed1 = await request(app.getHttpServer())
+        .post("/organizations/me/hostel-beds")
+        .set(...auth(tokenA))
+        .send({ roomId: room.body.id, label: "A" })
+        .expect(201);
+      const bed2 = await request(app.getHttpServer())
+        .post("/organizations/me/hostel-beds")
+        .set(...auth(tokenA))
+        .send({ roomId: room.body.id, label: "B" })
+        .expect(201);
+      const bed3 = await request(app.getHttpServer())
+        .post("/organizations/me/hostel-beds")
+        .set(...auth(tokenA))
+        .send({ roomId: room.body.id, label: "C" })
+        .expect(201);
+
+      const vacantBeforeAllocation = await request(app.getHttpServer())
+        .get("/organizations/me/hostel-beds/vacant")
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(vacantBeforeAllocation.body.map((b: { id: string }) => b.id)).toEqual(
+        expect.arrayContaining([bed1.body.id, bed2.body.id, bed3.body.id]),
+      );
+
+      const { enrollmentId, studentId } = await buildStudentEnrollment(tokenA, suffix);
+      const { enrollmentId: otherEnrollmentId } = await buildStudentEnrollment(tokenA, `${suffix}B`);
+
+      const allocation = await request(app.getHttpServer())
+        .post("/organizations/me/hostel-allocations")
+        .set(...auth(tokenA))
+        .send({ studentEnrollmentId: enrollmentId, bedId: bed1.body.id })
+        .expect(201);
+      expect(allocation.body.bed.id).toBe(bed1.body.id);
+
+      // A different student can't take an already-occupied bed (409).
+      await request(app.getHttpServer())
+        .post("/organizations/me/hostel-allocations")
+        .set(...auth(tokenA))
+        .send({ studentEnrollmentId: otherEnrollmentId, bedId: bed1.body.id })
+        .expect(409);
+
+      // A bed under maintenance can't be allocated (409).
+      await request(app.getHttpServer())
+        .patch(`/organizations/me/hostel-beds/${bed2.body.id}`)
+        .set(...auth(tokenA))
+        .send({ status: "MAINTENANCE" })
+        .expect(200);
+      await request(app.getHttpServer())
+        .post("/organizations/me/hostel-allocations")
+        .set(...auth(tokenA))
+        .send({ studentEnrollmentId: otherEnrollmentId, bedId: bed2.body.id })
+        .expect(409);
+
+      // Reassigning the first student to a different bed updates the
+      // same allocation row (current-pointer precedent) and frees the
+      // old bed.
+      const reassigned = await request(app.getHttpServer())
+        .post("/organizations/me/hostel-allocations")
+        .set(...auth(tokenA))
+        .send({ studentEnrollmentId: enrollmentId, bedId: bed3.body.id })
+        .expect(201);
+      expect(reassigned.body.id).toBe(allocation.body.id);
+      expect(reassigned.body.bed.id).toBe(bed3.body.id);
+
+      const vacantAfterReassign = await request(app.getHttpServer())
+        .get("/organizations/me/hostel-beds/vacant")
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(vacantAfterReassign.body.map((b: { id: string }) => b.id)).toContain(bed1.body.id);
+      expect(vacantAfterReassign.body.map((b: { id: string }) => b.id)).not.toContain(bed3.body.id);
+
+      // ── Attendance — upsert on (allocation, date).
+      const attendanceDate = "2099-02-01";
+      await request(app.getHttpServer())
+        .post(`/organizations/me/hostel-allocations/${allocation.body.id}/attendance`)
+        .set(...auth(tokenA))
+        .send({ date: attendanceDate, status: "PRESENT" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/hostel-allocations/${allocation.body.id}/attendance`)
+        .set(...auth(tokenA))
+        .send({ date: attendanceDate, status: "ABSENT" })
+        .expect(201);
+      const attendanceList = await request(app.getHttpServer())
+        .get(`/organizations/me/hostel-allocations/${allocation.body.id}/attendance`)
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(attendanceList.body).toHaveLength(1);
+      expect(attendanceList.body[0].status).toBe("ABSENT");
+
+      // ── Visitors — log in, then check out.
+      const visitor = await request(app.getHttpServer())
+        .post(`/organizations/me/hostel-allocations/${allocation.body.id}/visitors`)
+        .set(...auth(tokenA))
+        .send({ visitorName: "Hostel Visitor", relation: "Parent" })
+        .expect(201);
+      expect(visitor.body.checkOutAt).toBeNull();
+      const checkedOut = await request(app.getHttpServer())
+        .patch(`/organizations/me/hostel-visitors/${visitor.body.id}/checkout`)
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(checkedOut.body.checkOutAt).not.toBeNull();
+
+      // ── Complaints — OPEN → IN_PROGRESS → RESOLVED.
+      const complaint = await request(app.getHttpServer())
+        .post(`/organizations/me/hostel-allocations/${allocation.body.id}/complaints`)
+        .set(...auth(tokenA))
+        .send({ category: "Maintenance", description: "Leaking tap" })
+        .expect(201);
+      expect(complaint.body.status).toBe("OPEN");
+      await request(app.getHttpServer())
+        .patch(`/organizations/me/hostel-complaints/${complaint.body.id}`)
+        .set(...auth(tokenA))
+        .send({ status: "IN_PROGRESS" })
+        .expect(200);
+      const resolvedComplaint = await request(app.getHttpServer())
+        .patch(`/organizations/me/hostel-complaints/${complaint.body.id}`)
+        .set(...auth(tokenA))
+        .send({ status: "RESOLVED", resolutionNotes: "Fixed by plumber" })
+        .expect(200);
+      expect(resolvedComplaint.body.resolvedAt).not.toBeNull();
+      expect(resolvedComplaint.body.resolutionNotes).toBe("Fixed by plumber");
+
+      // ── Maintenance requests — room-level, not allocation-level.
+      const maintenanceRequest = await request(app.getHttpServer())
+        .post("/organizations/me/hostel-maintenance")
+        .set(...auth(tokenA))
+        .send({ roomId: room.body.id, description: "Broken window" })
+        .expect(201);
+      expect(maintenanceRequest.body.status).toBe("OPEN");
+      const resolvedMaintenance = await request(app.getHttpServer())
+        .patch(`/organizations/me/hostel-maintenance/${maintenanceRequest.body.id}`)
+        .set(...auth(tokenA))
+        .send({ status: "RESOLVED" })
+        .expect(200);
+      expect(resolvedMaintenance.body.resolvedAt).not.toBeNull();
+
+      // ── Unassign — frees the bed, removes the allocation.
+      await request(app.getHttpServer())
+        .delete(`/organizations/me/hostel-allocations/${enrollmentId}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      const allocationsAfterUnassign = await request(app.getHttpServer())
+        .get("/organizations/me/hostel-allocations")
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(allocationsAfterUnassign.body.some((a: { studentEnrollmentId: string }) => a.studentEnrollmentId === enrollmentId)).toBe(
+        false,
+      );
+      const vacantAfterUnassign = await request(app.getHttpServer())
+        .get("/organizations/me/hostel-beds/vacant")
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(vacantAfterUnassign.body.map((b: { id: string }) => b.id)).toContain(bed3.body.id);
+
+      // Unassigning again 404s — nothing to unassign.
+      await request(app.getHttpServer())
+        .delete(`/organizations/me/hostel-allocations/${enrollmentId}`)
+        .set(...auth(tokenA))
+        .expect(404);
+
+      // ── Cross-tenant: org B can't create a building/room/bed under
+      // org A's hostel/building/room, and org B's own hostel list never
+      // includes org A's hostel.
+      await request(app.getHttpServer())
+        .post("/organizations/me/hostel-buildings")
+        .set(...auth(tokenB))
+        .send({ hostelId: hostel.body.id, name: "Intruder Building", code: `INTRUDE${suffix}` })
+        .expect(404);
+      const orgBHostels = await request(app.getHttpServer())
+        .get("/organizations/me/hostels")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(orgBHostels.body.some((h: { id: string }) => h.id === hostel.body.id)).toBe(false);
+
+      // Keep studentId referenced so the fixture-building helper's
+      // return value isn't flagged unused by a future refactor.
+      expect(typeof studentId).toBe("string");
+    }, 90000);
+
+    it("standardization lookups (room type / visitor relation / complaint category) upsert by name and stay tenant-scoped", async () => {
+      const suffix = `HSLK${run}`;
+
+      const created = await request(app.getHttpServer())
+        .post("/organizations/me/hostel-lookups")
+        .set(...auth(tokenA))
+        .send({ kind: "ROOM_TYPE", name: `Deluxe ${suffix}` })
+        .expect(201);
+
+      // Re-adding the exact same (kind, name) upserts to the same row,
+      // not a 409 or a duplicate — safe for two staff both typing the
+      // same new value before either sees the other's addition.
+      const reCreated = await request(app.getHttpServer())
+        .post("/organizations/me/hostel-lookups")
+        .set(...auth(tokenA))
+        .send({ kind: "ROOM_TYPE", name: `Deluxe ${suffix}` })
+        .expect(201);
+      expect(reCreated.body.id).toBe(created.body.id);
+
+      await request(app.getHttpServer())
+        .post("/organizations/me/hostel-lookups")
+        .set(...auth(tokenA))
+        .send({ kind: "VISITOR_RELATION", name: `Guardian ${suffix}` })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post("/organizations/me/hostel-lookups")
+        .set(...auth(tokenA))
+        .send({ kind: "COMPLAINT_CATEGORY", name: `Plumbing ${suffix}` })
+        .expect(201);
+
+      const roomTypeList = await request(app.getHttpServer())
+        .get("/organizations/me/hostel-lookups")
+        .query({ kind: "ROOM_TYPE" })
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(roomTypeList.body.every((l: { kind: string }) => l.kind === "ROOM_TYPE")).toBe(true);
+      expect(roomTypeList.body.some((l: { name: string }) => l.name === `Deluxe ${suffix}`)).toBe(true);
+      expect(roomTypeList.body.some((l: { name: string }) => l.name === `Guardian ${suffix}`)).toBe(false);
+
+      // Cross-tenant: org B never sees org A's lookup catalog.
+      const orgBRoomTypes = await request(app.getHttpServer())
+        .get("/organizations/me/hostel-lookups")
+        .query({ kind: "ROOM_TYPE" })
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(orgBRoomTypes.body.some((l: { name: string }) => l.name === `Deluxe ${suffix}`)).toBe(false);
+    }, 30000);
   });
 });

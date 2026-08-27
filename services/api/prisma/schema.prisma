@@ -120,6 +120,16 @@ model Organization {
   discussionTopics             DiscussionTopic[]
   discussionPosts              DiscussionPost[]
   notifications                Notification[]
+  hostels                       Hostel[]
+  hostelBuildings                HostelBuilding[]
+  hostelRooms                    HostelRoom[]
+  hostelBeds                     HostelBed[]
+  hostelAllocations               HostelAllocation[]
+  hostelAttendance                HostelAttendance[]
+  hostelVisitors                  HostelVisitor[]
+  hostelComplaints                HostelComplaint[]
+  hostelMaintenanceRequests        HostelMaintenanceRequest[]
+  hostelLookups                    HostelLookup[]
 
   @@map("organizations")
 }
@@ -817,6 +827,7 @@ model StudentEnrollment {
   invoices            Invoice[]
   feeAssignments      StudentFeeAssignment[]
   transportAssignment StudentTransportAssignment?
+  hostelAllocation    HostelAllocation?
 
   @@unique([studentId, termId])
   @@index([organizationId])
@@ -2945,4 +2956,243 @@ model Notification {
   @@index([organizationId])
   @@index([userId])
   @@map("notifications")
+}
+
+// ── Hostel (Phase 7 slice 7e) ──────────────────────────────────────────
+// hostel → building → room → bed → allocation, same nesting depth as
+// Transport's route → stop, one level deeper to match the plan's own
+// ERD (docx §14: "hostels, buildings, rooms, beds, allocations,
+// hostel_attendance, hostel_payments, hostel_visitors,
+// hostel_complaints, hostel_maintenance"). Deliberately no
+// hostel_payments table — hostel fees reuse Finance's existing
+// FeeStructure/Invoice machinery exactly as-is (create a FeeStructure
+// for the relevant program+term, assign it to the allocated student's
+// enrollment via the already-built assign-fee-structure flow), the
+// same "same fee-routing story as 7c" reuse already noted for Library
+// fines — a second, parallel payment/invoice system would duplicate
+// what Invoice/Payment/Refund/Discount already do generically.
+
+model Hostel {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  code           String
+  address        String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id])
+  buildings    HostelBuilding[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+  @@map("hostels")
+}
+
+model HostelBuilding {
+  id             String   @id @default(uuid())
+  organizationId String
+  hostelId       String
+  name           String
+  code           String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id])
+  hostel       Hostel        @relation(fields: [hostelId], references: [id])
+  rooms        HostelRoom[]
+
+  @@unique([hostelId, code])
+  @@index([organizationId])
+  @@map("hostel_buildings")
+}
+
+model HostelRoom {
+  id             String   @id @default(uuid())
+  organizationId String
+  buildingId     String
+  roomNumber     String
+  // Free text, not an enum — institutions name their own room
+  // categories ("Standard", "AC Double", ...), same reasoning as
+  // Vehicle.type.
+  roomType       String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id])
+  building     HostelBuilding @relation(fields: [buildingId], references: [id])
+  beds         HostelBed[]
+  maintenanceRequests HostelMaintenanceRequest[]
+
+  @@unique([buildingId, roomNumber])
+  @@index([organizationId])
+  @@map("hostel_rooms")
+}
+
+// AVAILABLE/MAINTENANCE only — whether a bed is currently *occupied* is
+// computed on read from whether a HostelAllocation references it (same
+// "computed, not stored" precedent as syllabus_progress/module
+// completion), not a third stored state that could drift out of sync.
+enum HostelBedStatus {
+  AVAILABLE
+  MAINTENANCE
+}
+
+model HostelBed {
+  id             String          @id @default(uuid())
+  organizationId String
+  roomId         String
+  label          String
+  status         HostelBedStatus @default(AVAILABLE)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id])
+  room         HostelRoom        @relation(fields: [roomId], references: [id])
+  allocation   HostelAllocation?
+
+  @@unique([roomId, label])
+  @@index([organizationId])
+  @@map("hostel_beds")
+}
+
+model HostelAllocation {
+  id                  String   @id @default(uuid())
+  organizationId      String
+  studentEnrollmentId String   @unique
+  bedId               String   @unique
+  allocatedAt         DateTime @default(now())
+
+  organization      Organization      @relation(fields: [organizationId], references: [id])
+  studentEnrollment StudentEnrollment @relation(fields: [studentEnrollmentId], references: [id])
+  bed               HostelBed         @relation(fields: [bedId], references: [id])
+  attendance        HostelAttendance[]
+  visitors          HostelVisitor[]
+  complaints        HostelComplaint[]
+
+  // One current bed per enrollment and one current occupant per bed —
+  // same "current pointer, admin repoints it rather than stacking
+  // history" precedent as StudentTransportAssignment; reassigning a
+  // student to a different bed updates this row rather than adding a
+  // second one, and frees their old bed for the next occupant.
+  @@index([organizationId])
+  @@map("hostel_allocations")
+}
+
+enum HostelAttendanceStatus {
+  PRESENT
+  ABSENT
+  ON_LEAVE
+}
+
+model HostelAttendance {
+  id                 String                 @id @default(uuid())
+  organizationId     String
+  hostelAllocationId String
+  date               DateTime
+  status             HostelAttendanceStatus
+  markedAt           DateTime               @default(now())
+
+  organization     Organization     @relation(fields: [organizationId], references: [id])
+  hostelAllocation HostelAllocation @relation(fields: [hostelAllocationId], references: [id])
+
+  @@unique([hostelAllocationId, date])
+  @@index([organizationId])
+  @@map("hostel_attendance")
+}
+
+model HostelVisitor {
+  id                 String    @id @default(uuid())
+  organizationId     String
+  hostelAllocationId String
+  visitorName        String
+  relation           String?
+  checkInAt          DateTime  @default(now())
+  checkOutAt         DateTime?
+
+  organization     Organization     @relation(fields: [organizationId], references: [id])
+  hostelAllocation HostelAllocation @relation(fields: [hostelAllocationId], references: [id])
+
+  @@index([organizationId])
+  @@map("hostel_visitors")
+}
+
+enum HostelComplaintStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+}
+
+model HostelComplaint {
+  id                 String                @id @default(uuid())
+  organizationId     String
+  hostelAllocationId String
+  category           String
+  description        String
+  status             HostelComplaintStatus @default(OPEN)
+  raisedAt           DateTime              @default(now())
+  resolvedAt         DateTime?
+  resolutionNotes    String?
+
+  organization     Organization     @relation(fields: [organizationId], references: [id])
+  hostelAllocation HostelAllocation @relation(fields: [hostelAllocationId], references: [id])
+
+  @@index([organizationId])
+  @@map("hostel_complaints")
+}
+
+enum HostelMaintenanceStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+}
+
+model HostelMaintenanceRequest {
+  id             String                  @id @default(uuid())
+  organizationId String
+  roomId         String
+  description    String
+  status         HostelMaintenanceStatus @default(OPEN)
+  reportedAt     DateTime                @default(now())
+  resolvedAt     DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  room         HostelRoom   @relation(fields: [roomId], references: [id])
+
+  @@index([organizationId])
+  @@map("hostel_maintenance")
+}
+
+// Standardization lookup lists — room/bed type, visitor relation, and
+// complaint category were all plain free-text strings, which lets
+// the same real-world value get typo'd a dozen different ways across
+// data entry ("Standard" vs "standard" vs "Std"). One small
+// org-scoped catalog table with a `kind` discriminator (rather than
+// three near-identical one-off tables) covers all three — same
+// "admin-configurable, not hardcoded" reasoning as FeeCategory/
+// StaffType/SalaryStructureItem elsewhere in this project, just
+// generalized across a `kind` column instead of duplicated per
+// field. The room/visitor/complaint rows themselves keep storing a
+// plain string (not a hard FK) — the web UI sources its select's
+// options from this catalog and can add a new one inline, but a
+// lookup row being renamed or removed later never orphans or blocks
+// deleting historical room/visitor/complaint data.
+enum HostelLookupKind {
+  ROOM_TYPE
+  VISITOR_RELATION
+  COMPLAINT_CATEGORY
+}
+
+model HostelLookup {
+  id             String           @id @default(uuid())
+  organizationId String
+  kind           HostelLookupKind
+  name           String
+  createdAt      DateTime         @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@unique([organizationId, kind, name])
+  @@index([organizationId])
+  @@map("hostel_lookups")
 }

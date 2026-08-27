@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
+  BedDouble,
   BookOpen,
   Building2,
   Camera,
@@ -102,6 +103,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Operations",
     items: [
       { href: "/dashboard/transport", label: "Transport", icon: Bus },
+      { href: "/dashboard/hostel", label: "Hostel", icon: BedDouble },
       { href: "/dashboard/library", label: "Library", icon: Library },
     ],
   },
