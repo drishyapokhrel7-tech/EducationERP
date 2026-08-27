@@ -31,6 +31,7 @@ import { PayrollModule } from "./modules/payroll/payroll.module";
 import { TransportModule } from "./modules/transport/transport.module";
 import { DriverPortalModule } from "./modules/driver-portal/driver-portal.module";
 import { TeacherPortalModule } from "./modules/teacher-portal/teacher-portal.module";
+import { StorageModule } from "./modules/storage/storage.module";
 import { QueueModule } from "./queue/queue.module";
 import { HealthController } from "./common/health.controller";
 
@@ -76,6 +77,7 @@ const queueModuleImports = process.env.REDIS_URL ? [QueueModule] : [];
     TransportModule,
     DriverPortalModule,
     TeacherPortalModule,
+    StorageModule,
     ...queueModuleImports,
   ],
   controllers: [HealthController],

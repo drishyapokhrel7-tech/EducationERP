@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { NotificationBell } from "@/components/notification-bell";
+import { FileUploadButton } from "@/components/file-upload-button";
 import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
@@ -65,11 +66,10 @@ export default function TeacherPage() {
   const modules = useSWR(courseId ? ["teacher-modules", courseId] : null, () => api.listTeacherModules(courseId));
   const [moduleForm, setModuleForm] = useState({ title: "", description: "", sequence: "1" });
   const [expandedModuleId, setExpandedModuleId] = useState<string | null>(null);
-  const [itemForm, setItemForm] = useState<{ title: string; type: CourseModuleItemType; content: string; sequence: string }>({
+  const [itemForm, setItemForm] = useState<{ title: string; type: CourseModuleItemType; content: string }>({
     title: "",
     type: "PAGE",
     content: "",
-    sequence: "1",
   });
 
   const assignments = useSWR(courseId ? ["teacher-assignments", courseId] : null, () => api.listTeacherAssignments(courseId));
@@ -343,6 +343,7 @@ export default function TeacherPage() {
                               onChange={(e) => setMaterialForm((f) => ({ ...f, url: e.target.value }))}
                             />
                           </div>
+                          <FileUploadButton onUploaded={(url) => setMaterialForm((f) => ({ ...f, url }))} />
                           <Button type="submit" disabled={!materialForm.title}>
                             Add material
                           </Button>
@@ -468,13 +469,19 @@ export default function TeacherPage() {
                                   onSubmit={async (e: FormEvent) => {
                                     e.preventDefault();
                                     try {
+                                      // Derived from this module's actual current items every
+                                      // time, not tracked in form state — a stale/hardcoded
+                                      // default here would collide with whichever sequence
+                                      // number already exists (e.g. seed data starting at 1),
+                                      // with no field in this form for the user to override it.
+                                      const nextSequence = Math.max(0, ...m.items.map((i) => i.sequence)) + 1;
                                       await api.addCourseModuleItem(m.id, {
                                         title: itemForm.title,
                                         type: itemForm.type,
                                         content: itemForm.content,
-                                        sequence: Number(itemForm.sequence),
+                                        sequence: nextSequence,
                                       });
-                                      setItemForm({ title: "", type: "PAGE", content: "", sequence: String(m.items.length + 2) });
+                                      setItemForm({ title: "", type: "PAGE", content: "" });
                                       modules.mutate();
                                       toast.success("Item added");
                                     } catch (err) {
@@ -513,6 +520,9 @@ export default function TeacherPage() {
                                       onChange={(e) => setItemForm((f) => ({ ...f, content: e.target.value }))}
                                     />
                                   </div>
+                                  {itemForm.type !== "PAGE" ? (
+                                    <FileUploadButton onUploaded={(url) => setItemForm((f) => ({ ...f, content: url }))} />
+                                  ) : null}
                                   <Button type="submit" size="sm" className="h-7" disabled={!itemForm.title || !itemForm.content}>
                                     Add item
                                   </Button>
@@ -761,6 +771,19 @@ export default function TeacherPage() {
                           className="w-20"
                           value={assignmentForm.maxScore}
                           onChange={(e) => setAssignmentForm((f) => ({ ...f, maxScore: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Submission type</Label>
+                        <NativeSelect
+                          className="h-9 w-28"
+                          placeholder="Select type"
+                          value={assignmentForm.submissionType}
+                          onChange={(v) => setAssignmentForm((f) => ({ ...f, submissionType: v as SubmissionType }))}
+                          options={[
+                            { value: "TEXT", label: "Text" },
+                            { value: "FILE", label: "File" },
+                          ]}
                         />
                       </div>
                       <label className="flex items-center gap-1 text-xs">

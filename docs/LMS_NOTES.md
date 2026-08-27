@@ -870,13 +870,137 @@ it read and navigates to its `link`.
   demo data (the announcement and the notification it generated) was
   left in place, not cleaned up.**
 
+## Slice 8 — File storage (configurable backend, link-compatible)
+
+User asked to tackle the long-open storage decision, then clarified
+the direction directly: **"make storage configurable and link"** —
+a pluggable storage backend, and every existing attachment field keeps
+working exactly like a link.
+
+### Design
+
+**This resolves the exact architectural gap flagged since Phase 1**
+(*"no object storage exists anywhere in this project"*) without
+touching a single existing model. `ClassMaterial.url`,
+`CourseModuleItem.content`, and `AssignmentSubmission.content`
+(`SubmissionType.FILE`/`IMAGE`/`PDF` already existed in the schema,
+unused until now) were all already modeled as "just a URL string" —
+the "link, don't upload" precedent every phase since Phase 1 explicitly
+chose while the storage question stayed open. This slice never touches
+any of those fields; it only adds what *produces* a URL when the
+source is a real upload instead of a pasted external link.
+
+**"Configurable" — one `StorageService`, two drivers, picked by
+`STORAGE_DRIVER`**:
+- `local` (default): writes to disk under `LOCAL_STORAGE_DIR`, served
+  back by a small `LocalFilesController` at `GET /uploads/:organizationId/
+  :filename`. Zero setup, zero new paid dependency — the same "the
+  free/self-hosted path always works out of the box" precedent as
+  OpenStreetMap over Google Maps and generating quiz questions directly
+  instead of standing up an LLM service. **Not durable on Vercel
+  serverless**, whose filesystem is ephemeral per-invocation — stated
+  plainly in both the code comments and here, not glossed over.
+- `s3`: speaks the plain S3 API via `@aws-sdk/client-s3`, which real
+  AWS S3 and every S3-compatible object store (Cloudflare R2, Backblaze
+  B2, MinIO, DigitalOcean Spaces, ...) all implement — `S3_ENDPOINT`
+  is what actually selects which one, omitted for real AWS S3. This is
+  the durable option for a serverless deployment.
+
+Both drivers implement the same `StorageDriver` interface; nothing
+above `StorageService` — the uploads endpoint, or any future caller —
+ever needs to know which one is actually in use.
+
+**One new authenticated endpoint**: `POST organizations/me/uploads`
+(any authenticated user — teacher or student — `JwtAuthGuard` only, no
+`@RequirePermissions`; there's nothing to be an IDOR victim of here,
+since the resulting URL only becomes meaningful once attached through
+whatever already-ownership-checked endpoint uses it). Validates a
+20MB size ceiling and an explicit MIME-type allowlist (images, PDF,
+Office documents, plain text, mp4/webm) — an allowlist, not a
+denylist, matching this project's own "reject anything not explicitly
+decided on" posture, since this is the one endpoint in the app that
+accepts arbitrary bytes rather than typed JSON fields.
+
+**The local read-back route validates both path segments against a
+strict charset** (`organizationId`/`filename`) before ever touching the
+filesystem, with a resolved-path containment check as defense in
+depth — unlike the write side (where `organizationId` is a JWT claim
+and the filename half is always a fresh UUID the server generates,
+never attacker input), the read side takes both segments straight
+from the URL, so a `../../etc/passwd`-shaped request has to be
+rejected explicitly, not assumed safe by construction.
+
+**Web**: a shared `FileUploadButton` component (plain `<input
+type="file">` + a button, no drag-and-drop or progress bar — matching
+the same "don't reach for a bigger abstraction than the one use needs"
+restraint as the plain-textarea precedent) dropped into every existing
+"paste a link" form: course module items (LINK/VIDEO/DOCUMENT types),
+class materials, and assignment submissions. The teacher's
+create-assignment form gained a Text/File submission-type picker
+(previously hardcoded to Text); the student's submission form now
+branches on it — a real file picker instead of a textarea when the
+assignment expects one, with the already-submitted view rendering a
+"View submitted file" link instead of raw URL text.
+
+### A real bug found and fixed during browser verification (pre-existing, not caused by this slice)
+
+Verifying the module-item upload flow kept 500ing with a Postgres
+`P2002` unique-constraint error on `(moduleId, sequence)`, on every
+attempt, regardless of which sequence number the DOM showed. Tracing
+it down (a raw Prisma script against the live DB, a direct `curl` to
+rule out anything upload-specific, and finally intercepting `fetch` in
+the page to see the actual request body) found the real cause: the
+course-module-item form (built in slice 2) tracks `sequence` in
+component state, initialized once to `"1"` and only ever advanced
+*after* a successful add — but the form has **no visible sequence
+field for the user to see or override**, unlike the sibling
+module-creation form's explicit "Order" input. Any module that already
+has an item at sequence 1 (true of this project's own seed data) makes
+the *first* add from a fresh page load collide, with no way to fix it
+from the UI and a raw 500 instead of a clear error. Fixed by no longer
+tracking sequence in form state at all — it's now computed fresh at
+submit time from the module's actual current items
+(`Math.max(0, ...items.map(i => i.sequence)) + 1`), so it can never go
+stale or default into a collision.
+
+### Verified
+
+- `pnpm -r typecheck`/`lint`/`build` clean across all six packages
+  (the same pre-existing, unrelated `apps/web/src/app/sso/page.tsx`
+  lint failure is still there, still out of scope).
+- `services/api` e2e: one new comprehensive test (`-t "File storage"`)
+  — any authenticated user can upload, and the local driver's own
+  read-back route actually serves the exact bytes back; an unsupported
+  MIME type is rejected (400); a request with no file field at all is
+  rejected (400); a well-formed-but-nonexistent local file 404s, and a
+  filename that doesn't match the safe-charset pattern at all
+  (path-traversal-shaped input) 404s too, without ever touching the
+  filesystem; the uploaded URL is reused as-is by an already-existing,
+  already-ownership-checked endpoint (a course module item) with no
+  special-casing, proving the "just another link" claim in practice.
+  Passed clean on every run — the one real bug found (above) was in
+  slice 2's pre-existing form code, not in this slice's own.
+- Full browser pass in the Everest Academy demo org: as the real
+  teacher (Sunita Karki), selected Mathematics, switched a module
+  item's type to "Document URL," used the new "Upload a file" button
+  to upload a real file (injected via a synthetic `File`/`DataTransfer`
+  in the page, since this environment's browser automation has no real
+  OS file-picker dialog — confirmed via the network response that a
+  real `multipart/form-data` request hit the real endpoint and a real
+  file landed on disk), confirmed the URL field auto-filled with the
+  returned link, and confirmed the resulting module item
+  ("100. [DOCUMENT] Real uploaded handout") saved and rendered
+  correctly in the list — the same real bug above was hit and fixed
+  live during this exact pass, then re-verified clean. **Per the same
+  standing instruction as every prior slice, this demo data (the
+  uploaded file and the module item referencing it) was left in place,
+  not cleaned up.**
+
 ## Next step
 
-Teacher portal (slice 1), course modules (slice 2), self-service
-assignments (slice 3), the quiz engine (slice 4), announcements
-(slice 5), discussions (slice 6), the gradebook (slice 7), and
-notifications (slice 9) are done. The only remaining proposed item is
-**file upload (slice 8)**, still blocked on the same still-open
-architectural decision flagged since Phase 1 (no object storage exists
-anywhere in this project) — starting it for real needs that decision
-made first, not just another go-ahead.
+All nine items in the proposed LMS sequencing are now done: teacher
+portal (slice 1), course modules (slice 2), self-service assignments
+(slice 3), the quiz engine (slice 4), announcements (slice 5),
+discussions (slice 6), the gradebook (slice 7), file storage (slice 8),
+and notifications (slice 9). Nothing from the original discovery pass
+remains open.

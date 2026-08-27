@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { FileUploadButton } from "@/components/file-upload-button";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
 
@@ -77,7 +78,18 @@ export default function PortalAssignmentDetailPage({ params }: { params: Promise
                     Submitted {new Date(assignment.data.mySubmission.submittedAt).toLocaleString()}
                   </p>
                   {assignment.data.mySubmission.content ? (
-                    <p className="whitespace-pre-wrap rounded-md border p-3">{assignment.data.mySubmission.content}</p>
+                    assignment.data.submissionType === "TEXT" ? (
+                      <p className="whitespace-pre-wrap rounded-md border p-3">{assignment.data.mySubmission.content}</p>
+                    ) : (
+                      <a
+                        href={assignment.data.mySubmission.content}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block rounded-md border p-3 underline-offset-4 hover:underline"
+                      >
+                        View submitted file
+                      </a>
+                    )
                   ) : null}
                   {assignment.data.mySubmission.status === "GRADED" ? (
                     <div className="rounded-md border p-3">
@@ -112,12 +124,25 @@ export default function PortalAssignmentDetailPage({ params }: { params: Promise
                     }
                   }}
                 >
-                  <textarea
-                    className="border-input focus-visible:border-ring focus-visible:ring-ring/50 min-h-24 w-full rounded-lg border bg-transparent px-2.5 py-1.5 text-sm outline-none transition-colors focus-visible:ring-3"
-                    placeholder="Write your answer or paste a link…"
-                    value={content}
-                    onChange={(e) => setContent(e.target.value)}
-                  />
+                  {assignment.data.submissionType === "TEXT" ? (
+                    <textarea
+                      className="border-input focus-visible:border-ring focus-visible:ring-ring/50 min-h-24 w-full rounded-lg border bg-transparent px-2.5 py-1.5 text-sm outline-none transition-colors focus-visible:ring-3"
+                      placeholder="Write your answer or paste a link…"
+                      value={content}
+                      onChange={(e) => setContent(e.target.value)}
+                    />
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <FileUploadButton label="Choose file" onUploaded={(url) => setContent(url)} />
+                      {content ? (
+                        <a href={content} target="_blank" rel="noreferrer" className="text-sm underline-offset-4 hover:underline">
+                          File attached — view
+                        </a>
+                      ) : (
+                        <p className="text-muted-foreground text-sm">No file attached yet.</p>
+                      )}
+                    </div>
+                  )}
                   <Button type="submit" disabled={!content}>
                     {assignment.data.mySubmission ? "Resubmit" : "Submit"}
                   </Button>

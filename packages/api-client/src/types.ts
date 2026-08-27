@@ -2394,3 +2394,14 @@ export interface Notification {
   isRead: boolean;
   createdAt: string;
 }
+
+// File uploads (LMS discovery slice 8) — the returned `url` is exactly
+// what gets stored in any of this project's existing "just a URL
+// string" attachment fields (ClassMaterial.url, CourseModuleItem.
+// content, AssignmentSubmission.content); which storage backend
+// actually produced it is configured server-side and never visible
+// here.
+export interface UploadResult {
+  url: string;
+  key: string;
+}

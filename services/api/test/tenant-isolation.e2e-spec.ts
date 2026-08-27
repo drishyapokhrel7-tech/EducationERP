@@ -7955,4 +7955,155 @@ describe("Tenant isolation (e2e)", () => {
       expect(orgBNotifications.body.some((n: { id: string }) => orgANotificationIds.has(n.id))).toBe(false);
     }, 90000);
   });
+
+  describe("File storage (LMS discovery slice 8 — configurable backend, link-compatible)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    it("lets any authenticated user upload a file and reuses the resulting url in an existing link field end to end", async () => {
+      const suffix = `FS${run}`;
+
+      // Any authenticated user can upload — there's no ownership to
+      // check at the upload step itself, only once the resulting url is
+      // attached to something else through that thing's own endpoint.
+      const uploaded = await request(app.getHttpServer())
+        .post("/organizations/me/uploads")
+        .set(...auth(tokenA))
+        .attach("file", Buffer.from("not a real file, just e2e test bytes"), {
+          filename: "notes.txt",
+          contentType: "text/plain",
+        })
+        .expect(201);
+      expect(uploaded.body.url).toEqual(expect.stringContaining("/uploads/"));
+      expect(uploaded.body.key).toEqual(expect.stringContaining(".txt"));
+
+      // The local driver's own read-back route actually serves it —
+      // hit it through the same test server instance via its key
+      // (rather than the absolute url in the response, which embeds a
+      // PORT that may not match wherever supertest actually bound this
+      // particular app instance).
+      const fetched = await request(app.getHttpServer()).get(`/uploads/${uploaded.body.key}`).expect(200);
+      expect(fetched.text).toBe("not a real file, just e2e test bytes");
+
+      // Rejects an unsupported mimetype (400) and an empty request with
+      // no file field at all (400) — never silently accepted.
+      await request(app.getHttpServer())
+        .post("/organizations/me/uploads")
+        .set(...auth(tokenA))
+        .attach("file", Buffer.from("#!/bin/sh\necho hi"), { filename: "script.sh", contentType: "application/x-sh" })
+        .expect(400);
+      await request(app.getHttpServer()).post("/organizations/me/uploads").set(...auth(tokenA)).expect(400);
+
+      // A well-formed-looking but nonexistent local file 404s, and a
+      // filename that doesn't match the safe-charset pattern at all
+      // (path-traversal-shaped input) 404s too, rather than ever
+      // touching the filesystem with it.
+      await request(app.getHttpServer())
+        .get("/uploads/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000000.png")
+        .expect(404);
+      await request(app.getHttpServer())
+        .get("/uploads/00000000-0000-0000-0000-000000000000/not..a-safe-name")
+        .expect(404);
+
+      // Wire-through: the uploaded url is just another link, reused as-
+      // is by an already-existing, already-ownership-checked endpoint
+      // (a course module item) — no new schema, no special-casing.
+      const campus = await request(app.getHttpServer())
+        .post("/organizations/me/campuses")
+        .set(...auth(tokenA))
+        .send({ name: `Storage Campus ${suffix}`, code: `FSCAMP${suffix}` })
+        .expect(201);
+      const faculty = await request(app.getHttpServer())
+        .post("/organizations/me/faculties")
+        .set(...auth(tokenA))
+        .send({ campusId: campus.body.id, name: `Storage Faculty ${suffix}`, code: `FSFAC${suffix}` })
+        .expect(201);
+      const department = await request(app.getHttpServer())
+        .post("/organizations/me/departments")
+        .set(...auth(tokenA))
+        .send({ facultyId: faculty.body.id, name: `Storage Dept ${suffix}`, code: `FSDEP${suffix}` })
+        .expect(201);
+      const program = await request(app.getHttpServer())
+        .post("/organizations/me/programs")
+        .set(...auth(tokenA))
+        .send({ departmentId: department.body.id, name: `Storage Program ${suffix}`, code: `FSPROG${suffix}` })
+        .expect(201);
+      const year = await request(app.getHttpServer())
+        .post("/organizations/me/academic-years")
+        .set(...auth(tokenA))
+        .send({ name: `Storage Year ${suffix}`, startDate: "2099-08-01", endDate: "2100-06-30" })
+        .expect(201);
+      const term = await request(app.getHttpServer())
+        .post("/organizations/me/terms")
+        .set(...auth(tokenA))
+        .send({
+          academicYearId: year.body.id,
+          name: `Storage Term ${suffix}`,
+          code: `FST${suffix}`,
+          sequence: 1,
+          startDate: "2099-08-01",
+          endDate: "2099-12-15",
+        })
+        .expect(201);
+      const section = await request(app.getHttpServer())
+        .post("/organizations/me/sections")
+        .set(...auth(tokenA))
+        .send({ programId: program.body.id, termId: term.body.id, name: `Storage Section ${suffix}`, code: `FSS${suffix}` })
+        .expect(201);
+      const staffType = await request(app.getHttpServer())
+        .post("/organizations/me/staff-types")
+        .set(...auth(tokenA))
+        .send({ name: `Storage Staff Type ${suffix}`, code: `FSST${suffix}` })
+        .expect(201);
+      const designation = await request(app.getHttpServer())
+        .post("/organizations/me/designations")
+        .set(...auth(tokenA))
+        .send({ name: `Storage Designation ${suffix}`, code: `FSDS${suffix}` })
+        .expect(201);
+      const subject = await request(app.getHttpServer())
+        .post("/organizations/me/subjects")
+        .set(...auth(tokenA))
+        .send({ name: `Storage Subject ${suffix}`, code: `FSSUB${suffix}` })
+        .expect(201);
+      const teacher = await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(tokenA))
+        .send({
+          staffTypeId: staffType.body.id,
+          designationId: designation.body.id,
+          employeeCode: `FS-TCH-${suffix}`,
+          firstName: "Storage",
+          lastName: "Teacher",
+          email: `fs-teacher-${suffix}-${run}@rls-e2e.test`,
+          dateOfJoining: "2026-01-01",
+        })
+        .expect(201);
+      const teachingAssignment = await request(app.getHttpServer())
+        .post("/organizations/me/teaching-assignments")
+        .set(...auth(tokenA))
+        .send({ employeeId: teacher.body.id, subjectId: subject.body.id, sectionId: section.body.id, termId: term.body.id })
+        .expect(201);
+      const teacherLogin = await request(app.getHttpServer())
+        .post(`/organizations/me/employees/${teacher.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "StorageTeacherPass123" })
+        .expect(201);
+      const teacherSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: teacherLogin.body.username, password: "StorageTeacherPass123" })
+        .expect(201);
+      const teacherToken = teacherSession.body.accessToken as string;
+
+      const moduleRow = await request(app.getHttpServer())
+        .post("/organizations/me/teacher-portal/modules")
+        .set(...auth(teacherToken))
+        .send({ teachingAssignmentId: teachingAssignment.body.id, title: "Storage Module", sequence: 1 })
+        .expect(201);
+      const item = await request(app.getHttpServer())
+        .post(`/organizations/me/teacher-portal/modules/${moduleRow.body.id}/items`)
+        .set(...auth(teacherToken))
+        .send({ sequence: 1, title: "Uploaded handout", type: "DOCUMENT", content: uploaded.body.url })
+        .expect(201);
+      expect(item.body.content).toBe(uploaded.body.url);
+    }, 60000);
+  });
 });

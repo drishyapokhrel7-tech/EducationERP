@@ -119,6 +119,7 @@ import type {
   CreateDiscussionPostInput,
   StudentPortalDiscussionTopic,
   Notification,
+  UploadResult,
   TeacherDashboard,
   StudentDashboard,
   ParentDashboard,
@@ -1176,6 +1177,16 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       request<Notification>(`/organizations/me/notifications/${notificationId}/read`, { method: "POST" }),
     markAllNotificationsRead: () =>
       request<{ count: number }>("/organizations/me/notifications/read-all", { method: "POST" }),
+
+    // File uploads (LMS discovery slice 8) — any authenticated user can
+    // upload; the caller attaches the returned url to whatever it's
+    // actually for (a module item, a class material, an assignment
+    // submission) through that thing's own existing endpoint.
+    uploadFile: (file: File) => {
+      const form = new FormData();
+      form.append("file", file);
+      return requestForm<UploadResult>("/organizations/me/uploads", form);
+    },
   };
 }
 
