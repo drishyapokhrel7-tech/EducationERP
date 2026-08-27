@@ -107,6 +107,10 @@ import type {
   StudentPortalQuiz,
   QuizAttemptState,
   SaveQuizAnswerInput,
+  Announcement,
+  CreateAnnouncementInput,
+  UpdateAnnouncementInput,
+  StudentPortalAnnouncement,
   TeacherDashboard,
   StudentDashboard,
   ParentDashboard,
@@ -1097,6 +1101,25 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       }),
     submitStudentQuiz: (checkId: string) =>
       request<StudentPortalQuiz>(`/organizations/me/portal/quizzes/${checkId}/submit`, { method: "POST" }),
+
+    // Announcements — teacher self-service side (LMS discovery slice 5).
+    listTeacherAnnouncements: (teachingAssignmentId: string) =>
+      request<Announcement[]>(
+        `/organizations/me/teacher-portal/announcements?teachingAssignmentId=${encodeURIComponent(teachingAssignmentId)}`,
+      ),
+    createTeacherAnnouncement: (input: CreateAnnouncementInput) =>
+      request<Announcement>("/organizations/me/teacher-portal/announcements", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    updateTeacherAnnouncement: (announcementId: string, input: UpdateAnnouncementInput) =>
+      request<Announcement>(`/organizations/me/teacher-portal/announcements/${announcementId}`, {
+        method: "PUT",
+        body: JSON.stringify(input),
+      }),
+
+    // Announcements — student self-service side.
+    listStudentAnnouncements: () => request<StudentPortalAnnouncement[]>("/organizations/me/portal/announcements"),
   };
 }
 

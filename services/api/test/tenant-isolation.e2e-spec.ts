@@ -116,16 +116,18 @@ describe("Tenant isolation (e2e)", () => {
         // must precede both. knowledgeCheckAttempt/knowledgeCheckQuestion
         // reference knowledgeCheck; knowledgeCheck references
         // teachingAssignment + syllabusNode; assignmentSubmission
-        // references assignment; assignment references teachingAssignment
-        // — all six lead the whole list since teachingAssignment and
-        // syllabusNode are both required elsewhere to be deleted much
-        // later.
+        // references assignment; assignment references teachingAssignment;
+        // announcement (LMS discovery slice 5) also references
+        // teachingAssignment (RESTRICT) directly — all seven lead the
+        // whole list since teachingAssignment and syllabusNode are both
+        // required elsewhere to be deleted much later.
         "knowledgeCheckAnswer",
         "knowledgeCheckAttempt",
         "knowledgeCheckQuestion",
         "knowledgeCheck",
         "assignmentSubmission",
         "assignment",
+        "announcement",
         // classMaterial references classSession; classSession references
         // classSchedule/section/lessonPlan/syllabusNode — both lead the
         // whole list since classSession must precede lessonPlan, which
@@ -6908,6 +6910,237 @@ describe("Tenant isolation (e2e)", () => {
         .post("/organizations/me/teacher-portal/quizzes")
         .set(...auth(tokenB))
         .send({ teachingAssignmentId: teachingAssignment.body.id, title: "Intruder Quiz" })
+        .expect(404);
+    }, 90000);
+  });
+
+  describe("Announcements (LMS discovery slice 5)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    it("lets a teacher post/publish announcements on their own course, gated to published + enrolled (IDOR + tenant guards)", async () => {
+      const suffix = `AN${run}`;
+
+      const campus = await request(app.getHttpServer())
+        .post("/organizations/me/campuses")
+        .set(...auth(tokenA))
+        .send({ name: `Announce Campus ${suffix}`, code: `ANCAMP${suffix}` })
+        .expect(201);
+      const faculty = await request(app.getHttpServer())
+        .post("/organizations/me/faculties")
+        .set(...auth(tokenA))
+        .send({ campusId: campus.body.id, name: `Announce Faculty ${suffix}`, code: `ANFAC${suffix}` })
+        .expect(201);
+      const department = await request(app.getHttpServer())
+        .post("/organizations/me/departments")
+        .set(...auth(tokenA))
+        .send({ facultyId: faculty.body.id, name: `Announce Dept ${suffix}`, code: `ANDEP${suffix}` })
+        .expect(201);
+      const program = await request(app.getHttpServer())
+        .post("/organizations/me/programs")
+        .set(...auth(tokenA))
+        .send({ departmentId: department.body.id, name: `Announce Program ${suffix}`, code: `ANPROG${suffix}` })
+        .expect(201);
+      const year = await request(app.getHttpServer())
+        .post("/organizations/me/academic-years")
+        .set(...auth(tokenA))
+        .send({ name: `Announce Year ${suffix}`, startDate: "2099-08-01", endDate: "2100-06-30" })
+        .expect(201);
+      const term = await request(app.getHttpServer())
+        .post("/organizations/me/terms")
+        .set(...auth(tokenA))
+        .send({
+          academicYearId: year.body.id,
+          name: `Announce Term ${suffix}`,
+          code: `ANT${suffix}`,
+          sequence: 1,
+          startDate: "2099-08-01",
+          endDate: "2099-12-15",
+        })
+        .expect(201);
+      const section = await request(app.getHttpServer())
+        .post("/organizations/me/sections")
+        .set(...auth(tokenA))
+        .send({ programId: program.body.id, termId: term.body.id, name: `Announce Section ${suffix}`, code: `ANS${suffix}` })
+        .expect(201);
+      const staffType = await request(app.getHttpServer())
+        .post("/organizations/me/staff-types")
+        .set(...auth(tokenA))
+        .send({ name: `Announce Staff Type ${suffix}`, code: `ANST${suffix}` })
+        .expect(201);
+      const designation = await request(app.getHttpServer())
+        .post("/organizations/me/designations")
+        .set(...auth(tokenA))
+        .send({ name: `Announce Designation ${suffix}`, code: `ANDS${suffix}` })
+        .expect(201);
+      const subject = await request(app.getHttpServer())
+        .post("/organizations/me/subjects")
+        .set(...auth(tokenA))
+        .send({ name: `Announce Subject ${suffix}`, code: `ANSUB${suffix}` })
+        .expect(201);
+
+      const teacher = await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(tokenA))
+        .send({
+          staffTypeId: staffType.body.id,
+          designationId: designation.body.id,
+          employeeCode: `AN-TCH-${suffix}`,
+          firstName: "Announce",
+          lastName: "Teacher",
+          email: `an-teacher-${suffix}-${run}@rls-e2e.test`,
+          dateOfJoining: "2026-01-01",
+        })
+        .expect(201);
+      const otherTeacher = await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(tokenA))
+        .send({
+          staffTypeId: staffType.body.id,
+          designationId: designation.body.id,
+          employeeCode: `AN-TCH2-${suffix}`,
+          firstName: "Other",
+          lastName: "AnnounceTeacher",
+          email: `an-teacher2-${suffix}-${run}@rls-e2e.test`,
+          dateOfJoining: "2026-01-01",
+        })
+        .expect(201);
+
+      const teachingAssignment = await request(app.getHttpServer())
+        .post("/organizations/me/teaching-assignments")
+        .set(...auth(tokenA))
+        .send({ employeeId: teacher.body.id, subjectId: subject.body.id, sectionId: section.body.id, termId: term.body.id })
+        .expect(201);
+
+      const teacherLogin = await request(app.getHttpServer())
+        .post(`/organizations/me/employees/${teacher.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "AnnounceTeacherPass123" })
+        .expect(201);
+      const otherTeacherLogin = await request(app.getHttpServer())
+        .post(`/organizations/me/employees/${otherTeacher.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "OtherAnnounceTeacherPass123" })
+        .expect(201);
+      const teacherSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: teacherLogin.body.username, password: "AnnounceTeacherPass123" })
+        .expect(201);
+      const otherTeacherSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: otherTeacherLogin.body.username, password: "OtherAnnounceTeacherPass123" })
+        .expect(201);
+      const teacherToken = teacherSession.body.accessToken as string;
+      const otherTeacherToken = otherTeacherSession.body.accessToken as string;
+
+      // A different teacher can't post an announcement on someone else's
+      // course (404, IDOR guard).
+      await request(app.getHttpServer())
+        .post("/organizations/me/teacher-portal/announcements")
+        .set(...auth(otherTeacherToken))
+        .send({ teachingAssignmentId: teachingAssignment.body.id, title: "Intruder Announcement", body: "..." })
+        .expect(404);
+
+      const announcement = await request(app.getHttpServer())
+        .post("/organizations/me/teacher-portal/announcements")
+        .set(...auth(teacherToken))
+        .send({ teachingAssignmentId: teachingAssignment.body.id, title: "No class Friday", body: "We have a school event." })
+        .expect(201);
+      expect(announcement.body.isPublished).toBe(false);
+
+      // Build an enrolled student and an unrelated, unenrolled one.
+      const student = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({ studentCode: `AN-STU-${suffix}`, firstName: "Announce", lastName: "Student", dateOfBirth: "2015-01-01" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/students/${student.body.id}/enrollments`)
+        .set(...auth(tokenA))
+        .send({ programId: program.body.id, sectionId: section.body.id, termId: term.body.id, enrollmentDate: "2099-08-01" })
+        .expect(201);
+      const studentLogin = await request(app.getHttpServer())
+        .post(`/organizations/me/students/${student.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "AnnounceStudentPass123" })
+        .expect(201);
+      const studentSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: studentLogin.body.username, password: "AnnounceStudentPass123" })
+        .expect(201);
+      const studentToken = studentSession.body.accessToken as string;
+
+      const otherStudent = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({ studentCode: `AN-STU2-${suffix}`, firstName: "Outside", lastName: "AnnounceStudent", dateOfBirth: "2015-01-01" })
+        .expect(201);
+      const otherStudentLogin = await request(app.getHttpServer())
+        .post(`/organizations/me/students/${otherStudent.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "OtherAnnounceStudentPass123" })
+        .expect(201);
+      const otherStudentSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: otherStudentLogin.body.username, password: "OtherAnnounceStudentPass123" })
+        .expect(201);
+      const otherStudentToken = otherStudentSession.body.accessToken as string;
+
+      // Unpublished draft is invisible to the enrolled student.
+      const listBeforePublish = await request(app.getHttpServer())
+        .get("/organizations/me/portal/announcements")
+        .set(...auth(studentToken))
+        .expect(200);
+      expect(listBeforePublish.body).toEqual([]);
+
+      // A different teacher can't publish (or otherwise update) someone
+      // else's announcement (404).
+      await request(app.getHttpServer())
+        .put(`/organizations/me/teacher-portal/announcements/${announcement.body.id}`)
+        .set(...auth(otherTeacherToken))
+        .send({ isPublished: true })
+        .expect(404);
+
+      await request(app.getHttpServer())
+        .put(`/organizations/me/teacher-portal/announcements/${announcement.body.id}`)
+        .set(...auth(teacherToken))
+        .send({ isPublished: true })
+        .expect(200);
+
+      const listAfterPublish = await request(app.getHttpServer())
+        .get("/organizations/me/portal/announcements")
+        .set(...auth(studentToken))
+        .expect(200);
+      expect(listAfterPublish.body).toHaveLength(1);
+      expect(listAfterPublish.body[0].title).toBe("No class Friday");
+      expect(listAfterPublish.body[0].teachingAssignment.subject.name).toBe(`Announce Subject ${suffix}`);
+
+      // A student not enrolled in this course never sees it, published
+      // or not.
+      const otherStudentList = await request(app.getHttpServer())
+        .get("/organizations/me/portal/announcements")
+        .set(...auth(otherStudentToken))
+        .expect(200);
+      expect(otherStudentList.body).toEqual([]);
+
+      // The owning teacher's own list shows both published and draft
+      // announcements on their course.
+      const teacherView = await request(app.getHttpServer())
+        .get(`/organizations/me/teacher-portal/announcements?teachingAssignmentId=${teachingAssignment.body.id}`)
+        .set(...auth(teacherToken))
+        .expect(200);
+      expect(teacherView.body).toHaveLength(1);
+      expect(teacherView.body[0].isPublished).toBe(true);
+      await request(app.getHttpServer())
+        .get(`/organizations/me/teacher-portal/announcements?teachingAssignmentId=${teachingAssignment.body.id}`)
+        .set(...auth(otherTeacherToken))
+        .expect(404);
+
+      // Cross-tenant: org B can't post an announcement on org A's
+      // course.
+      await request(app.getHttpServer())
+        .post("/organizations/me/teacher-portal/announcements")
+        .set(...auth(tokenB))
+        .send({ teachingAssignmentId: teachingAssignment.body.id, title: "Intruder Announcement", body: "..." })
         .expect(404);
     }, 90000);
   });

@@ -15,6 +15,8 @@ import { UpdateAssignmentDto } from "../assignments/dto/update-assignment.dto";
 import { GradeSubmissionDto } from "../assignments/dto/grade-submission.dto";
 import { CreateKnowledgeCheckDto } from "../knowledge-checks/dto/create-knowledge-check.dto";
 import { CreateQuestionDto } from "../knowledge-checks/dto/create-question.dto";
+import { CreateAnnouncementDto } from "./dto/create-announcement.dto";
+import { UpdateAnnouncementDto } from "./dto/update-announcement.dto";
 
 // Deliberately JwtAuthGuard only — no PermissionsGuard/@RequirePermissions,
 // same reasoning as StudentPortalController/DriverPortalController:
@@ -171,5 +173,24 @@ export class TeacherPortalController {
   @Post("quizzes/:checkId/publish")
   publishQuiz(@CurrentUser() user: JwtPayload, @Param("checkId") checkId: string) {
     return this.teacherPortal.publishQuiz(user.organizationId, user.sub, checkId);
+  }
+
+  @Get("announcements")
+  listAnnouncements(@CurrentUser() user: JwtPayload, @Query("teachingAssignmentId") teachingAssignmentId: string) {
+    return this.teacherPortal.listAnnouncements(user.organizationId, user.sub, teachingAssignmentId);
+  }
+
+  @Post("announcements")
+  createAnnouncement(@CurrentUser() user: JwtPayload, @Body() dto: CreateAnnouncementDto) {
+    return this.teacherPortal.createAnnouncement(user.organizationId, user.sub, dto);
+  }
+
+  @Put("announcements/:announcementId")
+  updateAnnouncement(
+    @CurrentUser() user: JwtPayload,
+    @Param("announcementId") announcementId: string,
+    @Body() dto: UpdateAnnouncementDto,
+  ) {
+    return this.teacherPortal.updateAnnouncement(user.organizationId, user.sub, announcementId, dto);
   }
 }

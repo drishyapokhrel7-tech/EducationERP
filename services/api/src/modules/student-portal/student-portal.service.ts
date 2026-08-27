@@ -167,6 +167,29 @@ export class StudentPortalService {
     return assignment;
   }
 
+  // ── Announcements (LMS discovery slice 5) ───────────────────────────
+  // Published announcements across every course the student is
+  // currently enrolled in — same "enrolled in a course is derived
+  // structurally, never trusted from a param" shape as courses/
+  // assignments/quizzes above.
+
+  async listAnnouncements(organizationId: string, userId: string) {
+    const student = await this.getOwnStudent(organizationId, userId);
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const enrollment = await tx.studentEnrollment.findFirst({ where: { organizationId, studentId: student.id, status: "ACTIVE" } });
+      if (!enrollment) return [];
+
+      const teachingAssignments = await tx.teachingAssignment.findMany({
+        where: { organizationId, sectionId: enrollment.sectionId, termId: enrollment.termId },
+      });
+      return tx.announcement.findMany({
+        where: { organizationId, isPublished: true, teachingAssignmentId: { in: teachingAssignments.map((t) => t.id) } },
+        include: { teachingAssignment: { include: { subject: true, employee: true } } },
+        orderBy: { createdAt: "desc" },
+      });
+    });
+  }
+
   // ── Quizzes (LMS discovery slice 4) ─────────────────────────────────
   // Adapts exam-taking's shuffle/autosave/auto-score engine — see
   // KnowledgeChecksService's own comment on that section. Every call

@@ -16,6 +16,8 @@ import { UpdateAssignmentDto } from "../assignments/dto/update-assignment.dto";
 import { GradeSubmissionDto } from "../assignments/dto/grade-submission.dto";
 import { CreateKnowledgeCheckDto } from "../knowledge-checks/dto/create-knowledge-check.dto";
 import { CreateQuestionDto } from "../knowledge-checks/dto/create-question.dto";
+import { CreateAnnouncementDto } from "./dto/create-announcement.dto";
+import { UpdateAnnouncementDto } from "./dto/update-announcement.dto";
 
 const SESSION_INCLUDE = {
   classSchedule: {
@@ -400,6 +402,61 @@ export class TeacherPortalService {
       }
       return check;
     });
+  }
+
+  // ── Announcements (LMS discovery slice 5) ────────────────────────────
+  // No separate admin service to reuse — same shape as course modules
+  // (slice 2): purely teacher-owned course content with no generic staff
+  // permission or existing admin CRUD surface, so reads and writes are
+  // both direct tx queries here rather than delegating to a shared
+  // service.
+
+  async listAnnouncements(organizationId: string, userId: string, teachingAssignmentId: string) {
+    const employee = await this.getOwnEmployee(organizationId, userId);
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.assertOwnsTeachingAssignment(tx, employee.id, teachingAssignmentId);
+      return tx.announcement.findMany({
+        where: { organizationId, teachingAssignmentId },
+        orderBy: { createdAt: "desc" },
+      });
+    });
+  }
+
+  async createAnnouncement(organizationId: string, userId: string, dto: CreateAnnouncementDto) {
+    const employee = await this.getOwnEmployee(organizationId, userId);
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.assertOwnsTeachingAssignment(tx, employee.id, dto.teachingAssignmentId);
+      return tx.announcement.create({
+        data: {
+          organizationId,
+          teachingAssignmentId: dto.teachingAssignmentId,
+          title: dto.title,
+          body: dto.body,
+        },
+      });
+    });
+  }
+
+  async updateAnnouncement(organizationId: string, userId: string, announcementId: string, dto: UpdateAnnouncementDto) {
+    const employee = await this.getOwnEmployee(organizationId, userId);
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadOwnAnnouncement(tx, employee.id, announcementId);
+      return tx.announcement.update({
+        where: { id: announcementId },
+        data: { title: dto.title, body: dto.body, isPublished: dto.isPublished },
+      });
+    });
+  }
+
+  private async loadOwnAnnouncement(tx: PrismaClient, employeeId: string, announcementId: string) {
+    const announcement = await tx.announcement.findUnique({
+      where: { id: announcementId },
+      include: { teachingAssignment: true },
+    });
+    if (!announcement || announcement.teachingAssignment.employeeId !== employeeId) {
+      throw new NotFoundException("Announcement not found");
+    }
+    return announcement;
   }
 
   private async assertOwnsTeachingAssignment(tx: PrismaClient, employeeId: string, teachingAssignmentId: string) {

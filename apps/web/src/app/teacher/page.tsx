@@ -93,6 +93,12 @@ export default function TeacherPage() {
     sequence: "1",
   });
 
+  const announcements = useSWR(
+    courseId ? ["teacher-announcements", courseId] : null,
+    () => api.listTeacherAnnouncements(courseId),
+  );
+  const [announcementForm, setAnnouncementForm] = useState({ title: "", body: "" });
+
   async function openClass(classScheduleId: string) {
     try {
       const session = await api.createTeacherClassSession({ classScheduleId, date });
@@ -975,6 +981,105 @@ export default function TeacherPage() {
                       </div>
                       <Button type="submit" size="sm" disabled={!quizForm.title}>
                         Add quiz
+                      </Button>
+                    </form>
+                  </>
+                ) : null}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>My courses — announcements</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <NativeSelect
+                  className="w-64"
+                  placeholder="Select a course"
+                  value={courseId}
+                  onChange={(v) => setCourseId(v)}
+                  options={me.data.teachingAssignments.map((t) => ({ value: t.id, label: t.subject.name }))}
+                />
+
+                {courseId ? (
+                  <>
+                    {!announcements.data || announcements.data.length === 0 ? (
+                      <p className="text-muted-foreground text-sm">No announcements yet.</p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {announcements.data.map((a) => (
+                          <li key={a.id} className="rounded-md border p-3 text-sm">
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="font-medium">{a.title}</span>
+                              <div className="flex items-center gap-2">
+                                <Badge variant={a.isPublished ? "success" : "secondary"}>
+                                  {a.isPublished ? "Published" : "Draft"}
+                                </Badge>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={async () => {
+                                    try {
+                                      await api.updateTeacherAnnouncement(a.id, { isPublished: !a.isPublished });
+                                      announcements.mutate();
+                                    } catch (err) {
+                                      toast.error(errorMessage(err, "Failed to update announcement"));
+                                    }
+                                  }}
+                                >
+                                  {a.isPublished ? "Unpublish" : "Publish"}
+                                </Button>
+                              </div>
+                            </div>
+                            <p className="text-muted-foreground mt-1 whitespace-pre-wrap">{a.body}</p>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
+                    <Separator />
+
+                    <form
+                      className="space-y-2"
+                      onSubmit={async (e: FormEvent) => {
+                        e.preventDefault();
+                        try {
+                          await api.createTeacherAnnouncement({
+                            teachingAssignmentId: courseId,
+                            title: announcementForm.title,
+                            body: announcementForm.body,
+                          });
+                          setAnnouncementForm({ title: "", body: "" });
+                          announcements.mutate();
+                          toast.success("Announcement created");
+                        } catch (err) {
+                          toast.error(errorMessage(err, "Failed to create announcement"));
+                        }
+                      }}
+                    >
+                      <div className="space-y-1">
+                        <Label className="text-xs">Title</Label>
+                        <Input
+                          className="w-full"
+                          value={announcementForm.title}
+                          onChange={(e) => setAnnouncementForm((f) => ({ ...f, title: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Body</Label>
+                        <textarea
+                          className="border-input focus-visible:border-ring focus-visible:ring-ring/50 min-h-20 w-full rounded-lg border bg-transparent px-2.5 py-1.5 text-sm outline-none transition-colors focus-visible:ring-3"
+                          value={announcementForm.body}
+                          onChange={(e) => setAnnouncementForm((f) => ({ ...f, body: e.target.value }))}
+                        />
+                      </div>
+                      <Button
+                        type="submit"
+                        size="sm"
+                        disabled={!announcementForm.title || !announcementForm.body}
+                      >
+                        Post announcement
                       </Button>
                     </form>
                   </>

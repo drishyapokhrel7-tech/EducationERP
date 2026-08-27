@@ -865,6 +865,39 @@ export interface SubmitAssignmentInput {
   content?: string;
 }
 
+// Course-level announcements (LMS discovery slice 5).
+
+export interface Announcement {
+  id: string;
+  organizationId: string;
+  teachingAssignmentId: string;
+  title: string;
+  body: string;
+  isPublished: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateAnnouncementInput {
+  teachingAssignmentId: string;
+  title: string;
+  body: string;
+}
+
+export interface UpdateAnnouncementInput {
+  title?: string;
+  body?: string;
+  isPublished?: boolean;
+}
+
+// Student-portal announcements never include the parent
+// TeachingAssignment's full graph — just enough to show the course
+// name and instructor, same narrowing precedent as
+// AssignmentTeachingAssignmentSummary.
+export interface StudentPortalAnnouncement extends Announcement {
+  teachingAssignment: AssignmentTeachingAssignmentSummary;
+}
+
 export type KnowledgeCheckStatus = "DRAFT" | "PUBLISHED";
 
 export interface KnowledgeCheckQuestion {

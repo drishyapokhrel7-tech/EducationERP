@@ -116,6 +116,7 @@ model Organization {
   courseModules               CourseModule[]
   courseModuleItems           CourseModuleItem[]
   courseModuleItemCompletions CourseModuleItemCompletion[]
+  announcements               Announcement[]
 
   @@map("organizations")
 }
@@ -979,6 +980,7 @@ model TeachingAssignment {
   assignments     Assignment[]
   knowledgeChecks KnowledgeCheck[]
   courseModules   CourseModule[]
+  announcements   Announcement[]
 
   // One teacher per subject+section+term — re-assigning means changing
   // this row, not stacking a second one alongside it.
@@ -2827,4 +2829,28 @@ model CourseModuleItemCompletion {
   @@unique([moduleItemId, studentId])
   @@index([organizationId])
   @@map("course_module_item_completions")
+}
+
+// Course-level announcements (LMS discovery slice 5) — a one-way,
+// teacher-owned broadcast to everyone enrolled in one course, same
+// draft/publish gate as every other piece of teacher content
+// (CourseModule/Assignment/KnowledgeCheck): a draft is invisible to
+// students until the owning teacher explicitly publishes it. No
+// per-student read-tracking or replies — that's a discussions concept
+// (a later, separate slice), not asked for here.
+model Announcement {
+  id                   String   @id @default(uuid())
+  organizationId       String
+  teachingAssignmentId String
+  title                String
+  body                 String
+  isPublished          Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  organization       Organization       @relation(fields: [organizationId], references: [id])
+  teachingAssignment TeachingAssignment @relation(fields: [teachingAssignmentId], references: [id])
+
+  @@index([organizationId])
+  @@map("announcements")
 }

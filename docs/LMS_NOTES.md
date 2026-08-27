@@ -516,12 +516,85 @@ the default 60s timeout against the real dev database; raised to
   questions, and Aarav Sharma's attempt) was left in place, not cleaned
   up.**
 
+## Slice 5 — Announcements
+
+User said "go-ahead" — approval to start the next item in the proposed
+sequencing.
+
+### Design
+
+**No new entity needed beyond one small table** — course-level
+announcements didn't exist anywhere in the ERP. `Announcement`
+(`teachingAssignmentId`, `title`, `body`, `isPublished`) is anchored to
+`TeachingAssignment`, same "Course" precedent as every other piece of
+teacher content this LMS work has added, with the same draft/publish
+gate as `CourseModule`/`Assignment`/`KnowledgeCheck` — a draft is
+invisible to students until the owning teacher explicitly publishes
+it. Deliberately minimal: no per-student read-tracking and no replies
+— read receipts weren't asked for, and replies are a discussions
+concept (a later, separate slice), not this one's scope.
+
+**No separate admin service to reuse, no new module** — same shape as
+course modules (slice 2): this is purely teacher-owned course content
+with no existing admin CRUD surface and no generic staff permission
+that would fit it, so both reads and writes are direct `tx` queries
+added straight into `teacher-portal.service.ts`/`student-portal.
+service.ts`, not delegated through a shared service the way
+assignments/quizzes reuse `AssignmentsService`/`KnowledgeChecksService`.
+
+- `teacher-portal` (new methods): `listAnnouncements`/
+  `createAnnouncement`/`updateAnnouncement` — ownership-checked against
+  `announcement.teachingAssignment.employeeId` before any read or
+  write, 404 on a different teacher's course.
+- `student-portal` (new method): `listAnnouncements` — published
+  announcements across every `TeachingAssignment` matching the
+  student's own active enrollment (section+term), same "enrolled is
+  derived structurally, never trusted from a param" shape as courses/
+  assignments/quizzes. No single-announcement GET endpoint exists (not
+  needed — the list already carries the full body, same as a real
+  announcement feed), so there's nothing for an unenrolled student to
+  probe by id; their own list is simply empty.
+
+**Web**: `/teacher` gains a "My courses — announcements" card (course
+picker → list with a publish toggle and the full body shown inline →
+a create form: title + a plain Tailwind-styled `<textarea>` for the
+body, same "no shadcn Textarea component exists, don't introduce one
+for a single use" precedent as the assignment submission page).
+`/portal/announcements` (new nav link) is a simple reverse-chronological
+feed — title, course + instructor, date, full body — deliberately no
+detail page, since a list item already shows everything there is to
+show.
+
+### Verified
+
+- `pnpm -r typecheck`/`lint`/`build` clean across all six packages
+  (the same pre-existing, unrelated `apps/web/src/app/sso/page.tsx`
+  lint failure from slice 4 is still there, still out of scope).
+- `services/api` e2e: one new comprehensive test (`-t "Announcements"`)
+  — a different teacher can't post or publish an announcement on
+  someone else's course (404, IDOR guard); a draft is invisible to an
+  enrolled student (empty list); publishing makes it visible with the
+  correct course/instructor info; a student not enrolled in that
+  course never sees it, published or not (empty list); the owning
+  teacher's own list shows both draft and published announcements on
+  their course, while a different teacher can't even list them (404);
+  cross-tenant posting on org A's course from org B is rejected (404).
+  Passed clean (`28688 ms`) on the first run — no bugs found in this
+  slice's own application code.
+- Full browser pass in the Everest Academy demo org: as the real
+  teacher (Sunita Karki), posted "No class Friday" (Mathematics) as a
+  draft, then published it — confirmed 201/200 via network responses;
+  as the real student (Aarav Sharma), confirmed `/portal/announcements`
+  shows it with the correct title, course, instructor, date, and full
+  body text. **Per the same standing instruction as slices 1–4, this
+  demo data (the announcement) was left in place, not cleaned up.**
+
 ## Next step
 
 Teacher portal (slice 1), course modules (slice 2), self-service
-assignments (slice 3), and the quiz engine (slice 4) are done. The
-rest of the proposed LMS sequencing — announcements, discussions,
-gradebook, file upload (blocked on the still-open storage decision),
-notifications — is **not started**; announcements (#5) is the natural
-next item, but each still needs its own explicit go-ahead, per this
-project's standing rule.
+assignments (slice 3), the quiz engine (slice 4), and announcements
+(slice 5) are done. The rest of the proposed LMS sequencing —
+discussions, gradebook, file upload (blocked on the still-open storage
+decision), notifications — is **not started**; discussions (#6) is the
+natural next item, but each still needs its own explicit go-ahead, per
+this project's standing rule.

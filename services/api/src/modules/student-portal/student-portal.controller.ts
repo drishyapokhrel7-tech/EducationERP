@@ -49,6 +49,11 @@ export class StudentPortalController {
     return this.studentPortal.listCourses(user.organizationId, user.sub);
   }
 
+  @Get("announcements")
+  listAnnouncements(@CurrentUser() user: JwtPayload) {
+    return this.studentPortal.listAnnouncements(user.organizationId, user.sub);
+  }
+
   @Get("courses/:teachingAssignmentId/modules")
   listModules(@CurrentUser() user: JwtPayload, @Param("teachingAssignmentId") teachingAssignmentId: string) {
     return this.studentPortal.listModules(user.organizationId, user.sub, teachingAssignmentId);
