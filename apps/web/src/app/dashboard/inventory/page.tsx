@@ -12,6 +12,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
+import { useHighlightFromSearch } from "@/lib/use-highlight-from-search";
 
 function errorMessage(err: unknown, fallback: string) {
   const message =
@@ -35,6 +36,7 @@ export default function InventoryPage() {
   const categories = useSWR("inventory-categories", () => api.listInventoryCategories());
   const suppliers = useSWR("suppliers", () => api.listSuppliers());
   const items = useSWR("inventory-items", () => api.listInventoryItems());
+  useHighlightFromSearch(Boolean(items.data));
   const purchaseOrders = useSWR("purchase-orders", () => api.listPurchaseOrders());
   const stockMovements = useSWR("stock-movements", () => api.listStockMovements());
   const assets = useSWR("assets", () => api.listAssets());
@@ -204,7 +206,7 @@ export default function InventoryPage() {
           ) : (
             <ul className="divide-y text-sm">
               {items.data.map((i) => (
-                <li key={i.id} className="flex items-center justify-between py-2">
+                <li id={`inventory-item-${i.id}`} key={i.id} className="flex items-center justify-between py-2">
                   <span>
                     <span className="font-medium">{i.name}</span> <span className="text-muted-foreground">({i.sku})</span> —{" "}
                     {i.category.name}

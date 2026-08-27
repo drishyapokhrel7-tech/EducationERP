@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
+import { useHighlightFromSearch } from "@/lib/use-highlight-from-search";
 import type { StudentEnrollment } from "@education-erp/api-client";
 
 const LiveTrackingMap = dynamic(
@@ -41,6 +42,7 @@ export default function TransportPage() {
   const employees = useSWR("employees", () => api.listEmployees());
   const students = useSWR("students", () => api.listStudents());
   const vehicles = useSWR("vehicles", () => api.listVehicles());
+  useHighlightFromSearch(Boolean(vehicles.data));
   const drivers = useSWR("drivers", () => api.listDrivers());
   const routes = useSWR("routes", () => api.listRoutes());
   const assignments = useSWR("transport-assignments", () => api.listStudentTransportAssignments());
@@ -99,7 +101,7 @@ export default function TransportPage() {
           ) : (
             <ul className="divide-y text-sm">
               {vehicles.data.map((v) => (
-                <li key={v.id} className="flex items-center justify-between gap-2 py-2">
+                <li id={`vehicle-${v.id}`} key={v.id} className="flex items-center justify-between gap-2 py-2">
                   <span>
                     {v.registrationNumber} <span className="text-muted-foreground">— {v.type} · {v.capacity} seats</span>
                   </span>

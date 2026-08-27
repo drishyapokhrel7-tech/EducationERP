@@ -1015,3 +1015,75 @@ Global search (people) is done. Per this project's standing per-slice
 check-in rule, this authorized this slice specifically — part 2 (any
 other entity type) or any of Phase 8's other bullets need their own
 fresh go-ahead.
+
+## Global search, part 2 — vehicles, inventory items, exams
+
+User said "go-ahead" to the option offered at part 1's close (first-
+listed among "search part 2, performance, security hardening, backups,
+observability, deployment"). Scoped the same way part 1 was: picked
+the next tier of entities that each have a clear identifying field a
+user would actually search by and no existing fast cross-page lookup
+of their own — `Vehicle.registrationNumber`, `InventoryItem.name`/
+`.sku`, `Exam.name` — rather than trying to cover every remaining
+entity type in the plan's original "part 2 needs its own go-ahead"
+list (invoices, LMS content, etc.) in one pass. Invoices were
+considered and explicitly skipped: `Invoice` has no human-readable
+identifier of its own (only a UUID `id`), so a dedicated search
+category for it would really just be "find this student, then look at
+their invoices" — already covered by part 1's Student search.
+
+### Design
+
+No new architectural pattern — this slice is a direct extension of
+part 1's already-proven shape. `SearchService.search` gained three
+more `Promise.all` branches (`vehicle:view`, `inventory:view`,
+`exam:view` — all three permissions already existed, no new RBAC
+resource needed), `SearchResult` gained `vehicles`/`inventoryItems`/
+`exams` arrays, and `GlobalSearchBox` gained three more grouped result
+sections. `/dashboard/transport`, `/dashboard/inventory`, and
+`/dashboard/exams` each gained a matching row `id` and a
+`useHighlightFromSearch` call, reusing the exact same hook part 1
+built — no new frontend infrastructure.
+
+### Explicitly not in this slice
+
+- Invoices — no identifying field of its own; searching by student
+  name already reaches them indirectly via part 1.
+- Any LMS content (course modules, assignments, quizzes, discussions),
+  documents/certificates, or other remaining entity types — a further
+  part 3 would need its own go-ahead, same as every other deferred
+  piece.
+- Any other Phase 8 bullet (performance, security hardening, backups,
+  observability, deployment/release management).
+
+## Verified
+
+- `pnpm -r typecheck`/`lint`/`build` clean across all six packages.
+- A standalone diagnostic script exercised all three new category
+  queries directly against Prisma before touching jest (confirmed a
+  real "A4 Notebook" inventory item matched correctly; also confirmed,
+  via direct counts, that the persistent demo org genuinely had zero
+  vehicles/exams before this slice — not a query bug).
+- Extended `tenant-isolation.e2e-spec.ts` with a new "Global search,
+  part 2" describe block: per-category precise matches (registration
+  number, SKU, exam name — including a query with a literal space,
+  URL-encoded), a `vehicle:view`-only restricted role gets vehicles
+  populated and inventory items empty (never a 403), cross-tenant
+  isolation. Also updated part 1's two empty-result-shape assertions
+  to include the three new keys. Passed clean.
+- Full browser pass, as the demo admin: created one real vehicle, one
+  real inventory category/item pairing already existed from earlier
+  session work, and one real exam via direct authenticated API calls
+  (the demo org had none of these yet), then searched for each by
+  registration number / SKU / name through the real header search box
+  and confirmed the grouped dropdown, the click-through navigation,
+  and the scroll-and-highlight all worked correctly on
+  `/dashboard/transport`, `/dashboard/inventory`, and
+  `/dashboard/exams` respectively.
+
+## Next step (as of global search, part 2)
+
+Per this project's standing per-slice check-in rule, any further
+Phase 8 bullet (search part 3 for other entities, performance
+optimization, security hardening, backups, observability, deployment/
+release management) needs its own fresh go-ahead.

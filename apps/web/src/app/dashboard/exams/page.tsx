@@ -12,6 +12,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
+import { useHighlightFromSearch } from "@/lib/use-highlight-from-search";
 import type { AttendanceStatus, Student } from "@education-erp/api-client";
 
 const ATTEMPT_STATUSES: AttendanceStatus[] = ["PRESENT", "ABSENT", "LATE", "EXCUSED"];
@@ -266,6 +267,7 @@ export default function ExamsPage() {
   const students = useSWR("students", () => api.listStudents());
   const questionBanks = useSWR("question-banks", () => api.listQuestionBanks());
   const exams = useSWR("exams", () => api.listExams());
+  useHighlightFromSearch(Boolean(exams.data));
 
   const curriculumSubjectOptions = (curricula.data ?? []).flatMap((c) =>
     c.subjects.map((cs) => ({ value: cs.id, label: `${c.name} · ${cs.subject.name}` })),
@@ -320,7 +322,7 @@ export default function ExamsPage() {
           ) : (
             <ul className="divide-y">
               {exams.data.map((e) => (
-                <li key={e.id} className="py-2 text-sm">
+                <li id={`exam-${e.id}`} key={e.id} className="py-2 text-sm">
                   <button
                     type="button"
                     className="hover:text-primary text-left"

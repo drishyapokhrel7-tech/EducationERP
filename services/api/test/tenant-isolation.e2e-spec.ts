@@ -10764,12 +10764,26 @@ describe("Tenant isolation (e2e)", () => {
         .get("/organizations/me/search?q=s")
         .set(...auth(tokenA))
         .expect(200);
-      expect(tooShort.body).toEqual({ students: [], employees: [], guardians: [] });
+      expect(tooShort.body).toEqual({
+        students: [],
+        employees: [],
+        guardians: [],
+        vehicles: [],
+        inventoryItems: [],
+        exams: [],
+      });
       const noQuery = await request(app.getHttpServer())
         .get("/organizations/me/search")
         .set(...auth(tokenA))
         .expect(200);
-      expect(noQuery.body).toEqual({ students: [], employees: [], guardians: [] });
+      expect(noQuery.body).toEqual({
+        students: [],
+        employees: [],
+        guardians: [],
+        vehicles: [],
+        inventoryItems: [],
+        exams: [],
+      });
 
       // ── Shared firstName across all three matches every category
       // for a fully-permissioned caller (case varied to prove
@@ -10891,6 +10905,172 @@ describe("Tenant isolation (e2e)", () => {
       expect(crossTenant.body.employees.some((e: { id: string }) => e.id === employee.body.id)).toBe(false);
       expect(crossTenant.body.guardians.some((g: { id: string }) => g.id === guardian.body.id)).toBe(false);
     }, 120000);
+  });
+
+  describe("Global search, part 2 — vehicles, inventory items, exams (Phase 8)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    it("finds vehicles/inventory items/exams by registration/name/sku/name, respects per-category permissions, and stays tenant-scoped", async () => {
+      const suffix = `srch2${run}`;
+
+      const vehicle = await request(app.getHttpServer())
+        .post("/organizations/me/vehicles")
+        .set(...auth(tokenA))
+        .send({ registrationNumber: `SEARCH-VEH-${suffix}`, type: "Minibus", capacity: 20 })
+        .expect(201);
+
+      const category = await request(app.getHttpServer())
+        .post("/organizations/me/inventory-categories")
+        .set(...auth(tokenA))
+        .send({ name: `Search Category ${suffix}`, code: `SC${suffix}` })
+        .expect(201);
+      const item = await request(app.getHttpServer())
+        .post("/organizations/me/inventory-items")
+        .set(...auth(tokenA))
+        .send({ categoryId: category.body.id, name: `Search Item ${suffix}`, sku: `SEARCH-SKU-${suffix}`, unit: "piece" })
+        .expect(201);
+
+      // Earlier describe blocks in this file build their own
+      // academic-year/term chain, but that's not a safe assumption
+      // here: running this file with a `-t` filter (as this slice's
+      // own verification does, to run part 1 + part 2 together
+      // without the rest of the suite) skips every other `it()`, so
+      // nothing upstream may have run. Build the chain directly.
+      const yearA = await request(app.getHttpServer())
+        .post("/organizations/me/academic-years")
+        .set(...auth(tokenA))
+        .send({ name: `Search Year ${suffix}`, startDate: "2099-08-01", endDate: "2100-06-30" })
+        .expect(201);
+      const termA = await request(app.getHttpServer())
+        .post("/organizations/me/terms")
+        .set(...auth(tokenA))
+        .send({
+          academicYearId: yearA.body.id,
+          name: "Term",
+          code: `ST${suffix}`,
+          sequence: 1,
+          startDate: "2099-08-01",
+          endDate: "2099-12-15",
+        })
+        .expect(201);
+      const examType = await request(app.getHttpServer())
+        .post("/organizations/me/exam-types")
+        .set(...auth(tokenA))
+        .send({ name: `Search Exam Type ${suffix}`, code: `SET${suffix}` })
+        .expect(201);
+      const exam = await request(app.getHttpServer())
+        .post("/organizations/me/exams")
+        .set(...auth(tokenA))
+        .send({ examTypeId: examType.body.id, termId: termA.body.id, name: `Search Exam ${suffix}` })
+        .expect(201);
+
+      // ── Per-category matches are precise ──
+      const byRegistration = await request(app.getHttpServer())
+        .get(`/organizations/me/search?q=SEARCH-VEH-${suffix}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(byRegistration.body.vehicles.map((v: { id: string }) => v.id)).toEqual([vehicle.body.id]);
+      expect(byRegistration.body.inventoryItems).toEqual([]);
+      expect(byRegistration.body.exams).toEqual([]);
+
+      const bySku = await request(app.getHttpServer())
+        .get(`/organizations/me/search?q=SEARCH-SKU-${suffix}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(bySku.body.inventoryItems.map((i: { id: string }) => i.id)).toEqual([item.body.id]);
+      expect(bySku.body.vehicles).toEqual([]);
+      expect(bySku.body.exams).toEqual([]);
+
+      const byExamName = await request(app.getHttpServer())
+        .get(`/organizations/me/search?q=${encodeURIComponent(`Search Exam ${suffix}`)}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(byExamName.body.exams.map((e: { id: string }) => e.id)).toEqual([exam.body.id]);
+      expect(byExamName.body.vehicles).toEqual([]);
+      expect(byExamName.body.inventoryItems).toEqual([]);
+
+      // ── Per-category permission filtering: a caller with only
+      // vehicle:view (reusing the same restricted-role pattern as
+      // part 1) gets vehicles populated and the other two new
+      // categories empty, not a 403 ──
+      const permissions = await request(app.getHttpServer())
+        .get("/organizations/me/permissions")
+        .set(...auth(tokenA))
+        .expect(200);
+      const vehicleView = permissions.body.find(
+        (p: { resource: string; action: string }) => p.resource === "vehicle" && p.action === "VIEW",
+      );
+      expect(vehicleView).toBeDefined();
+      const restrictedRole = await request(app.getHttpServer())
+        .post("/organizations/me/roles")
+        .set(...auth(tokenA))
+        .send({ name: `Search Vehicle Only ${suffix}`, permissionIds: [vehicleView.id] })
+        .expect(201);
+
+      const staffType = await request(app.getHttpServer())
+        .post("/organizations/me/staff-types")
+        .set(...auth(tokenA))
+        .send({ name: `Search2 Staff Type ${suffix}`, code: `S2ST-${suffix}` })
+        .expect(201);
+      const designation = await request(app.getHttpServer())
+        .post("/organizations/me/designations")
+        .set(...auth(tokenA))
+        .send({ name: `Search2 Designation ${suffix}`, code: `S2D-${suffix}` })
+        .expect(201);
+      const restrictedEmployee = await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(tokenA))
+        .send({
+          staffTypeId: staffType.body.id,
+          designationId: designation.body.id,
+          employeeCode: `SEARCH2-RESTRICTED-${suffix}`,
+          firstName: "Restricted2",
+          lastName: "Searcher",
+          email: `restricted2.searcher.${suffix}@rls-e2e.test`,
+          dateOfJoining: "2024-01-01",
+        })
+        .expect(201);
+      const restrictedLogin = await request(app.getHttpServer())
+        .post(`/organizations/me/employees/${restrictedEmployee.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "SearchRestricted223!" })
+        .expect(201);
+      const usersList = await request(app.getHttpServer())
+        .get("/organizations/me/users")
+        .set(...auth(tokenA))
+        .expect(200);
+      const restrictedUser = usersList.body.find((u: { username: string }) => u.username === restrictedLogin.body.username);
+      expect(restrictedUser).toBeDefined();
+      await request(app.getHttpServer())
+        .post(`/organizations/me/users/${restrictedUser.id}/roles`)
+        .set(...auth(tokenA))
+        .send({ roleId: restrictedRole.body.id })
+        .expect(201);
+
+      const restrictedSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: restrictedLogin.body.username, password: "SearchRestricted223!" })
+        .expect(201);
+
+      const restrictedSearch = await request(app.getHttpServer())
+        .get(`/organizations/me/search?q=SEARCH-VEH-${suffix}`)
+        .set(...auth(restrictedSession.body.accessToken))
+        .expect(200);
+      expect(restrictedSearch.body.vehicles.map((v: { id: string }) => v.id)).toEqual([vehicle.body.id]);
+
+      const restrictedSearchItem = await request(app.getHttpServer())
+        .get(`/organizations/me/search?q=SEARCH-SKU-${suffix}`)
+        .set(...auth(restrictedSession.body.accessToken))
+        .expect(200);
+      expect(restrictedSearchItem.body.inventoryItems).toEqual([]);
+
+      // ── Cross-tenant isolation ──
+      const crossTenant = await request(app.getHttpServer())
+        .get(`/organizations/me/search?q=SEARCH-VEH-${suffix}`)
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(crossTenant.body.vehicles.some((v: { id: string }) => v.id === vehicle.body.id)).toBe(false);
+    }, 60000);
   });
 
   describe("Licensing editions + platform admin console + login captcha", () => {

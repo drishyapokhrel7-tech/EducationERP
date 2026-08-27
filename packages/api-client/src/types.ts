@@ -3386,10 +3386,30 @@ export interface GuardianSearchResult {
   phone: string;
 }
 
+export interface VehicleSearchResult {
+  id: string;
+  registrationNumber: string;
+  type: string;
+}
+
+export interface InventoryItemSearchResult {
+  id: string;
+  name: string;
+  sku: string;
+}
+
+export interface ExamSearchResult {
+  id: string;
+  name: string;
+}
+
 export interface SearchResult {
   students: StudentSearchResult[];
   employees: EmployeeSearchResult[];
   guardians: GuardianSearchResult[];
+  vehicles: VehicleSearchResult[];
+  inventoryItems: InventoryItemSearchResult[];
+  exams: ExamSearchResult[];
 }
 
 // Self-hosted human-verification challenge — see CaptchaService.
