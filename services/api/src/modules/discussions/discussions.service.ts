@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
+import { NotificationsService } from "../notifications/notifications.service";
 import { CreateDiscussionTopicDto } from "../teacher-portal/dto/create-discussion-topic.dto";
 import { UpdateDiscussionTopicDto } from "../teacher-portal/dto/update-discussion-topic.dto";
 import { CreateDiscussionPostDto } from "../teacher-portal/dto/create-discussion-post.dto";
@@ -23,7 +24,10 @@ const TOPIC_WITH_POSTS = {
  */
 @Injectable()
 export class DiscussionsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   listTopics(organizationId: string, teachingAssignmentId: string, publishedOnly: boolean) {
     return this.prisma.withTenant(organizationId, (tx) =>
@@ -68,13 +72,13 @@ export class DiscussionsService {
     });
   }
 
-  createPost(
+  async createPost(
     organizationId: string,
     topicId: string,
     author: { studentId?: string; employeeId?: string },
     dto: CreateDiscussionPostDto,
   ) {
-    return this.prisma.withTenant(organizationId, (tx) =>
+    const post = await this.prisma.withTenant(organizationId, (tx) =>
       tx.discussionPost.create({
         data: {
           organizationId,
@@ -86,5 +90,55 @@ export class DiscussionsService {
         include: { authorStudent: true, authorEmployee: true },
       }),
     );
+    await this.notifyParticipants(organizationId, topicId, author);
+    return post;
+  }
+
+  // Notifies everyone already in the conversation — the topic's owning
+  // teacher plus every distinct prior poster — except whoever just
+  // posted. One withTenant call gathers the data; the actual notify()
+  // calls happen after it returns, never nested inside it (Prisma
+  // doesn't support nested $transaction calls, same constraint this
+  // project's other services already work around).
+  private async notifyParticipants(
+    organizationId: string,
+    topicId: string,
+    author: { studentId?: string; employeeId?: string },
+  ) {
+    const { recipientUserIds, topicTitle } = await this.prisma.withTenant(organizationId, async (tx) => {
+      const topic = await tx.discussionTopic.findUnique({ where: { id: topicId }, include: { teachingAssignment: true } });
+      if (!topic) return { recipientUserIds: [] as string[], topicTitle: "" };
+
+      const posts = await tx.discussionPost.findMany({
+        where: { discussionTopicId: topicId },
+        include: { authorStudent: true, authorEmployee: true },
+      });
+      const owningEmployee = await tx.employee.findUnique({ where: { id: topic.teachingAssignment.employeeId } });
+
+      const ids = new Set<string>();
+      if (owningEmployee?.userId) ids.add(owningEmployee.userId);
+      for (const p of posts) {
+        if (p.authorStudent?.userId) ids.add(p.authorStudent.userId);
+        if (p.authorEmployee?.userId) ids.add(p.authorEmployee.userId);
+      }
+
+      let actorUserId: string | null | undefined;
+      if (author.studentId) {
+        actorUserId = (await tx.student.findUnique({ where: { id: author.studentId } }))?.userId;
+      } else if (author.employeeId) {
+        actorUserId = (await tx.employee.findUnique({ where: { id: author.employeeId } }))?.userId;
+      }
+      if (actorUserId) ids.delete(actorUserId);
+
+      return { recipientUserIds: [...ids], topicTitle: topic.title };
+    });
+
+    for (const userId of recipientUserIds) {
+      await this.notifications.notify(organizationId, userId, {
+        type: "discussion_reply",
+        title: `New reply on "${topicTitle}"`,
+        link: "/portal/discussions",
+      });
+    }
   }
 }

@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
+import { NotificationBell } from "@/components/notification-bell";
 import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
@@ -145,9 +146,12 @@ export default function TeacherPage() {
     <div className="flex min-h-screen flex-1 flex-col">
       <header className="flex items-center justify-between border-b p-4">
         <span className="font-semibold">Teacher</span>
-        <Button variant="ghost" size="icon" onClick={() => logout().then(() => router.push("/login"))}>
-          <LogOut className="size-4" />
-        </Button>
+        <div className="flex items-center gap-2">
+          <NotificationBell />
+          <Button variant="ghost" size="icon" onClick={() => logout().then(() => router.push("/login"))}>
+            <LogOut className="size-4" />
+          </Button>
+        </div>
       </header>
       <main className="flex-1 space-y-4 p-4">
         {me.error ? (

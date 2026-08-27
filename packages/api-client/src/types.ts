@@ -2379,3 +2379,18 @@ export interface StudentPortalModuleItem extends CourseModuleItemRecord {
 export interface StudentPortalModule extends Omit<CourseModuleRecord, "items"> {
   items: StudentPortalModuleItem[];
 }
+
+// Persistent, in-app notifications (LMS discovery slice 9) — one
+// shared shape/endpoint set for every role, keyed by the caller's own
+// User.id.
+export interface Notification {
+  id: string;
+  organizationId: string;
+  userId: string;
+  type: string;
+  title: string;
+  body: string | null;
+  link: string | null;
+  isRead: boolean;
+  createdAt: string;
+}

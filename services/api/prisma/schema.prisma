@@ -119,6 +119,7 @@ model Organization {
   announcements               Announcement[]
   discussionTopics             DiscussionTopic[]
   discussionPosts              DiscussionPost[]
+  notifications                Notification[]
 
   @@map("organizations")
 }
@@ -393,6 +394,7 @@ model User {
   esewaTransactionsInitiated EsewaTransaction[]
   leaveRequestsReviewed      LeaveRequest[]
   payrollsFinalized          Payroll[]
+  notifications              Notification[]
 
   @@index([organizationId])
   @@map("users")
@@ -2906,4 +2908,41 @@ model DiscussionPost {
   @@index([organizationId])
   @@index([discussionTopicId])
   @@map("discussion_posts")
+}
+
+// Persistent, in-app notifications (LMS discovery slice 9) — closes the
+// gap flagged in discovery: "only ephemeral client-side toasts exist,"
+// gone the moment the page is closed or the action happened while the
+// recipient wasn't looking. Keyed by User.id, not Student/Employee —
+// a notification is "for whoever is logged into this account,"
+// independent of role, matching how the JWT's own identity resolves.
+// A student/employee with no portal login simply can't receive one,
+// same as every other self-service feature in this project. No
+// real-time delivery (no websocket/push infra exists anywhere in this
+// project, same standing precedent as Transport's tracking polling) —
+// the client polls this table.
+model Notification {
+  id             String   @id @default(uuid())
+  organizationId String
+  userId         String
+  // Free text, not an enum — same "plan forbids hard-coded
+  // institution-specific vocabularies" reasoning that already applies
+  // to Vehicle.type/Student.gender elsewhere; new notification-worthy
+  // events shouldn't require a migration to add a variant.
+  type           String
+  title          String
+  body           String?
+  // A relative path the client navigates to on click (e.g.
+  // "/portal/assignments") — never an absolute URL, this is an
+  // in-app destination only.
+  link           String?
+  isRead         Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  user         User         @relation(fields: [userId], references: [id])
+
+  @@index([organizationId])
+  @@index([userId])
+  @@map("notifications")
 }

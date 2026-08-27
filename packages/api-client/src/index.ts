@@ -118,6 +118,7 @@ import type {
   UpdateDiscussionTopicInput,
   CreateDiscussionPostInput,
   StudentPortalDiscussionTopic,
+  Notification,
   TeacherDashboard,
   StudentDashboard,
   ParentDashboard,
@@ -1167,6 +1168,14 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
     // listTeacherQuizzes' existing submissions/attempts data.
     getTeacherCourseRoster: (teachingAssignmentId: string) =>
       request<Student[]>(`/organizations/me/teacher-portal/courses/${teachingAssignmentId}/roster`),
+
+    // Notifications (LMS discovery slice 9) — one shared endpoint set,
+    // not split per portal; a notification is for whoever is logged in.
+    listNotifications: () => request<Notification[]>("/organizations/me/notifications"),
+    markNotificationRead: (notificationId: string) =>
+      request<Notification>(`/organizations/me/notifications/${notificationId}/read`, { method: "POST" }),
+    markAllNotificationsRead: () =>
+      request<{ count: number }>("/organizations/me/notifications/read-all", { method: "POST" }),
   };
 }
 

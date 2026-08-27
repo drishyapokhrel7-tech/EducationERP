@@ -270,6 +270,9 @@ describe("Tenant isolation (e2e)", () => {
         "period",
         "campus",
         "auditLog",
+        // notification.userId is RESTRICT (LMS discovery slice 9) — must
+        // clear before the global user.deleteMany call below runs.
+        "notification",
       ];
       for (const orgId of [orgAId, orgBId]) {
         for (const model of deleteOrder) {
@@ -7601,5 +7604,355 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(tokenB))
         .expect(404);
     }, 60000);
+  });
+
+  describe("Notifications (LMS discovery slice 9)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    it("notifies enrolled students on publish, the graded student on grading, and discussion participants on a reply — never the actor themselves", async () => {
+      const suffix = `NT${run}`;
+
+      const campus = await request(app.getHttpServer())
+        .post("/organizations/me/campuses")
+        .set(...auth(tokenA))
+        .send({ name: `Notify Campus ${suffix}`, code: `NTCAMP${suffix}` })
+        .expect(201);
+      const faculty = await request(app.getHttpServer())
+        .post("/organizations/me/faculties")
+        .set(...auth(tokenA))
+        .send({ campusId: campus.body.id, name: `Notify Faculty ${suffix}`, code: `NTFAC${suffix}` })
+        .expect(201);
+      const department = await request(app.getHttpServer())
+        .post("/organizations/me/departments")
+        .set(...auth(tokenA))
+        .send({ facultyId: faculty.body.id, name: `Notify Dept ${suffix}`, code: `NTDEP${suffix}` })
+        .expect(201);
+      const program = await request(app.getHttpServer())
+        .post("/organizations/me/programs")
+        .set(...auth(tokenA))
+        .send({ departmentId: department.body.id, name: `Notify Program ${suffix}`, code: `NTPROG${suffix}` })
+        .expect(201);
+      const year = await request(app.getHttpServer())
+        .post("/organizations/me/academic-years")
+        .set(...auth(tokenA))
+        .send({ name: `Notify Year ${suffix}`, startDate: "2099-08-01", endDate: "2100-06-30" })
+        .expect(201);
+      const term = await request(app.getHttpServer())
+        .post("/organizations/me/terms")
+        .set(...auth(tokenA))
+        .send({
+          academicYearId: year.body.id,
+          name: `Notify Term ${suffix}`,
+          code: `NTT${suffix}`,
+          sequence: 1,
+          startDate: "2099-08-01",
+          endDate: "2099-12-15",
+        })
+        .expect(201);
+      const section = await request(app.getHttpServer())
+        .post("/organizations/me/sections")
+        .set(...auth(tokenA))
+        .send({ programId: program.body.id, termId: term.body.id, name: `Notify Section ${suffix}`, code: `NTS${suffix}` })
+        .expect(201);
+      const staffType = await request(app.getHttpServer())
+        .post("/organizations/me/staff-types")
+        .set(...auth(tokenA))
+        .send({ name: `Notify Staff Type ${suffix}`, code: `NTST${suffix}` })
+        .expect(201);
+      const designation = await request(app.getHttpServer())
+        .post("/organizations/me/designations")
+        .set(...auth(tokenA))
+        .send({ name: `Notify Designation ${suffix}`, code: `NTDS${suffix}` })
+        .expect(201);
+      const subject = await request(app.getHttpServer())
+        .post("/organizations/me/subjects")
+        .set(...auth(tokenA))
+        .send({ name: `Notify Subject ${suffix}`, code: `NTSUB${suffix}` })
+        .expect(201);
+
+      const teacher = await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(tokenA))
+        .send({
+          staffTypeId: staffType.body.id,
+          designationId: designation.body.id,
+          employeeCode: `NT-TCH-${suffix}`,
+          firstName: "Notify",
+          lastName: "Teacher",
+          email: `nt-teacher-${suffix}-${run}@rls-e2e.test`,
+          dateOfJoining: "2026-01-01",
+        })
+        .expect(201);
+      const teachingAssignment = await request(app.getHttpServer())
+        .post("/organizations/me/teaching-assignments")
+        .set(...auth(tokenA))
+        .send({ employeeId: teacher.body.id, subjectId: subject.body.id, sectionId: section.body.id, termId: term.body.id })
+        .expect(201);
+      const teacherLogin = await request(app.getHttpServer())
+        .post(`/organizations/me/employees/${teacher.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "NotifyTeacherPass123" })
+        .expect(201);
+      const teacherSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: teacherLogin.body.username, password: "NotifyTeacherPass123" })
+        .expect(201);
+      const teacherToken = teacherSession.body.accessToken as string;
+
+      // Two enrolled students, one unrelated student never enrolled here
+      // — the negative control that must never receive any of these
+      // notifications.
+      const student1 = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({ studentCode: `NT-STU1-${suffix}`, firstName: "Notify", lastName: "StudentOne", dateOfBirth: "2015-01-01" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/students/${student1.body.id}/enrollments`)
+        .set(...auth(tokenA))
+        .send({ programId: program.body.id, sectionId: section.body.id, termId: term.body.id, enrollmentDate: "2099-08-01" })
+        .expect(201);
+      const student1Login = await request(app.getHttpServer())
+        .post(`/organizations/me/students/${student1.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "NotifyStudent1Pass123" })
+        .expect(201);
+      const student1Session = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: student1Login.body.username, password: "NotifyStudent1Pass123" })
+        .expect(201);
+      const student1Token = student1Session.body.accessToken as string;
+
+      const student2 = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({ studentCode: `NT-STU2-${suffix}`, firstName: "Notify", lastName: "StudentTwo", dateOfBirth: "2015-01-01" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/students/${student2.body.id}/enrollments`)
+        .set(...auth(tokenA))
+        .send({ programId: program.body.id, sectionId: section.body.id, termId: term.body.id, enrollmentDate: "2099-08-01" })
+        .expect(201);
+      const student2Login = await request(app.getHttpServer())
+        .post(`/organizations/me/students/${student2.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "NotifyStudent2Pass123" })
+        .expect(201);
+      const student2Session = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: student2Login.body.username, password: "NotifyStudent2Pass123" })
+        .expect(201);
+      const student2Token = student2Session.body.accessToken as string;
+
+      const outsideStudent = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({ studentCode: `NT-STU3-${suffix}`, firstName: "Outside", lastName: "NotifyStudent", dateOfBirth: "2015-01-01" })
+        .expect(201);
+      const outsideStudentLogin = await request(app.getHttpServer())
+        .post(`/organizations/me/students/${outsideStudent.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "OutsideNotifyStudentPass123" })
+        .expect(201);
+      const outsideStudentSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: outsideStudentLogin.body.username, password: "OutsideNotifyStudentPass123" })
+        .expect(201);
+      const outsideStudentToken = outsideStudentSession.body.accessToken as string;
+
+      // ── Assignment published → notifies both enrolled students, not
+      // the unenrolled outsider.
+      const assignment = await request(app.getHttpServer())
+        .post("/organizations/me/teacher-portal/assignments")
+        .set(...auth(teacherToken))
+        .send({ teachingAssignmentId: teachingAssignment.body.id, title: "Notify Essay", submissionType: "TEXT", maxScore: 10 })
+        .expect(201);
+      await request(app.getHttpServer())
+        .put(`/organizations/me/teacher-portal/assignments/${assignment.body.id}`)
+        .set(...auth(teacherToken))
+        .send({ isPublished: true })
+        .expect(200);
+
+      const student1AfterAssignment = await request(app.getHttpServer())
+        .get("/organizations/me/notifications")
+        .set(...auth(student1Token))
+        .expect(200);
+      expect(student1AfterAssignment.body.some((n: { type: string }) => n.type === "assignment_published")).toBe(true);
+      const student2AfterAssignment = await request(app.getHttpServer())
+        .get("/organizations/me/notifications")
+        .set(...auth(student2Token))
+        .expect(200);
+      expect(student2AfterAssignment.body.some((n: { type: string }) => n.type === "assignment_published")).toBe(true);
+      const outsideAfterAssignment = await request(app.getHttpServer())
+        .get("/organizations/me/notifications")
+        .set(...auth(outsideStudentToken))
+        .expect(200);
+      expect(outsideAfterAssignment.body).toEqual([]);
+
+      // ── Quiz published → notifies enrolled students.
+      const quiz = await request(app.getHttpServer())
+        .post("/organizations/me/teacher-portal/quizzes")
+        .set(...auth(teacherToken))
+        .send({ teachingAssignmentId: teachingAssignment.body.id, title: "Notify Quiz" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/teacher-portal/quizzes/${quiz.body.id}/questions`)
+        .set(...auth(teacherToken))
+        .send({ sequence: 1, text: "1 + 1?", options: ["1", "2"], correctOptionIndex: 1 })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/teacher-portal/quizzes/${quiz.body.id}/publish`)
+        .set(...auth(teacherToken))
+        .expect(201);
+
+      const student1AfterQuiz = await request(app.getHttpServer())
+        .get("/organizations/me/notifications")
+        .set(...auth(student1Token))
+        .expect(200);
+      expect(student1AfterQuiz.body.some((n: { type: string }) => n.type === "quiz_published")).toBe(true);
+
+      // ── Announcement published → notifies enrolled students.
+      const announcement = await request(app.getHttpServer())
+        .post("/organizations/me/teacher-portal/announcements")
+        .set(...auth(teacherToken))
+        .send({ teachingAssignmentId: teachingAssignment.body.id, title: "Notify Announcement", body: "..." })
+        .expect(201);
+      await request(app.getHttpServer())
+        .put(`/organizations/me/teacher-portal/announcements/${announcement.body.id}`)
+        .set(...auth(teacherToken))
+        .send({ isPublished: true })
+        .expect(200);
+
+      const student1AfterAnnouncement = await request(app.getHttpServer())
+        .get("/organizations/me/notifications")
+        .set(...auth(student1Token))
+        .expect(200);
+      expect(student1AfterAnnouncement.body.some((n: { type: string }) => n.type === "announcement_published")).toBe(true);
+
+      // ── Discussion topic published → notifies enrolled students.
+      const topic = await request(app.getHttpServer())
+        .post("/organizations/me/teacher-portal/discussion-topics")
+        .set(...auth(teacherToken))
+        .send({ teachingAssignmentId: teachingAssignment.body.id, title: "Notify Topic", body: "..." })
+        .expect(201);
+      await request(app.getHttpServer())
+        .put(`/organizations/me/teacher-portal/discussion-topics/${topic.body.id}`)
+        .set(...auth(teacherToken))
+        .send({ isPublished: true })
+        .expect(200);
+
+      const student1AfterTopic = await request(app.getHttpServer())
+        .get("/organizations/me/notifications")
+        .set(...auth(student1Token))
+        .expect(200);
+      expect(student1AfterTopic.body.some((n: { type: string }) => n.type === "discussion_topic_published")).toBe(true);
+
+      // ── Assignment graded → notifies only the graded student, not the
+      // other enrolled student.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/portal/assignments/${assignment.body.id}/submit`)
+        .set(...auth(student1Token))
+        .send({ content: "My answer" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .put(`/organizations/me/teacher-portal/assignments/${assignment.body.id}/submissions/${student1.body.id}/grade`)
+        .set(...auth(teacherToken))
+        .send({ score: 8 })
+        .expect(200);
+
+      const student1AfterGrade = await request(app.getHttpServer())
+        .get("/organizations/me/notifications")
+        .set(...auth(student1Token))
+        .expect(200);
+      const gradedNotification = student1AfterGrade.body.find((n: { type: string }) => n.type === "assignment_graded");
+      expect(gradedNotification).toBeTruthy();
+      const student2AfterGrade = await request(app.getHttpServer())
+        .get("/organizations/me/notifications")
+        .set(...auth(student2Token))
+        .expect(200);
+      expect(student2AfterGrade.body.some((n: { type: string }) => n.type === "assignment_graded")).toBe(false);
+
+      // ── Discussion reply → notifies the topic's other participants,
+      // never the poster themselves.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/portal/discussion-topics/${topic.body.id}/posts`)
+        .set(...auth(student1Token))
+        .send({ body: "Interesting topic!" })
+        .expect(201);
+
+      // The teacher (topic owner) is notified of student1's reply.
+      const teacherAfterReply = await request(app.getHttpServer())
+        .get("/organizations/me/notifications")
+        .set(...auth(teacherToken))
+        .expect(200);
+      expect(teacherAfterReply.body.some((n: { type: string }) => n.type === "discussion_reply")).toBe(true);
+      // student1 doesn't notify themselves for their own reply.
+      const student1AfterOwnReply = await request(app.getHttpServer())
+        .get("/organizations/me/notifications")
+        .set(...auth(student1Token))
+        .expect(200);
+      expect(student1AfterOwnReply.body.filter((n: { type: string }) => n.type === "discussion_reply")).toHaveLength(0);
+
+      // The teacher replies back — now student1 (a prior participant) is
+      // notified, but the teacher (the actor this time) is not notified
+      // of their own reply.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/teacher-portal/discussion-topics/${topic.body.id}/posts`)
+        .set(...auth(teacherToken))
+        .send({ body: "Glad you think so!" })
+        .expect(201);
+
+      const student1AfterTeacherReply = await request(app.getHttpServer())
+        .get("/organizations/me/notifications")
+        .set(...auth(student1Token))
+        .expect(200);
+      expect(student1AfterTeacherReply.body.filter((n: { type: string }) => n.type === "discussion_reply")).toHaveLength(1);
+      const teacherAfterOwnReply = await request(app.getHttpServer())
+        .get("/organizations/me/notifications")
+        .set(...auth(teacherToken))
+        .expect(200);
+      expect(teacherAfterOwnReply.body.filter((n: { type: string }) => n.type === "discussion_reply")).toHaveLength(1);
+
+      // ── Read/mark-read/mark-all-read, gated to the caller's own
+      // notifications (IDOR guard).
+      const unreadBefore = student1AfterTeacherReply.body.filter((n: { isRead: boolean }) => !n.isRead);
+      expect(unreadBefore.length).toBeGreaterThan(0);
+      const targetNotificationId = unreadBefore[0].id;
+
+      // student2 can't mark student1's own notification as read (404).
+      await request(app.getHttpServer())
+        .post(`/organizations/me/notifications/${targetNotificationId}/read`)
+        .set(...auth(student2Token))
+        .expect(404);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/notifications/${targetNotificationId}/read`)
+        .set(...auth(student1Token))
+        .expect(201);
+      const afterMarkOne = await request(app.getHttpServer())
+        .get("/organizations/me/notifications")
+        .set(...auth(student1Token))
+        .expect(200);
+      expect(afterMarkOne.body.find((n: { id: string }) => n.id === targetNotificationId).isRead).toBe(true);
+
+      await request(app.getHttpServer())
+        .post("/organizations/me/notifications/read-all")
+        .set(...auth(student1Token))
+        .expect(201);
+      const afterMarkAll = await request(app.getHttpServer())
+        .get("/organizations/me/notifications")
+        .set(...auth(student1Token))
+        .expect(200);
+      expect(afterMarkAll.body.every((n: { isRead: boolean }) => n.isRead)).toBe(true);
+
+      // ── Cross-tenant: org B's own notifications never include any of
+      // org A's.
+      const orgANotificationIds = new Set(afterMarkAll.body.map((n: { id: string }) => n.id));
+      const orgBNotifications = await request(app.getHttpServer())
+        .get("/organizations/me/notifications")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(orgBNotifications.body.some((n: { id: string }) => orgANotificationIds.has(n.id))).toBe(false);
+    }, 90000);
   });
 });

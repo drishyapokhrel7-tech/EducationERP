@@ -758,13 +758,125 @@ exact same status-badge convention as `/portal/assignments`/
   this slice (the endpoint is read-only over slices 3/4's existing
   data), so there was nothing new to leave in place or clean up.
 
+## Slice 9 — Notifications
+
+User said "go-ahead" — approval to start the next item in the proposed
+sequencing (file upload, #8, stays blocked on the still-open storage
+decision, so this skips ahead to it).
+
+### Design
+
+**Closes the exact gap discovery flagged**: *"persistent notifications
+— only ephemeral client-side toasts exist."* A toast fires once, in
+the tab that triggered it, and is gone forever if the recipient wasn't
+looking at that moment or wasn't even the one who took the action.
+This slice adds one small, real, persisted `Notification` row per
+event per recipient.
+
+**Keyed by `User.id`, not `Student`/`Employee`** — a notification is
+"for whoever is logged into this account," independent of role, which
+matches how the JWT's own identity already resolves and lets **one
+shared, role-agnostic controller** (`NotificationsController`, under
+`organizations/me/notifications`) serve every role alike — the first
+truly-shared self-service surface in this LMS work, rather than a
+teacher-portal/student-portal split. A student/employee with no portal
+login simply can't receive one, same "no linked User, no self-service
+feature" rule as everywhere else in this project. **No real-time
+delivery** — no websocket/push infrastructure exists anywhere in this
+project (same standing precedent as Transport's own tracking polling),
+so the client polls.
+
+**`type` is a free-text field, not an enum** — same "the plan forbids
+hard-coded institution-specific vocabularies" reasoning already applied
+to `Vehicle.type`/`Student.gender` elsewhere: a new notification-worthy
+event later shouldn't need a schema migration to add a variant.
+
+**New `NotificationsService`** (controller-less write side has no
+self-service guard of its own — see its own top-of-file comment for
+why that's correct here, unlike every other reused service in this
+project): `notify` (one recipient), `notifyEnrolledStudents` (fans out
+to every actively-enrolled, logged-in student in one course, gathering
+the roster the same way `getCourseRoster`/`listAssignments`/
+`listQuizzes` already do), plus the self-service `listMine`/
+`markRead`/`markAllRead` behind the shared controller.
+
+**Six trigger points wired into already-existing actions — no new
+content types, no new admin surface**:
+- `teacher-portal.updateAssignment`/`updateAnnouncement`/
+  `updateDiscussionTopic`: each of these three already combines general
+  editing and publishing into one call, so the trigger fires only on
+  the real **draft→published transition** (before/after `isPublished`
+  compared), not on every edit.
+- `teacher-portal.publishQuiz`: a dedicated action whose own guard
+  already 400s on a repeat call, so every successful call here is
+  unconditionally a real publish — no before/after diff needed.
+- `teacher-portal.gradeSubmission`: notifies only the specific graded
+  student (looked up by `Assignment.teachingAssignment` → the
+  submission's own `studentId` → that student's `userId`), never every
+  enrolled student.
+- `DiscussionsService.createPost`: notifies everyone already in the
+  conversation — the topic's owning teacher plus every distinct prior
+  poster — except whoever just posted. Lives inside `DiscussionsService`
+  itself (not duplicated in both portals) since it already owns the
+  topic+posts data slice 6 built.
+
+Each of `updateAnnouncement` was restructured from one nested
+`withTenant` call into two independent top-level calls (ownership
+check, then mutation) so a publish-triggered `notifyEnrolledStudents`
+call — which needs its own `withTenant` — can run afterward without
+nesting (Prisma doesn't support nested `$transaction` calls, the same
+constraint every prior slice's service-to-service calls already work
+around).
+
+**Web**: a single shared `NotificationBell` component (bell icon,
+unread-count badge, a small dropdown panel — plain state-driven, not
+the shadcn `DropdownMenu` primitive, since a notification list's
+click-to-navigate-and-mark-read behavior doesn't fit that primitive's
+menu-item semantics any more naturally, and this project's own
+precedent is "don't reach for a bigger abstraction than the one use
+needs") is dropped into both `/teacher`'s and `/portal`'s headers —
+polling every 30s, "Mark all read," and clicking a notification marks
+it read and navigates to its `link`.
+
+### Verified
+
+- `pnpm -r typecheck`/`lint`/`build` clean across all six packages
+  (the same pre-existing, unrelated `apps/web/src/app/sso/page.tsx`
+  lint failure is still there, still out of scope).
+- `services/api` e2e: one new, deliberately comprehensive test (`-t
+  "Notifications"`) covering all six trigger points and the read-side
+  guards in one fixture — publishing an assignment/quiz/announcement/
+  discussion topic each notifies both enrolled students and never the
+  unenrolled outsider; grading notifies only the graded student, not
+  the other enrolled one; a student's discussion reply notifies the
+  topic-owning teacher but never the student's own account; the
+  teacher's reply back notifies that student but never the teacher's
+  own account; a different student can't mark someone else's
+  notification read (404, IDOR guard); mark-one and mark-all-read both
+  work; org B's own notification list never includes any of org A's
+  (cross-tenant). Passed clean (`64453 ms`) on the first run — no bugs
+  found in this slice's own application code.
+- Full browser pass in the Everest Academy demo org: as the real
+  teacher (Sunita Karki), posted and published a real announcement
+  ("Live notification test") — confirmed 201/200 via network
+  responses; as the real student (Aarav Sharma), confirmed the bell
+  showed a red unread-count badge, opened the dropdown and confirmed it
+  rendered the notification's title and timestamp in bold (unread),
+  clicked it, and confirmed both that it navigated to `/portal/
+  announcements` (which correctly lists both the new and prior
+  announcements) and that the bell's badge disappeared — proving the
+  click-through mark-as-read worked end to end, not just via direct API
+  calls. **Per the same standing instruction as every prior slice, this
+  demo data (the announcement and the notification it generated) was
+  left in place, not cleaned up.**
+
 ## Next step
 
 Teacher portal (slice 1), course modules (slice 2), self-service
 assignments (slice 3), the quiz engine (slice 4), announcements
-(slice 5), discussions (slice 6), and the gradebook (slice 7) are done.
-The rest of the proposed LMS sequencing — file upload (blocked on the
-still-open storage decision) and notifications — is **not started**;
-notifications (#9) is the natural next item to actually attempt (file
-upload's blocker hasn't been resolved), but each still needs its own
-explicit go-ahead, per this project's standing rule.
+(slice 5), discussions (slice 6), the gradebook (slice 7), and
+notifications (slice 9) are done. The only remaining proposed item is
+**file upload (slice 8)**, still blocked on the same still-open
+architectural decision flagged since Phase 1 (no object storage exists
+anywhere in this project) — starting it for real needs that decision
+made first, not just another go-ahead.

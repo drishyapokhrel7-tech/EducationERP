@@ -22,6 +22,7 @@ import { DiscussionsService } from "../discussions/discussions.service";
 import { CreateDiscussionTopicDto } from "./dto/create-discussion-topic.dto";
 import { UpdateDiscussionTopicDto } from "./dto/update-discussion-topic.dto";
 import { CreateDiscussionPostDto } from "./dto/create-discussion-post.dto";
+import { NotificationsService } from "../notifications/notifications.service";
 
 const SESSION_INCLUDE = {
   classSchedule: {
@@ -61,6 +62,7 @@ export class TeacherPortalService {
     private readonly assignments: AssignmentsService,
     private readonly knowledgeChecks: KnowledgeChecksService,
     private readonly discussions: DiscussionsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async getMe(organizationId: string, userId: string) {
@@ -321,8 +323,19 @@ export class TeacherPortalService {
 
   async updateAssignment(organizationId: string, userId: string, assignmentId: string, dto: UpdateAssignmentDto) {
     const employee = await this.getOwnEmployee(organizationId, userId);
-    await this.assertOwnsAssignment(organizationId, employee.id, assignmentId);
-    return this.assignments.updateAssignment(organizationId, assignmentId, dto);
+    const before = await this.assertOwnsAssignment(organizationId, employee.id, assignmentId);
+    const updated = await this.assignments.updateAssignment(organizationId, assignmentId, dto);
+    // Notify only on the actual draft→published transition, not every
+    // edit — same "notify on a real event, not on every touch" reading
+    // as slice 2/3/5/6's own publish-only visibility gates.
+    if (!before.isPublished && updated.isPublished) {
+      await this.notifications.notifyEnrolledStudents(organizationId, before.teachingAssignmentId, {
+        type: "assignment_published",
+        title: `New assignment: ${updated.title}`,
+        link: "/portal/assignments",
+      });
+    }
+    return updated;
   }
 
   async gradeSubmission(
@@ -333,8 +346,17 @@ export class TeacherPortalService {
     dto: GradeSubmissionDto,
   ) {
     const employee = await this.getOwnEmployee(organizationId, userId);
-    await this.assertOwnsAssignment(organizationId, employee.id, assignmentId);
-    return this.assignments.grade(organizationId, assignmentId, studentId, dto);
+    const assignment = await this.assertOwnsAssignment(organizationId, employee.id, assignmentId);
+    const graded = await this.assignments.grade(organizationId, assignmentId, studentId, dto);
+    const student = await this.prisma.withTenant(organizationId, (tx) => tx.student.findUnique({ where: { id: studentId } }));
+    if (student?.userId) {
+      await this.notifications.notify(organizationId, student.userId, {
+        type: "assignment_graded",
+        title: `Your submission for "${assignment.title}" was graded`,
+        link: "/portal/grades",
+      });
+    }
+    return graded;
   }
 
   private async assertOwnsAssignment(organizationId: string, employeeId: string, assignmentId: string) {
@@ -392,8 +414,18 @@ export class TeacherPortalService {
 
   async publishQuiz(organizationId: string, userId: string, checkId: string) {
     const employee = await this.getOwnEmployee(organizationId, userId);
-    await this.assertOwnsQuiz(organizationId, employee.id, checkId);
-    return this.knowledgeChecks.publish(organizationId, checkId);
+    const check = await this.assertOwnsQuiz(organizationId, employee.id, checkId);
+    const published = await this.knowledgeChecks.publish(organizationId, checkId);
+    // publish() itself 400s if already published, so every successful
+    // call here is a real draft→published transition — no before/after
+    // diff needed, unlike updateAssignment's combined edit-or-publish
+    // shape above.
+    await this.notifications.notifyEnrolledStudents(organizationId, check.teachingAssignmentId, {
+      type: "quiz_published",
+      title: `New quiz: ${check.title}`,
+      link: "/portal/quizzes",
+    });
+    return published;
   }
 
   private async assertOwnsQuiz(organizationId: string, employeeId: string, checkId: string) {
@@ -444,13 +476,25 @@ export class TeacherPortalService {
 
   async updateAnnouncement(organizationId: string, userId: string, announcementId: string, dto: UpdateAnnouncementDto) {
     const employee = await this.getOwnEmployee(organizationId, userId);
-    return this.prisma.withTenant(organizationId, async (tx) => {
-      await this.loadOwnAnnouncement(tx, employee.id, announcementId);
-      return tx.announcement.update({
+    // Ownership check and mutation are now two independent top-level
+    // calls, not one nested withTenant, so a real publish transition
+    // below can fire its own separate notifyEnrolledStudents call
+    // (which needs its own withTenant) afterward.
+    const before = await this.prisma.withTenant(organizationId, (tx) => this.loadOwnAnnouncement(tx, employee.id, announcementId));
+    const updated = await this.prisma.withTenant(organizationId, (tx) =>
+      tx.announcement.update({
         where: { id: announcementId },
         data: { title: dto.title, body: dto.body, isPublished: dto.isPublished },
+      }),
+    );
+    if (!before.isPublished && updated.isPublished) {
+      await this.notifications.notifyEnrolledStudents(organizationId, before.teachingAssignmentId, {
+        type: "announcement_published",
+        title: `New announcement: ${updated.title}`,
+        link: "/portal/announcements",
       });
-    });
+    }
+    return updated;
   }
 
   private async loadOwnAnnouncement(tx: PrismaClient, employeeId: string, announcementId: string) {
@@ -485,8 +529,16 @@ export class TeacherPortalService {
 
   async updateDiscussionTopic(organizationId: string, userId: string, topicId: string, dto: UpdateDiscussionTopicDto) {
     const employee = await this.getOwnEmployee(organizationId, userId);
-    await this.assertOwnsTopic(organizationId, employee.id, topicId);
-    return this.discussions.updateTopic(organizationId, topicId, dto);
+    const before = await this.assertOwnsTopic(organizationId, employee.id, topicId);
+    const updated = await this.discussions.updateTopic(organizationId, topicId, dto);
+    if (!before.isPublished && updated.isPublished) {
+      await this.notifications.notifyEnrolledStudents(organizationId, before.teachingAssignmentId, {
+        type: "discussion_topic_published",
+        title: `New discussion: ${updated.title}`,
+        link: "/portal/discussions",
+      });
+    }
+    return updated;
   }
 
   async getDiscussionTopic(organizationId: string, userId: string, topicId: string) {

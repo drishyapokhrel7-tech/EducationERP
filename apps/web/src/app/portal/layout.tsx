@@ -6,6 +6,7 @@ import Link from "next/link";
 import { GraduationCap, LogOut } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { NotificationBell } from "@/components/notification-bell";
 import { useAuth } from "@/lib/auth-context";
 
 const NAV = [
@@ -69,6 +70,7 @@ export default function PortalLayout({ children }: { children: ReactNode }) {
           <span className="text-sm font-medium">
             {user.firstName} {user.lastName}
           </span>
+          <NotificationBell />
           <Button variant="ghost" size="icon" onClick={() => logout().then(() => router.push("/login"))}>
             <LogOut className="size-4" />
           </Button>
