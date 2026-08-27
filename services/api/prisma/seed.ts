@@ -156,6 +156,13 @@ const RESOURCES = [
   // purchase_order(+items)/stock_movement/asset/asset_assignment in
   // too, same folding precedent as route/hostel above.
   "inventory",
+  // Phase 7 slice 7g (Communication) — communication folds message/
+  // message_template/email_log/sms_log/push_notification in too,
+  // same folding precedent as route/hostel/inventory above.
+  // announcement and notification already have their own gating
+  // (teacher-portal / JWT-only self-service) and don't need this
+  // resource.
+  "communication",
 ];
 const ACTIONS = Object.values(PermissionAction);
 

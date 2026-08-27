@@ -34,6 +34,7 @@ import { TeacherPortalModule } from "./modules/teacher-portal/teacher-portal.mod
 import { StorageModule } from "./modules/storage/storage.module";
 import { HostelModule } from "./modules/hostel/hostel.module";
 import { InventoryModule } from "./modules/inventory/inventory.module";
+import { CommunicationModule } from "./modules/communication/communication.module";
 import { QueueModule } from "./queue/queue.module";
 import { HealthController } from "./common/health.controller";
 
@@ -82,6 +83,7 @@ const queueModuleImports = process.env.REDIS_URL ? [QueueModule] : [];
     StorageModule,
     HostelModule,
     InventoryModule,
+    CommunicationModule,
     ...queueModuleImports,
   ],
   controllers: [HealthController],

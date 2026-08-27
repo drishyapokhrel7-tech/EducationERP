@@ -163,6 +163,10 @@ import type {
   UpdateAssetInput,
   AssignAssetInput,
   AssetAssignmentRecord,
+  CreateMessageTemplateInput,
+  MessageTemplateRecord,
+  CreateMessageInput,
+  MessageRecord,
   TeacherDashboard,
   StudentDashboard,
   ParentDashboard,
@@ -1324,6 +1328,17 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       request<AssetAssignmentRecord>(`/organizations/me/asset-assignments/${assignmentId}/return`, { method: "POST" }),
     listAssetAssignments: (assetId?: string) =>
       request<AssetAssignmentRecord[]>(`/organizations/me/asset-assignments${assetId ? `?assetId=${assetId}` : ""}`),
+
+    // Communication (Phase 7 slice 7g) — org-wide broadcast messaging;
+    // announcements/notifications reuse the existing LMS endpoints
+    // above, not duplicated here.
+    createMessageTemplate: (input: CreateMessageTemplateInput) =>
+      request<MessageTemplateRecord>("/organizations/me/message-templates", { method: "POST", body: JSON.stringify(input) }),
+    listMessageTemplates: () => request<MessageTemplateRecord[]>("/organizations/me/message-templates"),
+    createMessage: (input: CreateMessageInput) =>
+      request<MessageRecord>("/organizations/me/messages", { method: "POST", body: JSON.stringify(input) }),
+    listMessages: () => request<MessageRecord[]>("/organizations/me/messages"),
+    sendMessage: (messageId: string) => request<MessageRecord>(`/organizations/me/messages/${messageId}/send`, { method: "POST" }),
 
     // Notifications (LMS discovery slice 9) — one shared endpoint set,
     // not split per portal; a notification is for whoever is logged in.

@@ -1310,3 +1310,163 @@ send-to-maintenance/mark-available status toggle).
 Slice 7f done. Per "complete all," proceeding directly to 7g
 (Communication) next with no further check-in, then 7h (Documents &
 Certificates).
+
+## Slice 7g — Communication
+
+Continuing "complete all." The plan's ERD list for this domain (docx
+§14) is `announcements, notifications, messages, message_templates,
+email_logs, sms_logs, push_notifications` — seven tables. Two of them
+**already exist and are reused as-is, not rebuilt**: `Announcement`
+(LMS discovery slice 5 — course-scoped teacher posts) and
+`Notification` (LMS discovery slice 9 — in-app, per-user). This slice
+adds the other five — org-wide admin broadcast messaging fanning out
+across email/SMS/push, reusing `Notification` itself for the in-app
+channel rather than inventing a sixth log table for it.
+
+## What shipped
+
+**Schema** — `MessageTemplate` (org-scoped, one `channel` per
+template — `IN_APP`/`EMAIL`/`SMS`/`PUSH`). `Message` — the composed
+content, `DRAFT → SENT`/`FAILED`, one `channel` and one `audience`
+(`ALL_STAFF`/`ALL_STUDENTS`/`ALL_GUARDIANS`/`SPECIFIC_USER`) per
+send; composing from a template **copies** its subject/body in
+(same "snapshot at composition time" precedent as `PayrollItem`
+snapshotting `SalaryStructureItem`) rather than live-referencing it,
+so editing a template later never changes an already-drafted or
+already-sent message. `EmailLog`/`SmsLog`/`PushNotificationLog` are
+the per-recipient fan-out records, one row per actual delivery
+attempt.
+
+**Contact-field resolution is genuinely uneven across this project's
+existing models — checked directly, not assumed**: `Employee` has
+`email`+`phone`+optional `userId`; `Student` has neither of its own,
+only an optional `userId` once a portal login exists; `Guardian` has
+`phone`+optional `email` but **no `userId` at all** — guardians have
+no login. So not every (audience, channel) pair is resolvable: SMS to
+`ALL_STUDENTS` (no phone field exists anywhere on Student) and
+PUSH/IN_APP to `ALL_GUARDIANS` (no User account to notify) are
+rejected outright at send time (400, not a silent no-op); a
+resolvable audience whose individual members are missing the needed
+field (one employee with no phone, one student with no portal login)
+are just skipped, not an error. A `SPECIFIC_USER` target resolves its
+email by preferring the linked `Employee.email` over `User.email`
+when one exists — a staff login's `User.email` is a synthetic
+`{username}@employee.local` address (`StaffService.createLogin`), so
+using it directly for real delivery would have been wrong; this was
+caught by the e2e test asserting the real employee email, not
+assumed correct.
+
+**Delivery** goes through a small `DeliveryProvider` with one
+log-only stub implementation — no real email/SMS/push ever leaves
+this system. Real delivery needs a paid third-party provider
+(SendGrid/Twilio/Firebase Cloud Messaging) this project has never
+depended on anywhere, same "no paid API as a hard dependency" rule
+already applied to AI (plan §2.3); wiring in a real provider is a
+clean, separate future step through the same interface, not attempted
+here.
+
+**API** — new `communication` module: `message-templates` (+ GET),
+`messages` (+ GET, `:id/send`). `createMessage` validates
+`SPECIFIC_USER` requires a `recipientUserId`, a template's `channel`
+must match the message's own, and at least one of a body or a
+template resolves to real content. `sendMessage` requires `DRAFT`
+(409 otherwise — no resending), rejects the unresolvable
+(audience, channel) combinations above (400), then fans out: `IN_APP`
+reuses `NotificationsService.notify` directly (zero duplicated
+logic); `EMAIL`/`SMS`/`PUSH` call the stub provider and write one log
+row per recipient. One new RBAC resource, `communication` (folds
+message/message_template/*_log in — `announcement`/`notification`
+keep their own existing gating, no new resource needed for them).
+
+**Web UI** — new `/dashboard/communication` page: Message templates
+(name/channel/subject/body), Messages (compose with
+channel/audience/optional-template/subject/body — picking a template
+pre-fills channel/subject/body client-side too — list shows status
+and, once sent, a "Delivered: N email, N SMS, N push" summary line, +
+a Send action while still `DRAFT`).
+
+## A real security fix made before this ever shipped, not found later
+
+`Message`'s Prisma `include` for `createdBy`/`recipientUser`
+originally used a plain `include: true`, which would have returned
+the **full** `User` row — including `passwordHash` — in every message
+API response. Caught while writing the include (not by a test), fixed
+by switching to `select: { id, firstName, lastName, email }`, the
+same safe-field pattern this project's own `staff`/`students`/`rbac`
+services already use for exactly this reason.
+
+## Explicitly not in this slice
+
+- "Configurable rules" (mentioned in the plan's prose summary, e.g.
+  "when X happens, send via template Y") — no such table exists in
+  the plan's own flat ERD list, and building an event-rule engine is
+  real, unscoped new complexity the plan doesn't actually ask for
+  here; same "don't build what isn't represented in the ERD or asked
+  for" reasoning as skipping barcode/QR scanning in 7f.
+- A real email/SMS/push provider integration — the log-only stub is
+  the honest ceiling given this project's "no paid API as a hard
+  dependency" rule and no provider credentials having been supplied;
+  swapping in a real provider is a clean follow-up through the same
+  `DeliveryProvider` interface.
+- Template variable interpolation (`{{studentName}}`-style tokens) —
+  templates are static reusable text, matching this project's "don't
+  build unrequested flexibility" precedent.
+- SMS to a `SPECIFIC_USER` target — `User` has no phone field of its
+  own anywhere in this schema; rejected at send time rather than
+  silently no-op'd.
+
+## Verified
+
+- `pnpm -r typecheck`/`lint`/`build` clean across all six packages
+  (the same pre-existing, unrelated `sso/page.tsx` lint failure from
+  7e/7f, still untouched, still flagged separately). One real lint
+  catch this slice: the `DeliveryProvider` stub's three methods were
+  originally `async` with no `await` inside — `@typescript-eslint/
+  require-await` correctly flagged it; fixed by dropping `async` and
+  returning `Promise.resolve(...)` directly, keeping the
+  Promise-returning signature a real provider will need.
+- `services/api` e2e: one new comprehensive test (Communication) —
+  composes a message from a template (subject/body copied in
+  correctly), rejects a channel/template mismatch and a body-less
+  non-templated message (both 400), sends to `ALL_STAFF` over EMAIL
+  and confirms a real `EmailLog` row lands, rejects re-sending an
+  already-`SENT` message (409), `SPECIFIC_USER` without a
+  `recipientUserId` (400) and with one (sends, confirms the log's
+  `recipientEmail` is the real employee email, not the login's
+  synthetic one), SMS to a specific user (400, no phone), SMS to
+  `ALL_STUDENTS` and PUSH to `ALL_GUARDIANS` (both 400, unresolvable),
+  an `IN_APP` message confirmed by logging in as the actual recipient
+  employee and reading their own `GET notifications`, and cross-tenant
+  isolation throughout. Passed clean standalone (`-t "Communication"`,
+  75/75 including 74 skipped, 22.9s for the one new test) after one
+  real fix found by the test itself (see below).
+- **A real bug found and fixed via the e2e test, not assumed
+  correct**: the test first asserted a `SPECIFIC_USER` EMAIL send
+  landed on the employee's real business email and failed — the
+  service was resolving `User.email` directly, which for a
+  `create-login`-provisioned staff account is the synthetic
+  `{username}@employee.local` address, not anything deliverable.
+  Fixed by preferring the linked `Employee.email` when the target
+  user has one (documented above in "What shipped").
+- Full browser pass, as the demo admin: created a real template
+  ("Term Start Notice", EMAIL), composed a message from it for
+  `ALL_STAFF`, confirmed the subject/body pre-filled correctly
+  client-side before submit, sent it, and confirmed via the real
+  network response a genuine `EmailLog` row landed for a real demo
+  teacher (Sunita Karki) with the stub's log-only provider response —
+  then composed and sent a second, `IN_APP` message directly (no
+  template) and confirmed `SENT` with zero email/SMS/push logs, which
+  is exactly right for that channel. Hit one real environment hiccup
+  mid-pass — a stale/expired session token in `localStorage` produced
+  401s on every write despite the page appearing logged in; diagnosed
+  by checking for an actual `/auth/login` network call (there wasn't
+  one) rather than assuming a code bug, fixed by clearing
+  `localStorage` and logging in fresh. All demo data left in place
+  per this project's standing "don't clean up test/demo data"
+  instruction.
+
+## Next step (as of slice 7g)
+
+Slice 7g done. Per "complete all," proceeding directly to 7h
+(Documents & Certificates) next — the final domain in this batch, no
+further check-in needed until it's done.

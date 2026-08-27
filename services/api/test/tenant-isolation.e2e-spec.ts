@@ -231,6 +231,17 @@ describe("Tenant isolation (e2e)", () => {
         "inventoryItem",
         "supplier",
         "inventoryCategory",
+        // Communication (Phase 7 slice 7g) — pushNotificationLog/
+        // smsLog/emailLog all reference message (RESTRICT), so all
+        // three lead it. message's createdByUserId/recipientUserId
+        // FK to users, and templateId to messageTemplate — neither
+        // needs an ordering entry here (users are never deleted by
+        // this suite at all; templateId is ON DELETE SET NULL).
+        "pushNotificationLog",
+        "smsLog",
+        "emailLog",
+        "message",
+        "messageTemplate",
         "employee",
         "staffType",
         "designation",
@@ -8699,6 +8710,190 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(tokenB))
         .expect(200);
       expect(orgBAssets.body.some((a: { id: string }) => a.id === asset.body.id)).toBe(false);
+    }, 90000);
+  });
+
+  describe("Communication (Phase 7 slice 7g)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    async function buildEmployeeWithLogin(token: string, suffix: string, password: string) {
+      const staffType = await request(app.getHttpServer())
+        .post("/organizations/me/staff-types")
+        .set(...auth(token))
+        .send({ name: `Comms Staff ${suffix}`, code: `COMST${suffix}` })
+        .expect(201);
+      const designation = await request(app.getHttpServer())
+        .post("/organizations/me/designations")
+        .set(...auth(token))
+        .send({ name: `Comms Clerk ${suffix}`, code: `COMCL${suffix}` })
+        .expect(201);
+      const employee = await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(token))
+        .send({
+          staffTypeId: staffType.body.id,
+          designationId: designation.body.id,
+          employeeCode: `COM-EMP-${suffix}`,
+          firstName: "Comms",
+          lastName: suffix,
+          email: `comms-${suffix}@staff-e2e.test`,
+          phone: "9800000000",
+          dateOfJoining: "2026-01-01",
+        })
+        .expect(201);
+      const login = await request(app.getHttpServer())
+        .post(`/organizations/me/employees/${employee.body.id}/create-login`)
+        .set(...auth(token))
+        .send({ password })
+        .expect(201);
+      return { employeeId: employee.body.id as string, userId: login.body.id as string, username: login.body.username as string };
+    }
+
+    it("templates, composes/sends messages across audiences and channels, rejects unresolvable contact combinations, and stays tenant-scoped", async () => {
+      const suffix = `COM${run}`;
+
+      const template = await request(app.getHttpServer())
+        .post("/organizations/me/message-templates")
+        .set(...auth(tokenA))
+        .send({ name: `Welcome ${suffix}`, channel: "EMAIL", subject: "Welcome", body: "Welcome to the term!" })
+        .expect(201);
+
+      const { userId, username } = await buildEmployeeWithLogin(tokenA, suffix, "CommsPass123");
+
+      // ── Compose from a template — subject/body copied in, not
+      // live-referenced.
+      const fromTemplate = await request(app.getHttpServer())
+        .post("/organizations/me/messages")
+        .set(...auth(tokenA))
+        .send({ channel: "EMAIL", audience: "ALL_STAFF", templateId: template.body.id })
+        .expect(201);
+      expect(fromTemplate.body.subject).toBe("Welcome");
+      expect(fromTemplate.body.body).toBe("Welcome to the term!");
+      expect(fromTemplate.body.status).toBe("DRAFT");
+
+      // A template built for a different channel can't be used.
+      await request(app.getHttpServer())
+        .post("/organizations/me/messages")
+        .set(...auth(tokenA))
+        .send({ channel: "SMS", audience: "ALL_STAFF", templateId: template.body.id })
+        .expect(400);
+
+      // Neither a body nor a template resolves to content.
+      await request(app.getHttpServer())
+        .post("/organizations/me/messages")
+        .set(...auth(tokenA))
+        .send({ channel: "EMAIL", audience: "ALL_STAFF" })
+        .expect(400);
+
+      // ── Send to ALL_STAFF over EMAIL — the employee built above has
+      // a real email, so at least one EmailLog row should land.
+      const sent = await request(app.getHttpServer())
+        .post(`/organizations/me/messages/${fromTemplate.body.id}/send`)
+        .set(...auth(tokenA))
+        .expect(201);
+      expect(sent.body.status).toBe("SENT");
+      expect(sent.body.sentAt).not.toBeNull();
+      expect(sent.body.emailLogs.length).toBeGreaterThan(0);
+      expect(sent.body.emailLogs.every((l: { status: string }) => l.status === "SENT")).toBe(true);
+
+      // Sending an already-SENT message is rejected.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/messages/${fromTemplate.body.id}/send`)
+        .set(...auth(tokenA))
+        .expect(409);
+
+      // ── SPECIFIC_USER audience.
+      await request(app.getHttpServer())
+        .post("/organizations/me/messages")
+        .set(...auth(tokenA))
+        .send({ channel: "EMAIL", audience: "SPECIFIC_USER", body: "Direct note" })
+        .expect(400); // recipientUserId required
+
+      const direct = await request(app.getHttpServer())
+        .post("/organizations/me/messages")
+        .set(...auth(tokenA))
+        .send({ channel: "EMAIL", audience: "SPECIFIC_USER", recipientUserId: userId, body: "Direct note" })
+        .expect(201);
+      const directSent = await request(app.getHttpServer())
+        .post(`/organizations/me/messages/${direct.body.id}/send`)
+        .set(...auth(tokenA))
+        .expect(201);
+      expect(directSent.body.emailLogs).toHaveLength(1);
+      expect(directSent.body.emailLogs[0].recipientEmail).toBe(`comms-${suffix}@staff-e2e.test`);
+
+      // SMS to a specific user has no phone field to resolve from — rejected at send time.
+      const directSms = await request(app.getHttpServer())
+        .post("/organizations/me/messages")
+        .set(...auth(tokenA))
+        .send({ channel: "SMS", audience: "SPECIFIC_USER", recipientUserId: userId, body: "Direct SMS" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/messages/${directSms.body.id}/send`)
+        .set(...auth(tokenA))
+        .expect(400);
+
+      // ── Unresolvable (audience, channel) combinations — rejected at
+      // send time with a clear 400, not a silent no-op.
+      const smsToStudents = await request(app.getHttpServer())
+        .post("/organizations/me/messages")
+        .set(...auth(tokenA))
+        .send({ channel: "SMS", audience: "ALL_STUDENTS", body: "x" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/messages/${smsToStudents.body.id}/send`)
+        .set(...auth(tokenA))
+        .expect(400);
+
+      const pushToGuardians = await request(app.getHttpServer())
+        .post("/organizations/me/messages")
+        .set(...auth(tokenA))
+        .send({ channel: "PUSH", audience: "ALL_GUARDIANS", body: "x" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/messages/${pushToGuardians.body.id}/send`)
+        .set(...auth(tokenA))
+        .expect(400);
+
+      // ── IN_APP channel reuses the existing Notification table —
+      // confirm the employee actually sees it via their own login.
+      const inApp = await request(app.getHttpServer())
+        .post("/organizations/me/messages")
+        .set(...auth(tokenA))
+        .send({ channel: "IN_APP", audience: "SPECIFIC_USER", recipientUserId: userId, subject: "Reminder", body: "Don't forget the meeting" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/messages/${inApp.body.id}/send`)
+        .set(...auth(tokenA))
+        .expect(201);
+
+      const employeeSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: username, password: "CommsPass123" })
+        .expect(201);
+      const ownNotifications = await request(app.getHttpServer())
+        .get("/organizations/me/notifications")
+        .set(...auth(employeeSession.body.accessToken))
+        .expect(200);
+      expect(
+        ownNotifications.body.some((n: { title: string; body: string }) => n.title === "Reminder" && n.body === "Don't forget the meeting"),
+      ).toBe(true);
+
+      // ── Cross-tenant isolation.
+      await request(app.getHttpServer())
+        .post("/organizations/me/messages")
+        .set(...auth(tokenB))
+        .send({ channel: "EMAIL", audience: "SPECIFIC_USER", recipientUserId: userId, body: "Intruder" })
+        .expect(404);
+      const orgBTemplates = await request(app.getHttpServer())
+        .get("/organizations/me/message-templates")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(orgBTemplates.body.some((t: { id: string }) => t.id === template.body.id)).toBe(false);
+      const orgBMessages = await request(app.getHttpServer())
+        .get("/organizations/me/messages")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(orgBMessages.body.some((m: { id: string }) => m.id === fromTemplate.body.id)).toBe(false);
     }, 90000);
   });
 });

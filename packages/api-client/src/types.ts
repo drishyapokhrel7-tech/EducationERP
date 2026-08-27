@@ -2748,3 +2748,99 @@ export interface AssignAssetInput {
   employeeId: string;
   notes?: string;
 }
+
+// ── Communication (Phase 7 slice 7g) ────────────────────────────────
+// `announcements` (course-scoped teacher posts) and `notifications`
+// (in-app per-user) already exist from the LMS slices and are reused
+// as-is here, not rebuilt — see the `Message` schema comment for why.
+export type MessageChannel = "IN_APP" | "EMAIL" | "SMS" | "PUSH";
+export type MessageAudience = "ALL_STAFF" | "ALL_STUDENTS" | "ALL_GUARDIANS" | "SPECIFIC_USER";
+export type MessageStatus = "DRAFT" | "SENT" | "FAILED";
+export type DeliveryStatus = "SENT" | "FAILED";
+
+export interface CreateMessageTemplateInput {
+  name: string;
+  channel: MessageChannel;
+  subject?: string;
+  body: string;
+}
+
+export interface MessageTemplateRecord {
+  id: string;
+  organizationId: string;
+  name: string;
+  channel: MessageChannel;
+  subject: string | null;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateMessageInput {
+  channel: MessageChannel;
+  audience: MessageAudience;
+  recipientUserId?: string;
+  templateId?: string;
+  subject?: string;
+  body?: string;
+}
+
+export interface MessageUserSummary {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+}
+
+export interface EmailLogRecord {
+  id: string;
+  organizationId: string;
+  messageId: string;
+  recipientEmail: string;
+  recipientName: string | null;
+  status: DeliveryStatus;
+  providerResponse: string | null;
+  sentAt: string;
+}
+
+export interface SmsLogRecord {
+  id: string;
+  organizationId: string;
+  messageId: string;
+  recipientPhone: string;
+  recipientName: string | null;
+  status: DeliveryStatus;
+  providerResponse: string | null;
+  sentAt: string;
+}
+
+export interface PushNotificationLogRecord {
+  id: string;
+  organizationId: string;
+  messageId: string;
+  recipientUserId: string;
+  status: DeliveryStatus;
+  providerResponse: string | null;
+  sentAt: string;
+}
+
+export interface MessageRecord {
+  id: string;
+  organizationId: string;
+  createdByUserId: string;
+  templateId: string | null;
+  channel: MessageChannel;
+  audience: MessageAudience;
+  recipientUserId: string | null;
+  subject: string | null;
+  body: string;
+  status: MessageStatus;
+  sentAt: string | null;
+  createdAt: string;
+  template: MessageTemplateRecord | null;
+  createdBy: MessageUserSummary;
+  recipientUser: MessageUserSummary | null;
+  emailLogs: EmailLogRecord[];
+  smsLogs: SmsLogRecord[];
+  pushLogs: PushNotificationLogRecord[];
+}

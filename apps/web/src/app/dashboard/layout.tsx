@@ -24,6 +24,7 @@ import {
   LayoutPanelTop,
   Library,
   PackageSearch,
+  MessageSquare,
   ListChecks,
   LogOut,
   Network,
@@ -107,6 +108,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/dashboard/hostel", label: "Hostel", icon: BedDouble },
       { href: "/dashboard/library", label: "Library", icon: Library },
       { href: "/dashboard/inventory", label: "Inventory", icon: PackageSearch },
+      { href: "/dashboard/communication", label: "Communication", icon: MessageSquare },
     ],
   },
   {

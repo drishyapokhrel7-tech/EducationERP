@@ -138,6 +138,11 @@ model Organization {
   stockMovements                    StockMovement[]
   assets                            Asset[]
   assetAssignments                  AssetAssignment[]
+  messageTemplates                  MessageTemplate[]
+  messages                          Message[]
+  emailLogs                         EmailLog[]
+  smsLogs                           SmsLog[]
+  pushNotificationLogs              PushNotificationLog[]
 
   @@map("organizations")
 }
@@ -413,6 +418,9 @@ model User {
   leaveRequestsReviewed      LeaveRequest[]
   payrollsFinalized          Payroll[]
   notifications              Notification[]
+  messagesCreated            Message[]              @relation("MessagesCreated")
+  messagesReceivedDirectly   Message[]              @relation("MessagesToSpecificUser")
+  pushNotificationLogs       PushNotificationLog[]  @relation("PushLogsToUser")
 
   @@index([organizationId])
   @@map("users")
@@ -3400,4 +3408,159 @@ model AssetAssignment {
   @@index([organizationId])
   @@index([assetId])
   @@map("asset_assignments")
+}
+
+// ── Communication (Phase 7 slice 7g) ────────────────────────────────────
+// Plan's ERD (docx §14/§20): announcements, notifications, messages,
+// message_templates, email_logs, sms_logs, push_notifications — seven
+// tables. Two of them already exist and are deliberately reused, not
+// rebuilt: `Announcement` (LMS discovery slice 5, course-scoped
+// teacher posts) and `Notification` (LMS discovery slice 9, in-app
+// per-user). This slice adds the other five — org-wide admin
+// broadcast messaging fanning out across email/SMS/push, reusing
+// `Notification` itself for the in-app channel.
+//
+// Contact-field resolution is genuinely uneven across this project's
+// existing models (checked directly, not assumed): Employee has
+// email+phone+optional userId; Student has neither email nor phone of
+// its own (only an optional userId once a portal login exists);
+// Guardian has phone+optional email but NO userId at all — guardians
+// have no login. So not every (audience, channel) combination is
+// resolvable: SMS to ALL_STUDENTS and PUSH/IN_APP to ALL_GUARDIANS
+// have no contact path in this data model and are rejected at the
+// service layer (400) rather than silently sending nothing; a
+// resolvable audience whose individual members are missing the
+// needed field (e.g. one employee with no phone) are just skipped,
+// not an error.
+//
+// Real email/SMS/push delivery needs a paid third-party provider
+// (SendGrid/Twilio/FCM) this project has never depended on anywhere
+// — same "no paid API as a hard dependency" rule already applied to
+// AI. Delivery goes through a small pluggable provider interface
+// with a log-only stub implementation (records the attempt, never
+// hits a real network); wiring in a real provider is a clean,
+// separate future step, not attempted here.
+
+enum MessageChannel {
+  IN_APP
+  EMAIL
+  SMS
+  PUSH
+}
+
+enum MessageAudience {
+  ALL_STAFF
+  ALL_STUDENTS
+  ALL_GUARDIANS
+  SPECIFIC_USER
+}
+
+enum MessageStatus {
+  DRAFT
+  SENT
+  FAILED
+}
+
+model MessageTemplate {
+  id             String         @id @default(uuid())
+  organizationId String
+  name           String
+  channel        MessageChannel
+  subject        String?
+  body           String
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  messages     Message[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("message_templates")
+}
+
+model Message {
+  id               String           @id @default(uuid())
+  organizationId   String
+  createdByUserId  String
+  templateId       String?
+  channel          MessageChannel
+  audience         MessageAudience
+  // Only meaningful (and required) when audience = SPECIFIC_USER.
+  recipientUserId  String?
+  subject          String?
+  body             String
+  status           MessageStatus    @default(DRAFT)
+  sentAt           DateTime?
+  createdAt        DateTime         @default(now())
+
+  organization  Organization      @relation(fields: [organizationId], references: [id])
+  createdBy     User              @relation("MessagesCreated", fields: [createdByUserId], references: [id])
+  template      MessageTemplate?  @relation(fields: [templateId], references: [id])
+  recipientUser User?             @relation("MessagesToSpecificUser", fields: [recipientUserId], references: [id])
+  emailLogs     EmailLog[]
+  smsLogs       SmsLog[]
+  pushLogs      PushNotificationLog[]
+
+  @@index([organizationId])
+  @@map("messages")
+}
+
+enum DeliveryStatus {
+  SENT
+  FAILED
+}
+
+model EmailLog {
+  id             String         @id @default(uuid())
+  organizationId String
+  messageId      String
+  recipientEmail String
+  recipientName  String?
+  status         DeliveryStatus
+  providerResponse String?
+  sentAt         DateTime       @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  message      Message      @relation(fields: [messageId], references: [id])
+
+  @@index([organizationId])
+  @@index([messageId])
+  @@map("email_logs")
+}
+
+model SmsLog {
+  id             String         @id @default(uuid())
+  organizationId String
+  messageId      String
+  recipientPhone String
+  recipientName  String?
+  status         DeliveryStatus
+  providerResponse String?
+  sentAt         DateTime       @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  message      Message      @relation(fields: [messageId], references: [id])
+
+  @@index([organizationId])
+  @@index([messageId])
+  @@map("sms_logs")
+}
+
+model PushNotificationLog {
+  id             String         @id @default(uuid())
+  organizationId String
+  messageId      String
+  recipientUserId String
+  status         DeliveryStatus
+  providerResponse String?
+  sentAt         DateTime       @default(now())
+
+  organization  Organization @relation(fields: [organizationId], references: [id])
+  message       Message      @relation(fields: [messageId], references: [id])
+  recipientUser User         @relation("PushLogsToUser", fields: [recipientUserId], references: [id])
+
+  @@index([organizationId])
+  @@index([messageId])
+  @@map("push_notifications")
 }
