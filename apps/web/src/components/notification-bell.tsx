@@ -7,12 +7,17 @@ import useSWR from "swr";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 
-// Shared by /teacher and /portal (LMS discovery slice 9) — a
-// notification is "for whoever is logged into this account," so one
-// component works for every role rather than a per-portal variant.
-// Polls rather than pushing — no websocket/real-time infra exists
-// anywhere in this project, same standing precedent as Transport's
-// own tracking polling.
+// Shared by /teacher, /portal (LMS discovery slice 9), and /dashboard
+// (Phase 8 notifications-bullet gap-check — admin/staff users
+// receiving an in-app Communication broadcast had no way to see it) —
+// a notification is "for whoever is logged into this account," so one
+// component works for every role rather than a per-layout variant.
+// All three mount it at the far right of a top header bar, so the
+// popover panel hanging from the button's right edge is correct
+// everywhere, no per-layout alignment needed. Polls rather than
+// pushing — no websocket/real-time infra exists anywhere in this
+// project, same standing precedent as Transport's own tracking
+// polling.
 export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);

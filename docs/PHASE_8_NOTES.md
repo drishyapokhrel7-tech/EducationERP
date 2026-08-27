@@ -821,3 +821,87 @@ authorized this slice specifically — any further Phase 8 bullet
 (notifications, global search, performance optimization, security
 hardening, backups, observability, deployment/release management)
 needs its own fresh go-ahead before starting.
+
+## Notifications — gap-check (Phase 8 bullet)
+
+User said "serially start" after the 8d part 2 check-in, read as
+authorization to work through the remaining Phase 8 bullets in
+sequence. Investigated directly (not assumed) before deciding whether
+this bullet is genuinely new work: the plan's `notifications` table is
+already built as `Notification` (LMS discovery slice 9, in-app,
+per-user, polled) and fully wired — `teacher-portal.service.ts` fires
+it on course-module/assignment/knowledge-check/announcement publish
+and on grading, `discussions.service.ts` fires it on a reply, and
+Communication (7g)'s `Message`+`IN_APP` channel fans it out for
+admin-composed broadcasts, including a resolvable `ALL_STAFF` audience.
+
+**The one real, concrete gap found**: `NotificationBell` (the actual
+UI surface for all of the above) was only ever mounted on `/portal`
+and `/teacher` — never on the main admin/staff `/dashboard` layout.
+A staff member (or org admin) targeted by an in-app broadcast had a
+`Notification` row created for them with no way to ever see it in the
+interface they actually use.
+
+First fix attempt mounted the bell in the sidebar's bottom user block
+(next to the existing avatar/logout button) — functionally correct,
+but the bell's popover uses `absolute right-0` (correct for `/portal`/
+`/teacher`'s wide top header, where the bell sits at the far right)
+and rendered mostly off-canvas to the left in the narrow sidebar
+(`x: -121`, confirmed via a direct DOM read) — a real bug, caught and
+fixed with an `align` prop before the user's follow-up (below) made it
+moot. **User feedback mid-slice**: "logout option with profile link
+should be opposite to side menu at top as usual to other sites" — the
+sidebar placement itself was the wrong call, not just its alignment.
+Restructured `dashboard/layout.tsx` to add a proper top header bar
+(the layout previously had none — `<main>` sat directly beside
+`<aside>`), moved the avatar/name/bell/logout block there,
+right-aligned, matching `/portal`'s and `/teacher`'s own existing
+header convention exactly. This also made the `align` prop moot — the
+bell is now at the far right of a wide bar in all three layouts, so
+`notification-bell.tsx` was reverted to its original single-alignment
+form rather than carrying unused flexibility.
+
+### Explicitly not in this slice
+
+- Global search, performance optimization, security hardening,
+  backups, observability, deployment/release management — the plan's
+  remaining Phase 8 bullets, next in the "serially start" sequence.
+- Any change to the underlying `Notification`/`Message` data model or
+  delivery logic — this was a UI-mounting gap, not a backend gap.
+
+## Verified
+
+- `pnpm -r typecheck`/`lint`/`build` clean (same pre-existing,
+  unrelated `sso/page.tsx` lint failure as every prior slice).
+- Full browser pass, as the demo admin: confirmed the header renders
+  correctly (avatar, name, bell, logout, right-aligned, opposite the
+  left sidebar) both on the Overview page and on a nested page
+  (`/dashboard/students`), confirming the layout restructure applies
+  consistently everywhere `dashboard/layout.tsx` wraps. Sent a real
+  `SPECIFIC_USER`+`IN_APP` message to the admin's own account via a
+  direct authenticated API call (the Browser pane's clicks — on the
+  Communication page's compose button, and later on the header's own
+  bell/logout buttons — repeatedly produced no request or the wrong
+  element despite correct positioning; the already-documented
+  click-reliability flakiness class, worked around the established
+  way each time: direct DOM `.click()` / direct API calls instead of
+  retrying the same coordinate click) and confirmed end to end: the
+  `Notification` row was created, the bell's unread badge showed "1"
+  on the next page load, and opening it showed a correctly-positioned
+  panel (`x: 720–1040` inside a 1100px viewport, hanging cleanly below
+  the bell) with "New message" and a real timestamp. Also confirmed,
+  as a side finding not a bug in this fix: `ALL_STAFF` broadcasts
+  correctly resolve only to `Employee`-linked user accounts (7g's own
+  existing, correct design) — the demo org-admin login itself isn't an
+  `Employee`, so it doesn't receive `ALL_STAFF` notifications, which is
+  why `SPECIFIC_USER` was used to verify the UI path directly. Marked
+  the test notification read afterward (no delete path exists for
+  `Notification`/`Message` — both are meant as durable logs, matching
+  `EmailLog`/`SmsLog`'s own precedent — so it's left in place, read,
+  per the standing "don't clean up test/demo data" instruction).
+
+## Next step (as of the notifications gap-check)
+
+Notifications is closed as "already covered, one real UI-mounting gap
+found and fixed." Continuing serially per "serially start": next up is
+global search.
