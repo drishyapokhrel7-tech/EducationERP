@@ -212,6 +212,10 @@ import type {
   UpdateCareerServiceInput,
   GraduateOutcomeRecord,
   SetGraduateOutcomeInput,
+  OperationalAnalytics,
+  AcademicAnalytics,
+  AttendanceAnalytics,
+  EnrollmentAnalytics,
   TeacherDashboard,
   StudentDashboard,
   ParentDashboard,
@@ -1614,6 +1618,31 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       form.append("file", file);
       return requestForm<UploadResult>("/organizations/me/uploads", form);
     },
+
+    // Analytics & Reports (Phase 8 slice 8d, part 1)
+    getOperationalAnalytics: () => request<OperationalAnalytics>("/organizations/me/analytics/operational"),
+    getAcademicAnalytics: (examId?: string) =>
+      request<AcademicAnalytics>(`/organizations/me/analytics/academic${examId ? `?examId=${examId}` : ""}`),
+    getAttendanceAnalytics: (from?: string, to?: string) => {
+      const params = new URLSearchParams();
+      if (from) params.set("from", from);
+      if (to) params.set("to", to);
+      const qs = params.toString();
+      return request<AttendanceAnalytics>(`/organizations/me/analytics/attendance${qs ? `?${qs}` : ""}`);
+    },
+    getEnrollmentAnalytics: () => request<EnrollmentAnalytics>("/organizations/me/analytics/enrollment"),
+    exportOperationalAnalytics: (format: "csv" | "xlsx") =>
+      requestBlob(`/organizations/me/analytics/operational/export?format=${format}`),
+    exportAcademicAnalytics: (format: "csv" | "xlsx", examId?: string) =>
+      requestBlob(`/organizations/me/analytics/academic/export?format=${format}${examId ? `&examId=${examId}` : ""}`),
+    exportAttendanceAnalytics: (format: "csv" | "xlsx", from?: string, to?: string) => {
+      const params = new URLSearchParams({ format });
+      if (from) params.set("from", from);
+      if (to) params.set("to", to);
+      return requestBlob(`/organizations/me/analytics/attendance/export?${params.toString()}`);
+    },
+    exportEnrollmentAnalytics: (format: "csv" | "xlsx") =>
+      requestBlob(`/organizations/me/analytics/enrollment/export?format=${format}`),
   };
 }
 

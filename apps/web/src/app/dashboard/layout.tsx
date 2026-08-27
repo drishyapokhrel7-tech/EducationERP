@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
+  BarChart3,
   BedDouble,
   BookOpen,
   Building2,
@@ -124,6 +125,10 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "Alumni & Career",
     items: [{ href: "/dashboard/alumni", label: "Alumni", icon: Award }],
+  },
+  {
+    label: "Analytics",
+    items: [{ href: "/dashboard/analytics", label: "Analytics & Reports", icon: BarChart3 }],
   },
 ];
 

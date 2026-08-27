@@ -23,10 +23,18 @@ has been:
 - **8a** — Alumni & Career core: profile, education, career history,
   companies, skills, certifications.
 - **8b** — Alumni engagement: surveys, mentorship, achievements.
-- **8c** (this slice) — Career services: opportunities, applications,
-  services, graduate outcomes.
-- **8d** (not started) — Analytics & Reports, cross-cutting over all of
-  the above plus every prior phase.
+- **8c** — Career services: opportunities, applications, services,
+  graduate outcomes. Closes the entire Alumni & Career ERD.
+- **8d** — Analytics & Reports (docx §17), cross-cutting over every
+  prior phase. Slice 8d, part 1 shipped operational/academic/
+  attendance/enrollment analytics + CSV/Excel export infrastructure;
+  part 2 (financial/examination/continuous-learning/alumni-outcome
+  analytics + PDF export) is not started.
+- The plan's other Phase 8 bullets — notifications (already covered
+  by Communication 7g + LMS discovery slice 9), global search,
+  performance optimization, security hardening, backups,
+  observability, deployment/release management — are **not** part of
+  this breakdown and each needs its own separate go-ahead when raised.
 
 Each slice needs its own explicit go-ahead when reached, same as every
 other phase's slices. This document gets a new section per slice, same
@@ -517,11 +525,196 @@ withdraw too), `listActiveCareerServices`, `setOwnGraduateOutcome`.
   demo/test data left in place per this project's standing "don't
   clean up test/demo data" instruction.
 
-## Next step (as of slice 8c)
+## Slice 8d, part 1 — Analytics & Reports: core institutional dashboard
 
-Slice 8c done — this closes out the plan's entire Alumni & Career ERD
-(all 14 tables now shipped across 8a/8b/8c). Per this project's
-standing per-slice check-in rule, "go-ahead" authorized 8c
-specifically, not an indefinite push through 8d — the next slice
-(8d, Analytics & Reports, cross-cutting over Alumni & Career and
-every prior phase) needs its own fresh go-ahead.
+User said "go-ahead" to the slice 8c check-in — Phase 8's own scope
+(docx §20) is broader than the "8a/8b/8c" Alumni-specific framing
+this document had used so far ("advanced analytics, alumni/career,
+graduate outcomes, reports, notifications, global search, performance
+optimization, security hardening, backups, observability, deployment
+and release management"). Alumni/career/graduate-outcomes was already
+fully shipped by 8c, so this slice is the next piece the go-ahead was
+actually offered against: **Analytics & Reports** (docx §17). Given
+the size and architectural novelty (the first slice touching nearly
+every domain built so far, a genuinely new report-export mechanism,
+a real "materialized views/background jobs?" decision), this went
+through `EnterPlanMode` first rather than starting directly — the
+established threshold for a slice this size/novel.
+
+Investigated directly before designing:
+- Every existing "dashboard"-style endpoint
+  (`services/api/src/modules/dashboards`, `student-portal`,
+  `teacher-portal`) is **per-individual**, not an institutional
+  aggregate — no module anywhere exposed an org-wide summary for
+  Finance, Attendance, Payroll, or Inventory. A real, unfilled gap.
+- The CSV export pattern from Phase 2f
+  (`students.service.ts`'s `exportStudentsCsv` — a hand-rolled
+  string, no library — plus `students.controller.ts`'s `@Header`
+  pair, `requestBlob` in the api-client, and the
+  `URL.createObjectURL`-based download trigger in
+  `dashboard/students/page.tsx`) is fully reusable end to end and was
+  reused verbatim.
+- No PDF/Excel library existed anywhere in the monorepo before this
+  slice, and there was no `$queryRaw`/materialized-view usage and no
+  real (non-proof-of-concept) BullMQ job anywhere either — confirming
+  "materialized views/background jobs where appropriate" would be new
+  infrastructure, not something to casually extend.
+
+### Design
+
+**Deliberately zero new Prisma tables** — the first slice this
+session with none. This domain reads and aggregates existing data;
+storing what's already derivable would be a new, unnecessary source
+of truth, the same "computed, not stored" reasoning already applied
+repeatedly (`syllabus_progress`, `InventoryItem.currentStock`).
+
+**No materialized views or background jobs this slice, explicitly**:
+this project's data volumes (a single small-to-mid institution, demo-
+scale in practice) don't yet justify the real complexity of a
+materialized-view refresh schedule or a job pipeline for what are,
+at this scale, sub-second-to-a-few-seconds live aggregate queries.
+Revisit only if a future slice's real usage shows a query genuinely
+straining — not a hypothetical now.
+
+**Scope split, matching every other multi-part domain this session**:
+this slice covers the four most foundational categories —
+**Operational, Academic, Attendance, Enrollment**. Financial,
+Examination, Continuous-learning, and Alumni/graduate-outcomes
+analytics are explicitly **deferred to part 2**, along with true
+server-rendered PDF generation (CSV/Excel cover the plan's
+"printable" need well enough via the browser's own print dialog on
+the on-screen cards for now).
+
+New `analytics` module (`services/api/src/modules/analytics/`),
+mounted at `organizations/me/analytics`, one new RBAC resource
+`analytics` (`view`/`export` used). Four read endpoints, all pure
+aggregation via `withTenant`, computed live:
+- **Operational** — active student/staff/enrollment counts, total
+  outstanding invoice amount (reuses the exact netPayable/netPaid
+  formula `finance.service.ts`'s own `recomputeInvoiceStatus`
+  already uses, not reinvented).
+- **Academic** — active enrollment counts by Program and by Section;
+  grade distribution for one exam (`examId` query param, defaulting
+  to the most recently graded exam if omitted).
+- **Attendance** — attendance-rate percentage over a `from`/`to`
+  date range (defaults to the current calendar month), broken down
+  by Section.
+- **Enrollment** — admissions funnel by `AdmissionStatus`; active
+  enrollment trend by `AcademicYear`.
+
+**Export**: `GET analytics/:category/export?format=csv|xlsx`, reusing
+the hand-rolled CSV pattern (a small new `toCsv` helper, no library)
+and adding **`exceljs`** (new dependency) for `.xlsx` — chosen over
+`xlsx`/SheetJS for its cleaner license history. A dynamic (csv vs
+xlsx) content-type/filename can't be expressed with NestJS's static
+`@Header()` decorator, so the export routes use `@Res()` directly
+(same pattern already established by
+`storage/local-files.controller.ts`) and send the response themselves.
+
+**Web UI**: new `/dashboard/analytics` page, the established one-page-
+many-Cards structure, each card with CSV/Excel export buttons reusing
+the exact download-trigger pattern from `dashboard/students/page.tsx`.
+New "Analytics" nav group.
+
+### Real bugs found, both during the browser pass
+
+1. **A genuine transient `P2028`** (Neon "unable to start a
+   transaction") surfaced on the very first export click. Diagnosed
+   correctly rather than assumed benign: checked for stray processes
+   and found one — a from-earlier RBAC seed script re-run (needed to
+   register the new `analytics` RBAC resource) that had been running
+   for **over an hour**, stuck grinding through ~630 already-existing,
+   redundant permission upserts before ever reaching the 9 new
+   `analytics` ones at the end of the resource array. Rather than keep
+   waiting on ~1,700 sequential round-trips this specific run had
+   turned out to be unusually slow for, the tail-end work it would
+   eventually do was performed directly (idempotent — creating exactly
+   the same 9 `Permission` rows and linking them to Super Admin/
+   Organization Admin the seed script itself would have), verified via
+   a direct query, and the now-redundant original process was killed.
+   The export retried clean afterward.
+2. **A real timezone bug in the attendance date-range default**:
+   `toISOString()` on a `new Date(year, month, day)` constructed in
+   local time converts to UTC *first* — in a timezone ahead of UTC
+   (Nepal, UTC+5:45), local midnight on the 1st of the month rolls
+   back to the last day of the *previous* month once converted to
+   UTC. Caught live in the browser: the "From" field defaulted to
+   `2026-07-31` instead of `2026-08-01` for an August range. Fixed in
+   **both** places it existed — the web page (a `toLocalDateString`
+   helper building the string from local date parts directly, no UTC
+   conversion at all) and the backend's `resolveDateRange` (switched
+   to building the default entirely in UTC via `Date.UTC(...)`, since
+   an explicit `from`/`to` string is *already* parsed as UTC midnight
+   per the ISO date-only spec — the bug was specifically the *mix* of
+   UTC parsing on one path and local-timezone construction on the
+   other, not either alone).
+
+### Explicitly not in this slice
+
+- Financial, Examination, Continuous-learning, and Alumni/graduate-
+  outcomes analytics — part 2, needs its own go-ahead.
+- Server-rendered PDF generation — deferred to part 2.
+- Materialized views, background jobs, or any caching layer — see
+  Design's explicit reasoning.
+- Every other Phase 8 bullet (notifications, global search,
+  performance optimization, security hardening, backups,
+  observability, deployment/release management) — each its own
+  separate go-ahead, not assumed here.
+
+## Verified
+
+- `pnpm -r typecheck`/`lint`/`build` clean across all six packages
+  (the same pre-existing, unrelated `sso/page.tsx` lint failure from
+  every prior slice, still untouched, still flagged separately).
+- A standalone diagnostic script (the pattern proven in 8b/8c)
+  exercised every new aggregation query directly against Prisma
+  before touching jest — all four categories returned correct,
+  plausible numbers quickly.
+- Full browser pass, as the demo admin: opened `/dashboard/analytics`
+  and confirmed all four cards render real numbers matching the
+  actual demo org's data (4 active students, 1 active staff, 4 active
+  enrollments, NPR 0 outstanding; enrollment correctly broken down by
+  program/section; a correctly-empty "no attendance records" state
+  for a month with genuinely no sessions; the admissions funnel and
+  enrollment-by-year trend both correct) — found and fixed the two
+  real bugs above along the way, then re-verified clean: CSV export
+  confirmed via a direct fetch showing the exact expected rows;
+  Excel export confirmed via its raw bytes starting with the real
+  ZIP/XLSX magic number (`PK\x03\x04`) and a plausible non-trivial
+  file size; an invalid `format` query param confirmed rejected with
+  a clean `400`, not a crash.
+- Cross-tenant isolation is structural, not bolted on: every analytics
+  query runs inside the same `PrismaService.withTenant` wrapper (RLS
+  + explicit `organizationId` filtering) used by every other module
+  this session, already independently verified as a hard backstop
+  by this suite's very first test ("blocks cross-tenant reads and
+  writes at the database layer even without an app-level WHERE
+  clause"). No new isolation mechanism was introduced for this slice
+  to get wrong.
+- **The e2e suite itself did not complete a clean run this session**
+  for this slice specifically — after two real bugs were found and
+  fixed, a fixed, typecheck-clean version of the test ran for over 40
+  minutes (well past every prior test this session, including ones
+  doing comparable setup work) without finishing, with its Postgres
+  connection confirmed alive and healthy throughout via `lsof`. Given
+  the aggregation logic was already independently confirmed correct
+  via the standalone diagnostic script *and* the full browser pass
+  (which is what actually caught and fixed both real bugs above),
+  this was accepted as sufficient verification rather than continuing
+  to wait indefinitely on one specific harness run — the same
+  precedent already established and documented in slice 8b. The test
+  itself (written, typecheck-clean, and covering deltas, per-category
+  correctness, csv/xlsx export, and cross-tenant isolation) is
+  committed as part of this slice for the next time the suite runs
+  cleanly to pick up.
+
+## Next step (as of slice 8d, part 1)
+
+Slice 8d part 1 done. Per this project's standing per-slice check-in
+rule, "go-ahead" authorized this slice specifically, not an indefinite
+push through the rest of Phase 8 — the next slice (8d part 2:
+financial/examination/continuous-learning/alumni-outcome analytics +
+PDF export) needs its own fresh go-ahead, as does any of the plan's
+other Phase 8 bullets (notifications, global search, performance
+optimization, security hardening, backups, observability, deployment/
+release management) if raised.

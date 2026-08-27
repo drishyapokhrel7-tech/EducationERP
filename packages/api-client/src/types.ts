@@ -3276,3 +3276,35 @@ export interface SetGraduateOutcomeInput {
   fieldRelatedToStudy?: boolean;
   notes?: string;
 }
+
+// ── Phase 8 slice 8d, part 1 — Analytics & Reports ────────────────
+
+export interface OperationalAnalytics {
+  activeStudents: number;
+  activeStaff: number;
+  activeEnrollments: number;
+  outstandingAmount: number;
+}
+
+export interface AcademicAnalytics {
+  enrollmentByProgram: { name: string; count: number }[];
+  enrollmentBySection: { name: string; count: number }[];
+  gradeDistribution: {
+    examId: string | null;
+    examName: string | null;
+    bands: { grade: string; count: number }[];
+  };
+}
+
+export interface AttendanceAnalytics {
+  from: string;
+  to: string;
+  overallRate: number | null;
+  totalMarked: number;
+  bySection: { name: string; rate: number | null; present: number; total: number }[];
+}
+
+export interface EnrollmentAnalytics {
+  admissionsFunnel: { status: string; count: number }[];
+  enrollmentTrend: { academicYear: string; count: number }[];
+}

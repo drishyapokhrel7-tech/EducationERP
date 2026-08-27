@@ -9924,4 +9924,379 @@ describe("Tenant isolation (e2e)", () => {
         .expect(404);
     }, 120000);
   });
+
+  describe("Analytics & Reports, part 1 — operational, academic, attendance, enrollment (Phase 8 slice 8d)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    it("aggregates operational/academic/attendance/enrollment analytics correctly from real data, supports csv/xlsx export, and stays tenant-scoped", async () => {
+      const suffix = `AN${run}`;
+
+      // ── Baseline reads, before adding any data — operational and the
+      // admissions funnel are scalar org-wide totals with no unique key
+      // of my own to filter by, so correctness is asserted as a delta
+      // against this baseline rather than an absolute count (robust
+      // whether this test runs alone or after other describe blocks in
+      // the same shared org A).
+      const operationalBefore = await request(app.getHttpServer())
+        .get("/organizations/me/analytics/operational")
+        .set(...auth(tokenA))
+        .expect(200);
+      const enrollmentBefore = await request(app.getHttpServer())
+        .get("/organizations/me/analytics/enrollment")
+        .set(...auth(tokenA))
+        .expect(200);
+      const fundedBefore = new Map<string, number>(
+        enrollmentBefore.body.admissionsFunnel.map((f: { status: string; count: number }): [string, number] => [f.status, f.count]),
+      );
+
+      // ── Org structure (campus → ... → section), staff, subject, room/
+      // period/teaching-assignment/class-schedule (for attendance), and
+      // a curriculum subject (for the exam chain) — same recipe as the
+      // existing "attendance" describe block's buildAttendanceTarget,
+      // extended with a curriculum since grade-distribution needs one.
+      const campus = await request(app.getHttpServer())
+        .post("/organizations/me/campuses")
+        .set(...auth(tokenA))
+        .send({ name: `Analytics Campus ${suffix}`, code: `ANCAMP${suffix}` })
+        .expect(201);
+      const faculty = await request(app.getHttpServer())
+        .post("/organizations/me/faculties")
+        .set(...auth(tokenA))
+        .send({ campusId: campus.body.id, name: `Analytics Faculty ${suffix}`, code: `ANFAC${suffix}` })
+        .expect(201);
+      const department = await request(app.getHttpServer())
+        .post("/organizations/me/departments")
+        .set(...auth(tokenA))
+        .send({ facultyId: faculty.body.id, name: `Analytics Dept ${suffix}`, code: `ANDEP${suffix}` })
+        .expect(201);
+      const program = await request(app.getHttpServer())
+        .post("/organizations/me/programs")
+        .set(...auth(tokenA))
+        .send({ departmentId: department.body.id, name: `Analytics Program ${suffix}`, code: `ANPROG${suffix}` })
+        .expect(201);
+      const year = await request(app.getHttpServer())
+        .post("/organizations/me/academic-years")
+        .set(...auth(tokenA))
+        .send({ name: `Analytics Year ${suffix}`, startDate: "2099-08-01", endDate: "2100-06-30" })
+        .expect(201);
+      const term = await request(app.getHttpServer())
+        .post("/organizations/me/terms")
+        .set(...auth(tokenA))
+        .send({
+          academicYearId: year.body.id,
+          name: `Analytics Term ${suffix}`,
+          code: `ANT${suffix}`,
+          sequence: 1,
+          startDate: "2099-08-01",
+          endDate: "2099-12-15",
+        })
+        .expect(201);
+      const section = await request(app.getHttpServer())
+        .post("/organizations/me/sections")
+        .set(...auth(tokenA))
+        .send({ programId: program.body.id, termId: term.body.id, name: `Analytics Section ${suffix}`, code: `ANS${suffix}` })
+        .expect(201);
+      const staffType = await request(app.getHttpServer())
+        .post("/organizations/me/staff-types")
+        .set(...auth(tokenA))
+        .send({ name: `Analytics Staff Type ${suffix}`, code: `ANST${suffix}` })
+        .expect(201);
+      const designation = await request(app.getHttpServer())
+        .post("/organizations/me/designations")
+        .set(...auth(tokenA))
+        .send({ name: `Analytics Designation ${suffix}`, code: `ANDS${suffix}` })
+        .expect(201);
+      const employee = await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(tokenA))
+        .send({
+          staffTypeId: staffType.body.id,
+          designationId: designation.body.id,
+          employeeCode: `ANEMP-${suffix}`,
+          firstName: "Analytics",
+          lastName: `Teacher${suffix}`,
+          email: `anteacher-${suffix}-${run}@rls-e2e.test`,
+          dateOfJoining: "2026-01-01",
+        })
+        .expect(201);
+      const subject = await request(app.getHttpServer())
+        .post("/organizations/me/subjects")
+        .set(...auth(tokenA))
+        .send({ name: `Analytics Subject ${suffix}`, code: `ANSUB${suffix}` })
+        .expect(201);
+      const curriculum = await request(app.getHttpServer())
+        .post("/organizations/me/curricula")
+        .set(...auth(tokenA))
+        .send({ programId: program.body.id, name: `Analytics Curriculum ${suffix}`, code: `ANCURR${suffix}` })
+        .expect(201);
+      const curriculumSubject = await request(app.getHttpServer())
+        .post(`/organizations/me/curricula/${curriculum.body.id}/subjects`)
+        .set(...auth(tokenA))
+        .send({ subjectId: subject.body.id })
+        .expect(201);
+      const room = await request(app.getHttpServer())
+        .post("/organizations/me/rooms")
+        .set(...auth(tokenA))
+        .send({ campusId: campus.body.id, name: `Analytics Room ${suffix}`, code: `ANRM${suffix}` })
+        .expect(201);
+      const period = await request(app.getHttpServer())
+        .post("/organizations/me/periods")
+        .set(...auth(tokenA))
+        .send({ name: `Analytics Period ${suffix}`, code: `ANP${suffix}`, sequence: 1, startTime: "09:00", endTime: "09:45" })
+        .expect(201);
+      const teachingAssignment = await request(app.getHttpServer())
+        .post("/organizations/me/teaching-assignments")
+        .set(...auth(tokenA))
+        .send({ employeeId: employee.body.id, subjectId: subject.body.id, sectionId: section.body.id, termId: term.body.id })
+        .expect(201);
+      const classSchedule = await request(app.getHttpServer())
+        .post("/organizations/me/class-schedules")
+        .set(...auth(tokenA))
+        .send({ teachingAssignmentId: teachingAssignment.body.id, roomId: room.body.id, periodId: period.body.id, dayOfWeek: 1 })
+        .expect(201);
+
+      // ── Two students, enrolled in this program/section/term.
+      const studentIds: string[] = [];
+      const enrollmentIds: string[] = [];
+      for (const n of [1, 2]) {
+        const student = await request(app.getHttpServer())
+          .post("/organizations/me/students")
+          .set(...auth(tokenA))
+          .send({ studentCode: `AN-STU-${suffix}-${n}`, firstName: `Student${n}`, lastName: suffix, dateOfBirth: "2015-01-01" })
+          .expect(201);
+        const enrollment = await request(app.getHttpServer())
+          .post(`/organizations/me/students/${student.body.id}/enrollments`)
+          .set(...auth(tokenA))
+          .send({ programId: program.body.id, sectionId: section.body.id, termId: term.body.id, enrollmentDate: "2099-08-01" })
+          .expect(201);
+        studentIds.push(student.body.id);
+        enrollmentIds.push(enrollment.body.id);
+      }
+
+      // ── Attendance: a session dated today (so it falls in the
+      // attendance endpoint's default "this calendar month" range),
+      // student 1 PRESENT, student 2 ABSENT — a known 50% rate.
+      const today = new Date().toISOString().slice(0, 10);
+      const session = await request(app.getHttpServer())
+        .post("/organizations/me/attendance-sessions")
+        .set(...auth(tokenA))
+        .send({ classScheduleId: classSchedule.body.id, date: today })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/attendance-sessions/${session.body.id}/mark`)
+        .set(...auth(tokenA))
+        .send({
+          entries: [
+            { studentId: studentIds[0], status: "PRESENT" },
+            { studentId: studentIds[1], status: "ABSENT" },
+          ],
+        })
+        .expect(201);
+
+      // ── Finance: a fee structure assigned to both enrollments (NPR
+      // 1000 each), a partial payment of 400 on the first — known
+      // outstanding total of 600 + 1000 = 1600.
+      const feeCategory = await request(app.getHttpServer())
+        .post("/organizations/me/fee-categories")
+        .set(...auth(tokenA))
+        .send({ name: `Analytics Fee ${suffix}`, code: `ANFEE${suffix}` })
+        .expect(201);
+      const feeStructure = await request(app.getHttpServer())
+        .post("/organizations/me/fee-structures")
+        .set(...auth(tokenA))
+        .send({
+          programId: program.body.id,
+          termId: term.body.id,
+          name: `Analytics Fees ${suffix}`,
+          items: [{ feeCategoryId: feeCategory.body.id, amount: 1000 }],
+        })
+        .expect(201);
+      const invoice1 = await request(app.getHttpServer())
+        .post(`/organizations/me/fee-structures/${feeStructure.body.id}/assign`)
+        .set(...auth(tokenA))
+        .send({ studentEnrollmentId: enrollmentIds[0], dueDate: "2099-09-01" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/fee-structures/${feeStructure.body.id}/assign`)
+        .set(...auth(tokenA))
+        .send({ studentEnrollmentId: enrollmentIds[1], dueDate: "2099-09-01" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/invoices/${invoice1.body.id}/payments`)
+        .set(...auth(tokenA))
+        .send({ amount: 400, method: "CASH" })
+        .expect(201);
+
+      // ── Admissions: one SUBMITTED, one moved to APPROVED.
+      await request(app.getHttpServer())
+        .post("/organizations/me/admission-applications")
+        .set(...auth(tokenA))
+        .send({
+          programId: program.body.id,
+          applicantFirstName: "Analytics",
+          applicantLastName: "Applicant1",
+          dateOfBirth: "2015-01-01",
+          appliedDate: "2099-01-01",
+        })
+        .expect(201);
+      const application2 = await request(app.getHttpServer())
+        .post("/organizations/me/admission-applications")
+        .set(...auth(tokenA))
+        .send({
+          programId: program.body.id,
+          applicantFirstName: "Analytics",
+          applicantLastName: "Applicant2",
+          dateOfBirth: "2015-01-01",
+          appliedDate: "2099-01-01",
+        })
+        .expect(201);
+      await request(app.getHttpServer())
+        .put(`/organizations/me/admission-applications/${application2.body.id}/status`)
+        .set(...auth(tokenA))
+        .send({ status: "APPROVED" })
+        .expect(200);
+
+      // ── Exam: one graded attempt for student 1, 75% -> a real Grade
+      // row, so the academic endpoint's grade-distribution has real
+      // data to aggregate.
+      const examType = await request(app.getHttpServer())
+        .post("/organizations/me/exam-types")
+        .set(...auth(tokenA))
+        .send({ name: `Analytics Exam Type ${suffix}`, code: `ANET${suffix}` })
+        .expect(201);
+      const gradingScheme = await request(app.getHttpServer())
+        .post("/organizations/me/grading-schemes")
+        .set(...auth(tokenA))
+        .send({
+          name: `Analytics Scheme ${suffix}`,
+          code: `ANGS${suffix}`,
+          bands: [
+            { minPercentage: 70, maxPercentage: 100, grade: "A", gpa: 3.6 },
+            { minPercentage: 0, maxPercentage: 69.99, grade: "B", gpa: 3.0 },
+          ],
+        })
+        .expect(201);
+      const exam = await request(app.getHttpServer())
+        .post("/organizations/me/exams")
+        .set(...auth(tokenA))
+        .send({ examTypeId: examType.body.id, termId: term.body.id, name: `Analytics Exam ${suffix}`, gradingSchemeId: gradingScheme.body.id })
+        .expect(201);
+      const examSubject = await request(app.getHttpServer())
+        .post(`/organizations/me/exams/${exam.body.id}/subjects`)
+        .set(...auth(tokenA))
+        .send({ curriculumSubjectId: curriculumSubject.body.id, fullMarks: 100, passMarks: 40 })
+        .expect(201);
+      const attempt = await request(app.getHttpServer())
+        .post(`/organizations/me/exam-subjects/${examSubject.body.id}/attempts`)
+        .set(...auth(tokenA))
+        .send({ studentId: studentIds[0], status: "PRESENT" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/exam-attempts/${attempt.body.id}/marks`)
+        .set(...auth(tokenA))
+        .send({ obtainedMarks: 75 })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/exam-attempts/${attempt.body.id}/grade`)
+        .set(...auth(tokenA))
+        .expect(201);
+
+      // ── Now read every analytics endpoint and assert real numbers.
+
+      const operationalAfter = await request(app.getHttpServer())
+        .get("/organizations/me/analytics/operational")
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(operationalAfter.body.activeStudents - operationalBefore.body.activeStudents).toBe(2);
+      expect(operationalAfter.body.activeEnrollments - operationalBefore.body.activeEnrollments).toBe(2);
+      expect(operationalAfter.body.outstandingAmount - operationalBefore.body.outstandingAmount).toBe(1600);
+
+      const academic = await request(app.getHttpServer())
+        .get("/organizations/me/analytics/academic")
+        .set(...auth(tokenA))
+        .expect(200);
+      const myProgram = academic.body.enrollmentByProgram.find((p: { name: string }) => p.name === `Analytics Program ${suffix}`);
+      expect(myProgram.count).toBe(2);
+      const mySection = academic.body.enrollmentBySection.find((s: { name: string }) => s.name === `Analytics Section ${suffix}`);
+      expect(mySection.count).toBe(2);
+
+      // Explicit examId, robust regardless of what else might be the
+      // org's "most recently graded" exam.
+      const academicForExam = await request(app.getHttpServer())
+        .get(`/organizations/me/analytics/academic?examId=${exam.body.id}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(academicForExam.body.gradeDistribution).toEqual({
+        examId: exam.body.id,
+        examName: `Analytics Exam ${suffix}`,
+        bands: [{ grade: "A", count: 1 }],
+      });
+
+      const attendanceAnalytics = await request(app.getHttpServer())
+        .get("/organizations/me/analytics/attendance")
+        .set(...auth(tokenA))
+        .expect(200);
+      const mySectionAttendance = attendanceAnalytics.body.bySection.find(
+        (s: { name: string }) => s.name === `Analytics Section ${suffix}`,
+      );
+      expect(mySectionAttendance).toEqual({ name: `Analytics Section ${suffix}`, rate: 50, present: 1, total: 2 });
+
+      const enrollmentAfter = await request(app.getHttpServer())
+        .get("/organizations/me/analytics/enrollment")
+        .set(...auth(tokenA))
+        .expect(200);
+      const fundedAfter = new Map<string, number>(
+        enrollmentAfter.body.admissionsFunnel.map((f: { status: string; count: number }): [string, number] => [f.status, f.count]),
+      );
+      expect((fundedAfter.get("SUBMITTED") ?? 0) - (fundedBefore.get("SUBMITTED") ?? 0)).toBe(1);
+      expect((fundedAfter.get("APPROVED") ?? 0) - (fundedBefore.get("APPROVED") ?? 0)).toBe(1);
+      const myYearTrend = enrollmentAfter.body.enrollmentTrend.find(
+        (t: { academicYear: string }) => t.academicYear === `Analytics Year ${suffix}`,
+      );
+      expect(myYearTrend.count).toBe(2);
+
+      // ── Export: csv and xlsx for every category, plus an invalid
+      // format rejected with a clean 400.
+      for (const category of ["operational", "academic", "attendance", "enrollment"]) {
+        const csv = await request(app.getHttpServer())
+          .get(`/organizations/me/analytics/${category}/export?format=csv`)
+          .set(...auth(tokenA))
+          .expect(200);
+        expect(csv.headers["content-type"]).toContain("text/csv");
+        expect(csv.text.length).toBeGreaterThan(0);
+
+        const xlsx = await request(app.getHttpServer())
+          .get(`/organizations/me/analytics/${category}/export?format=xlsx`)
+          .set(...auth(tokenA))
+          .expect(200);
+        expect(xlsx.headers["content-type"]).toContain("spreadsheetml");
+        expect(Buffer.isBuffer(xlsx.body) ? xlsx.body.length : 0).toBeGreaterThan(0);
+
+        await request(app.getHttpServer())
+          .get(`/organizations/me/analytics/${category}/export?format=bogus`)
+          .set(...auth(tokenA))
+          .expect(400);
+      }
+
+      // ── Cross-tenant isolation — org B never sees org A's uniquely-
+      // named program/section/academic-year in its own breakdowns.
+      const academicB = await request(app.getHttpServer())
+        .get("/organizations/me/analytics/academic")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(academicB.body.enrollmentByProgram.some((p: { name: string }) => p.name === `Analytics Program ${suffix}`)).toBe(false);
+      const attendanceB = await request(app.getHttpServer())
+        .get("/organizations/me/analytics/attendance")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(attendanceB.body.bySection.some((s: { name: string }) => s.name === `Analytics Section ${suffix}`)).toBe(false);
+      const enrollmentB = await request(app.getHttpServer())
+        .get("/organizations/me/analytics/enrollment")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(
+        enrollmentB.body.enrollmentTrend.some((t: { academicYear: string }) => t.academicYear === `Analytics Year ${suffix}`),
+      ).toBe(false);
+    }, 180000);
+  });
 });

@@ -171,6 +171,10 @@ const RESOURCES = [
   // profile/education/career_history/company/skill/certification in
   // too, same folding precedent as every Phase 7 resource above.
   "alumni",
+  // Phase 8 slice 8d, part 1 (Analytics & Reports) — a genuinely new
+  // capability distinct from every existing per-individual
+  // "dashboard" resource; only view/export are meaningfully used.
+  "analytics",
 ];
 const ACTIONS = Object.values(PermissionAction);
 
