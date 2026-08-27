@@ -17,6 +17,9 @@ import { CreateCertificationDto } from "../alumni/dto/create-certification.dto";
 import { SubmitSurveyResponseDto } from "../alumni/dto/submit-survey-response.dto";
 import { RespondMentorshipDto } from "../alumni/dto/respond-mentorship.dto";
 import { CreateAchievementDto } from "../alumni/dto/create-achievement.dto";
+import { CreateOpportunityDto } from "../alumni/dto/create-opportunity.dto";
+import { CreateApplicationDto } from "../alumni/dto/create-application.dto";
+import { SetGraduateOutcomeDto } from "../alumni/dto/set-graduate-outcome.dto";
 
 // Deliberately JwtAuthGuard only — no PermissionsGuard/@RequirePermissions.
 // The existing resource:action permission model answers "can this role
@@ -225,5 +228,40 @@ export class StudentPortalController {
   @Post("alumni-profile/achievements")
   addOwnAlumniAchievement(@CurrentUser() user: JwtPayload, @Body() dto: CreateAchievementDto) {
     return this.studentPortal.addOwnAlumniAchievement(user.organizationId, user.sub, dto);
+  }
+
+  @Post("career-opportunities")
+  createOwnCareerOpportunity(@CurrentUser() user: JwtPayload, @Body() dto: CreateOpportunityDto) {
+    return this.studentPortal.createOwnCareerOpportunity(user.organizationId, user.sub, dto);
+  }
+
+  @Get("career-opportunities")
+  listApprovedCareerOpportunities(@CurrentUser() user: JwtPayload) {
+    return this.studentPortal.listApprovedCareerOpportunities(user.organizationId);
+  }
+
+  @Post("career-opportunities/:id/apply")
+  applyToCareerOpportunity(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: CreateApplicationDto) {
+    return this.studentPortal.applyToCareerOpportunity(user.organizationId, user.sub, id, dto);
+  }
+
+  @Get("career-applications")
+  listOwnCareerApplications(@CurrentUser() user: JwtPayload) {
+    return this.studentPortal.listOwnCareerApplications(user.organizationId, user.sub);
+  }
+
+  @Post("career-applications/:id/withdraw")
+  withdrawOwnCareerApplication(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.studentPortal.withdrawOwnCareerApplication(user.organizationId, user.sub, id);
+  }
+
+  @Get("career-services")
+  listActiveCareerServices(@CurrentUser() user: JwtPayload) {
+    return this.studentPortal.listActiveCareerServices(user.organizationId);
+  }
+
+  @Patch("alumni-profile/graduate-outcome")
+  setOwnGraduateOutcome(@CurrentUser() user: JwtPayload, @Body() dto: SetGraduateOutcomeDto) {
+    return this.studentPortal.setOwnGraduateOutcome(user.organizationId, user.sub, dto);
   }
 }

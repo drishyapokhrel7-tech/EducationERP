@@ -15,6 +15,13 @@ import { SubmitSurveyResponseDto } from "./dto/submit-survey-response.dto";
 import { CreateMentorshipDto } from "./dto/create-mentorship.dto";
 import { RespondMentorshipDto } from "./dto/respond-mentorship.dto";
 import { CreateAchievementDto } from "./dto/create-achievement.dto";
+import { CreateOpportunityDto } from "./dto/create-opportunity.dto";
+import { ReviewOpportunityDto } from "./dto/review-opportunity.dto";
+import { CreateApplicationDto } from "./dto/create-application.dto";
+import { UpdateApplicationStatusDto } from "./dto/update-application-status.dto";
+import { CreateCareerServiceDto } from "./dto/create-career-service.dto";
+import { UpdateCareerServiceDto } from "./dto/update-career-service.dto";
+import { SetGraduateOutcomeDto } from "./dto/set-graduate-outcome.dto";
 
 const PROFILE_INCLUDE = {
   student: true,
@@ -23,6 +30,7 @@ const PROFILE_INCLUDE = {
   skills: true,
   certifications: true,
   achievements: { orderBy: { createdAt: "desc" as const } },
+  graduateOutcome: true,
 };
 
 @Injectable()
@@ -470,6 +478,192 @@ export class AlumniService {
     return this.addAchievement(organizationId, profile.id, dto);
   }
 
+  // ── Career opportunities (Phase 8 slice 8c) ───────────────────────
+
+  createOpportunity(organizationId: string, dto: CreateOpportunityDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadCompany(tx, organizationId, dto.companyId);
+      return tx.careerOpportunity.create({
+        data: {
+          organizationId,
+          companyId: dto.companyId,
+          title: dto.title,
+          type: dto.type,
+          description: dto.description,
+          location: dto.location,
+          status: "APPROVED",
+        },
+        include: { company: true },
+      });
+    });
+  }
+
+  async createOwnOpportunity(organizationId: string, studentId: string, dto: CreateOpportunityDto) {
+    const profile = await this.getOwnProfile(organizationId, studentId);
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadCompany(tx, organizationId, dto.companyId);
+      return tx.careerOpportunity.create({
+        data: {
+          organizationId,
+          postedByAlumniProfileId: profile.id,
+          companyId: dto.companyId,
+          title: dto.title,
+          type: dto.type,
+          description: dto.description,
+          location: dto.location,
+          status: "PENDING",
+        },
+        include: { company: true },
+      });
+    });
+  }
+
+  listOpportunities(organizationId: string) {
+    return this.prisma.withTenant(organizationId, (tx) =>
+      tx.careerOpportunity.findMany({
+        where: { organizationId },
+        include: { company: true, postedByAlumniProfile: { include: { student: true } } },
+        orderBy: { createdAt: "desc" },
+      }),
+    );
+  }
+
+  // Self-service list — APPROVED (open) and CLOSED (so a past
+  // applicant can still see what they applied to) are visible; PENDING
+  // (awaiting review) and REJECTED are not, same "don't leak
+  // unpublished content" reasoning as listPublishedSurveys.
+  listApprovedOpportunities(organizationId: string) {
+    return this.prisma.withTenant(organizationId, (tx) =>
+      tx.careerOpportunity.findMany({
+        where: { organizationId, status: { in: ["APPROVED", "CLOSED"] } },
+        include: { company: true },
+        orderBy: { createdAt: "desc" },
+      }),
+    );
+  }
+
+  async reviewOpportunity(organizationId: string, id: string, dto: ReviewOpportunityDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const opportunity = await this.loadOpportunity(tx, organizationId, id);
+      if (opportunity.status !== "PENDING") throw new ConflictException("Only a PENDING opportunity can be reviewed");
+      return tx.careerOpportunity.update({ where: { id }, data: { status: dto.status }, include: { company: true } });
+    });
+  }
+
+  async closeOpportunity(organizationId: string, id: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const opportunity = await this.loadOpportunity(tx, organizationId, id);
+      if (opportunity.status !== "APPROVED") throw new ConflictException("Only an APPROVED opportunity can be closed");
+      return tx.careerOpportunity.update({ where: { id }, data: { status: "CLOSED" }, include: { company: true } });
+    });
+  }
+
+  // ── Career applications ────────────────────────────────────────────
+
+  async applyToOpportunity(organizationId: string, studentId: string, opportunityId: string, dto: CreateApplicationDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const opportunity = await this.loadOpportunity(tx, organizationId, opportunityId);
+      if (opportunity.status !== "APPROVED") throw new BadRequestException("This opportunity isn't accepting applications");
+      const existing = await tx.careerApplication.findUnique({
+        where: { opportunityId_applicantStudentId: { opportunityId, applicantStudentId: studentId } },
+      });
+      if (existing) throw new ConflictException("You've already applied to this opportunity");
+      return tx.careerApplication.create({
+        data: { organizationId, opportunityId, applicantStudentId: studentId, coverNote: dto.coverNote },
+      });
+    });
+  }
+
+  listApplicationsForOpportunity(organizationId: string, opportunityId: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadOpportunity(tx, organizationId, opportunityId);
+      return tx.careerApplication.findMany({
+        where: { opportunityId },
+        include: { applicantStudent: true },
+        orderBy: { submittedAt: "desc" },
+      });
+    });
+  }
+
+  async updateApplicationStatus(organizationId: string, id: string, dto: UpdateApplicationStatusDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const application = await this.loadApplication(tx, organizationId, id);
+      if (["REJECTED", "ACCEPTED", "WITHDRAWN"].includes(application.status)) {
+        throw new ConflictException("This application has already reached a final status");
+      }
+      return tx.careerApplication.update({
+        where: { id },
+        data: { status: dto.status, reviewNotes: dto.reviewNotes, reviewedAt: new Date() },
+        include: { applicantStudent: true },
+      });
+    });
+  }
+
+  listOwnApplications(organizationId: string, studentId: string) {
+    return this.prisma.withTenant(organizationId, (tx) =>
+      tx.careerApplication.findMany({
+        where: { applicantStudentId: studentId },
+        include: { opportunity: { include: { company: true } } },
+        orderBy: { submittedAt: "desc" },
+      }),
+    );
+  }
+
+  async withdrawOwnApplication(organizationId: string, studentId: string, id: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const application = await this.loadApplication(tx, organizationId, id);
+      if (application.applicantStudentId !== studentId) throw new NotFoundException("Application not found");
+      if (["REJECTED", "ACCEPTED", "WITHDRAWN"].includes(application.status)) {
+        throw new ConflictException("This application has already reached a final status");
+      }
+      return tx.careerApplication.update({ where: { id }, data: { status: "WITHDRAWN" } });
+    });
+  }
+
+  // ── Career services (simple catalog, no booking) ──────────────────
+
+  createCareerService(organizationId: string, dto: CreateCareerServiceDto) {
+    return this.prisma.withTenant(organizationId, (tx) => tx.careerService.create({ data: { organizationId, ...dto } }));
+  }
+
+  listCareerServices(organizationId: string) {
+    return this.prisma.withTenant(organizationId, (tx) =>
+      tx.careerService.findMany({ where: { organizationId }, orderBy: { name: "asc" } }),
+    );
+  }
+
+  listActiveCareerServices(organizationId: string) {
+    return this.prisma.withTenant(organizationId, (tx) =>
+      tx.careerService.findMany({ where: { organizationId, isActive: true }, orderBy: { name: "asc" } }),
+    );
+  }
+
+  async updateCareerService(organizationId: string, id: string, dto: UpdateCareerServiceDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const record = await tx.careerService.findUnique({ where: { id } });
+      if (!record || record.organizationId !== organizationId) throw new NotFoundException("Career service not found");
+      return tx.careerService.update({ where: { id }, data: dto });
+    });
+  }
+
+  // ── Graduate outcomes ──────────────────────────────────────────────
+
+  async setGraduateOutcome(organizationId: string, profileId: string, dto: SetGraduateOutcomeDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadProfile(tx, organizationId, profileId);
+      return tx.graduateOutcome.upsert({
+        where: { alumniProfileId: profileId },
+        update: { ...dto },
+        create: { organizationId, alumniProfileId: profileId, ...dto },
+      });
+    });
+  }
+
+  async setOwnGraduateOutcome(organizationId: string, studentId: string, dto: SetGraduateOutcomeDto) {
+    const profile = await this.getOwnProfile(organizationId, studentId);
+    return this.setGraduateOutcome(organizationId, profile.id, dto);
+  }
+
   // ── FK-vs-RLS parent guard ───────────────────────────────────────
 
   private async loadProfile(tx: PrismaClient, organizationId: string, id: string) {
@@ -488,5 +682,23 @@ export class AlumniService {
     const record = await tx.alumniMentorship.findUnique({ where: { id } });
     if (!record || record.organizationId !== organizationId) throw new NotFoundException("Mentorship record not found");
     return record;
+  }
+
+  private async loadCompany(tx: PrismaClient, organizationId: string, id: string) {
+    const company = await tx.alumniCompany.findUnique({ where: { id } });
+    if (!company || company.organizationId !== organizationId) throw new NotFoundException("Company not found");
+    return company;
+  }
+
+  private async loadOpportunity(tx: PrismaClient, organizationId: string, id: string) {
+    const opportunity = await tx.careerOpportunity.findUnique({ where: { id } });
+    if (!opportunity || opportunity.organizationId !== organizationId) throw new NotFoundException("Opportunity not found");
+    return opportunity;
+  }
+
+  private async loadApplication(tx: PrismaClient, organizationId: string, id: string) {
+    const application = await tx.careerApplication.findUnique({ where: { id } });
+    if (!application || application.organizationId !== organizationId) throw new NotFoundException("Application not found");
+    return application;
   }
 }

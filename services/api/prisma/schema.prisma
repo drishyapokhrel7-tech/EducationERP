@@ -156,6 +156,10 @@ model Organization {
   alumniSurveyResponses       AlumniSurveyResponse[]
   alumniMentorships           AlumniMentorship[]
   alumniAchievements          AlumniAchievement[]
+  careerOpportunities         CareerOpportunity[]
+  careerApplications          CareerApplication[]
+  careerServices              CareerService[]
+  graduateOutcomes            GraduateOutcome[]
 
   @@map("organizations")
 }
@@ -795,6 +799,7 @@ model Student {
   certificates                Certificate[]
   alumniProfile               AlumniProfile?
   alumniMentorships           AlumniMentorship[]
+  careerApplications          CareerApplication[]
 
   @@unique([organizationId, studentCode])
   @@index([organizationId])
@@ -3697,10 +3702,11 @@ model Certificate {
 // career_services, graduate_outcomes. Split the same way every other
 // large Phase 2-7 domain was: 8a shipped the core identity layer —
 // the profile itself plus post-graduation education/career/company/
-// skill/certification records. 8b (this slice) adds engagement:
-// surveys, mentorship, achievements. career_opportunities/
-// applications/services/graduate_outcomes (8c) still need their own
-// go-ahead.
+// skill/certification records. 8b added engagement: surveys,
+// mentorship, achievements. 8c (this slice) adds career services:
+// opportunities, applications, services, graduate outcomes. Only
+// Analytics & Reports (8d) — aggregate dashboards over all of this —
+// still needs its own go-ahead.
 //
 // An alumnus is a graduated Student (StudentStatus.GRADUATED already
 // exists, set via the existing PATCH students/:id/status), converted
@@ -3726,15 +3732,17 @@ model AlumniProfile {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  organization    Organization           @relation(fields: [organizationId], references: [id])
-  student         Student                @relation(fields: [studentId], references: [id])
-  education       AlumniEducation[]
-  careerHistory   AlumniCareerHistory[]
-  skills          AlumniSkill[]
-  certifications  AlumniCertification[]
-  surveyResponses AlumniSurveyResponse[]
-  mentorships     AlumniMentorship[]
-  achievements    AlumniAchievement[]
+  organization        Organization           @relation(fields: [organizationId], references: [id])
+  student             Student                @relation(fields: [studentId], references: [id])
+  education           AlumniEducation[]
+  careerHistory       AlumniCareerHistory[]
+  skills              AlumniSkill[]
+  certifications      AlumniCertification[]
+  surveyResponses     AlumniSurveyResponse[]
+  mentorships         AlumniMentorship[]
+  achievements        AlumniAchievement[]
+  postedOpportunities CareerOpportunity[]
+  graduateOutcome     GraduateOutcome?
 
   @@index([organizationId])
   @@map("alumni_profiles")
@@ -3777,6 +3785,7 @@ model AlumniCompany {
 
   organization  Organization          @relation(fields: [organizationId], references: [id])
   careerHistory AlumniCareerHistory[]
+  opportunities CareerOpportunity[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -3959,4 +3968,158 @@ model AlumniAchievement {
   @@index([organizationId])
   @@index([alumniProfileId])
   @@map("alumni_achievements")
+}
+
+// ── Phase 8 slice 8c — Career services (opportunities, applications,
+// services, graduate outcomes) ────────────────────────────────────
+
+enum OpportunityType {
+  JOB
+  INTERNSHIP
+}
+
+enum OpportunityStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CLOSED
+}
+
+// Reuses AlumniCompany (companyId), same "real catalog, mainly for
+// aggregate reporting" reasoning as career history — "which companies
+// are hiring the most" is exactly the kind of question this makes
+// answerable. postedByAlumniProfileId is nullable: an admin-posted
+// opportunity has no alumni poster and is APPROVED immediately (no
+// self-review needed); an alumnus-submitted one (the plan's own
+// "approved opportunities" phrasing for the Alumni role view implies
+// exactly this two-source, one-approval-gate model) starts PENDING
+// and needs an explicit admin approve/reject — same moderation-gate
+// shape as AlumniSurvey's publish step, but with an added self-
+// submission channel surveys don't have.
+model CareerOpportunity {
+  id                      String            @id @default(uuid())
+  organizationId          String
+  postedByAlumniProfileId String?
+  companyId               String
+  title                   String
+  type                    OpportunityType
+  description             String
+  location                String?
+  status                  OpportunityStatus @default(PENDING)
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+
+  organization          Organization        @relation(fields: [organizationId], references: [id])
+  postedByAlumniProfile AlumniProfile?      @relation(fields: [postedByAlumniProfileId], references: [id])
+  company               AlumniCompany       @relation(fields: [companyId], references: [id])
+  applications          CareerApplication[]
+
+  @@index([organizationId])
+  @@index([companyId])
+  @@map("career_opportunities")
+}
+
+enum ApplicationStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  SHORTLISTED
+  REJECTED
+  ACCEPTED
+  WITHDRAWN
+}
+
+// Applicant is a Student, not an AlumniProfile — career services
+// serves current students (job placement) and alumni alike, and
+// Student already covers both regardless of graduation status (same
+// "one identity, no parallel model" reasoning as reusing the existing
+// portal login for alumni self-service throughout this domain).
+// @@unique stops one applicant spamming the same opportunity twice.
+// Review (UNDER_REVIEW/SHORTLISTED/REJECTED/ACCEPTED) is admin-only
+// even for an alumni-posted opportunity — giving the original poster
+// their own review authority over applicants is real added complexity
+// the plan doesn't call for; the institution's career office manages
+// the process end to end, matching this project's standing
+// "don't build unrequested flexibility" precedent (e.g. mentorship
+// stayed alumni-to-student only, no alumni-to-alumni). WITHDRAWN is
+// the one self-service transition, from the applicant's own side.
+model CareerApplication {
+  id                 String            @id @default(uuid())
+  organizationId     String
+  opportunityId      String
+  applicantStudentId String
+  status             ApplicationStatus @default(SUBMITTED)
+  coverNote          String?
+  reviewNotes        String?
+  submittedAt        DateTime          @default(now())
+  reviewedAt         DateTime?
+
+  organization     Organization      @relation(fields: [organizationId], references: [id])
+  opportunity      CareerOpportunity @relation(fields: [opportunityId], references: [id])
+  applicantStudent Student           @relation(fields: [applicantStudentId], references: [id])
+
+  @@unique([opportunityId, applicantStudentId])
+  @@index([organizationId])
+  @@index([applicantStudentId])
+  @@map("career_applications")
+}
+
+// A simple, admin-configurable listing (resume review, mock
+// interviews, career counseling, etc.) — no reservation/scheduling
+// system, matching this project's "defer a booking engine until
+// actually asked for" precedent (e.g. Class Sessions in Phase 3
+// avoided the same scope). Alumni/students browse what's offered and
+// use the listed contact info directly.
+model CareerService {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  description    String?
+  contactEmail   String?
+  contactPhone   String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
+  @@map("career_services")
+}
+
+enum EmploymentStatus {
+  EMPLOYED
+  SELF_EMPLOYED
+  FURTHER_STUDY
+  UNEMPLOYED_SEEKING
+  UNEMPLOYED_NOT_SEEKING
+  UNKNOWN
+}
+
+// Deliberately distinct from AlumniProfile.currentOccupation/
+// currentEmployer (8a) — those are an informal, always-current self-
+// reported bio field; this is the institution's structured outcome
+// record (the plan's own separate graduate_outcomes ERD table,
+// distinct from alumni_surveys/alumni_survey_responses too — a
+// generic JSON survey response isn't queryable/reportable the way
+// dedicated columns are, which is the whole point of tracking this
+// separately). One row per alumnus (@@unique) — a snapshot of their
+// latest known status, editable by an admin or the alumnus
+// themselves, not a dated history (no "outcomes over time" scope was
+// asked for). Feeds the plan's separate Analytics & Reports slice
+// (8d, "Alumni/graduate outcomes" dashboards) — not aggregated here.
+model GraduateOutcome {
+  id                    String           @id @default(uuid())
+  organizationId        String
+  alumniProfileId       String           @unique
+  employmentStatus      EmploymentStatus
+  employerOrInstitution String?
+  fieldRelatedToStudy   Boolean?
+  notes                 String?
+  recordedAt            DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+
+  organization  Organization  @relation(fields: [organizationId], references: [id])
+  alumniProfile AlumniProfile @relation(fields: [alumniProfileId], references: [id])
+
+  @@index([organizationId])
+  @@map("graduate_outcomes")
 }

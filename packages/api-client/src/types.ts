@@ -3065,6 +3065,7 @@ export interface AlumniProfileRecord {
   skills: AlumniSkillRecord[];
   certifications: AlumniCertificationRecord[];
   achievements: AlumniAchievementRecord[];
+  graduateOutcome: GraduateOutcomeRecord | null;
 }
 
 // ── Phase 8 slice 8b — Alumni engagement ──────────────────────────
@@ -3163,4 +3164,115 @@ export interface CreateAlumniAchievementInput {
   title: string;
   description?: string;
   achievedAt?: string;
+}
+
+// ── Phase 8 slice 8c — Career services ────────────────────────────
+
+export type OpportunityType = "JOB" | "INTERNSHIP";
+export type OpportunityStatus = "PENDING" | "APPROVED" | "REJECTED" | "CLOSED";
+
+export interface CareerOpportunityRecord {
+  id: string;
+  organizationId: string;
+  postedByAlumniProfileId: string | null;
+  companyId: string;
+  title: string;
+  type: OpportunityType;
+  description: string;
+  location: string | null;
+  status: OpportunityStatus;
+  createdAt: string;
+  updatedAt: string;
+  company: AlumniCompanyRecord;
+  postedByAlumniProfile?: AlumniProfileRecord | null;
+}
+
+export interface CreateOpportunityInput {
+  companyId: string;
+  title: string;
+  type: OpportunityType;
+  description: string;
+  location?: string;
+}
+
+export interface ReviewOpportunityInput {
+  status: "APPROVED" | "REJECTED";
+}
+
+export type ApplicationStatus = "SUBMITTED" | "UNDER_REVIEW" | "SHORTLISTED" | "REJECTED" | "ACCEPTED" | "WITHDRAWN";
+
+export interface CareerApplicationRecord {
+  id: string;
+  organizationId: string;
+  opportunityId: string;
+  applicantStudentId: string;
+  status: ApplicationStatus;
+  coverNote: string | null;
+  reviewNotes: string | null;
+  submittedAt: string;
+  reviewedAt: string | null;
+  applicantStudent?: Student;
+  opportunity?: CareerOpportunityRecord;
+}
+
+export interface CreateApplicationInput {
+  coverNote?: string;
+}
+
+export interface UpdateApplicationStatusInput {
+  status: "UNDER_REVIEW" | "SHORTLISTED" | "REJECTED" | "ACCEPTED";
+  reviewNotes?: string;
+}
+
+export interface CareerServiceRecord {
+  id: string;
+  organizationId: string;
+  name: string;
+  description: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface CreateCareerServiceInput {
+  name: string;
+  description?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+}
+
+export interface UpdateCareerServiceInput {
+  name?: string;
+  description?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  isActive?: boolean;
+}
+
+export type EmploymentStatus =
+  | "EMPLOYED"
+  | "SELF_EMPLOYED"
+  | "FURTHER_STUDY"
+  | "UNEMPLOYED_SEEKING"
+  | "UNEMPLOYED_NOT_SEEKING"
+  | "UNKNOWN";
+
+export interface GraduateOutcomeRecord {
+  id: string;
+  organizationId: string;
+  alumniProfileId: string;
+  employmentStatus: EmploymentStatus;
+  employerOrInstitution: string | null;
+  fieldRelatedToStudy: boolean | null;
+  notes: string | null;
+  recordedAt: string;
+  updatedAt: string;
+}
+
+export interface SetGraduateOutcomeInput {
+  employmentStatus: EmploymentStatus;
+  employerOrInstitution?: string;
+  fieldRelatedToStudy?: boolean;
+  notes?: string;
 }

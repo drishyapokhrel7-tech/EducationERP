@@ -201,6 +201,17 @@ import type {
   RespondAlumniMentorshipInput,
   AlumniAchievementRecord,
   CreateAlumniAchievementInput,
+  CareerOpportunityRecord,
+  CreateOpportunityInput,
+  ReviewOpportunityInput,
+  CareerApplicationRecord,
+  CreateApplicationInput,
+  UpdateApplicationStatusInput,
+  CareerServiceRecord,
+  CreateCareerServiceInput,
+  UpdateCareerServiceInput,
+  GraduateOutcomeRecord,
+  SetGraduateOutcomeInput,
   TeacherDashboard,
   StudentDashboard,
   ParentDashboard,
@@ -1491,6 +1502,35 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
     removeAlumniAchievement: (id: string) =>
       request<AlumniAchievementRecord>(`/organizations/me/alumni-achievements/${id}`, { method: "DELETE" }),
 
+    // Career services (Phase 8 slice 8c)
+    createCareerOpportunity: (input: CreateOpportunityInput) =>
+      request<CareerOpportunityRecord>("/organizations/me/career-opportunities", { method: "POST", body: JSON.stringify(input) }),
+    listCareerOpportunities: () => request<CareerOpportunityRecord[]>("/organizations/me/career-opportunities"),
+    reviewCareerOpportunity: (id: string, input: ReviewOpportunityInput) =>
+      request<CareerOpportunityRecord>(`/organizations/me/career-opportunities/${id}/review`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    closeCareerOpportunity: (id: string) =>
+      request<CareerOpportunityRecord>(`/organizations/me/career-opportunities/${id}/close`, { method: "POST" }),
+    listApplicationsForOpportunity: (opportunityId: string) =>
+      request<CareerApplicationRecord[]>(`/organizations/me/career-opportunities/${opportunityId}/applications`),
+    updateApplicationStatus: (id: string, input: UpdateApplicationStatusInput) =>
+      request<CareerApplicationRecord>(`/organizations/me/career-applications/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      }),
+    createCareerService: (input: CreateCareerServiceInput) =>
+      request<CareerServiceRecord>("/organizations/me/career-services", { method: "POST", body: JSON.stringify(input) }),
+    listCareerServices: () => request<CareerServiceRecord[]>("/organizations/me/career-services"),
+    updateCareerService: (id: string, input: UpdateCareerServiceInput) =>
+      request<CareerServiceRecord>(`/organizations/me/career-services/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    setGraduateOutcome: (profileId: string, input: SetGraduateOutcomeInput) =>
+      request<GraduateOutcomeRecord>(`/organizations/me/alumni-profiles/${profileId}/graduate-outcome`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+
     // Alumni self-service
     getOwnAlumniProfile: () => request<AlumniProfileRecord>("/organizations/me/portal/alumni-profile"),
     updateOwnAlumniProfile: (input: UpdateAlumniProfileInput) =>
@@ -1534,6 +1574,26 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
     addOwnAlumniAchievement: (input: CreateAlumniAchievementInput) =>
       request<AlumniAchievementRecord>("/organizations/me/portal/alumni-profile/achievements", {
         method: "POST",
+        body: JSON.stringify(input),
+      }),
+    createOwnCareerOpportunity: (input: CreateOpportunityInput) =>
+      request<CareerOpportunityRecord>("/organizations/me/portal/career-opportunities", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    listApprovedCareerOpportunities: () => request<CareerOpportunityRecord[]>("/organizations/me/portal/career-opportunities"),
+    applyToCareerOpportunity: (opportunityId: string, input: CreateApplicationInput) =>
+      request<CareerApplicationRecord>(`/organizations/me/portal/career-opportunities/${opportunityId}/apply`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    listOwnCareerApplications: () => request<CareerApplicationRecord[]>("/organizations/me/portal/career-applications"),
+    withdrawOwnCareerApplication: (id: string) =>
+      request<CareerApplicationRecord>(`/organizations/me/portal/career-applications/${id}/withdraw`, { method: "POST" }),
+    listActiveCareerServices: () => request<CareerServiceRecord[]>("/organizations/me/portal/career-services"),
+    setOwnGraduateOutcome: (input: SetGraduateOutcomeInput) =>
+      request<GraduateOutcomeRecord>("/organizations/me/portal/alumni-profile/graduate-outcome", {
+        method: "PATCH",
         body: JSON.stringify(input),
       }),
 

@@ -13,6 +13,12 @@ import { UpdateSurveyDto } from "./dto/update-survey.dto";
 import { CreateMentorshipDto } from "./dto/create-mentorship.dto";
 import { RespondMentorshipDto } from "./dto/respond-mentorship.dto";
 import { CreateAchievementDto } from "./dto/create-achievement.dto";
+import { CreateOpportunityDto } from "./dto/create-opportunity.dto";
+import { ReviewOpportunityDto } from "./dto/review-opportunity.dto";
+import { UpdateApplicationStatusDto } from "./dto/update-application-status.dto";
+import { CreateCareerServiceDto } from "./dto/create-career-service.dto";
+import { UpdateCareerServiceDto } from "./dto/update-career-service.dto";
+import { SetGraduateOutcomeDto } from "./dto/set-graduate-outcome.dto";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
@@ -190,5 +196,71 @@ export class AlumniController {
   @RequirePermissions("alumni:manage")
   removeAchievement(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
     return this.alumni.removeAchievement(user.organizationId, id);
+  }
+
+  // ── Career opportunities & applications (Phase 8 slice 8c) ────────
+
+  @Post("career-opportunities")
+  @RequirePermissions("alumni:create")
+  createOpportunity(@CurrentUser() user: JwtPayload, @Body() dto: CreateOpportunityDto) {
+    return this.alumni.createOpportunity(user.organizationId, dto);
+  }
+
+  @Get("career-opportunities")
+  @RequirePermissions("alumni:view")
+  listOpportunities(@CurrentUser() user: JwtPayload) {
+    return this.alumni.listOpportunities(user.organizationId);
+  }
+
+  @Post("career-opportunities/:id/review")
+  @RequirePermissions("alumni:manage")
+  reviewOpportunity(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: ReviewOpportunityDto) {
+    return this.alumni.reviewOpportunity(user.organizationId, id, dto);
+  }
+
+  @Post("career-opportunities/:id/close")
+  @RequirePermissions("alumni:manage")
+  closeOpportunity(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.alumni.closeOpportunity(user.organizationId, id);
+  }
+
+  @Get("career-opportunities/:id/applications")
+  @RequirePermissions("alumni:view")
+  listApplicationsForOpportunity(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.alumni.listApplicationsForOpportunity(user.organizationId, id);
+  }
+
+  @Patch("career-applications/:id")
+  @RequirePermissions("alumni:manage")
+  updateApplicationStatus(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: UpdateApplicationStatusDto) {
+    return this.alumni.updateApplicationStatus(user.organizationId, id, dto);
+  }
+
+  // ── Career services ────────────────────────────────────────────────
+
+  @Post("career-services")
+  @RequirePermissions("alumni:create")
+  createCareerService(@CurrentUser() user: JwtPayload, @Body() dto: CreateCareerServiceDto) {
+    return this.alumni.createCareerService(user.organizationId, dto);
+  }
+
+  @Get("career-services")
+  @RequirePermissions("alumni:view")
+  listCareerServices(@CurrentUser() user: JwtPayload) {
+    return this.alumni.listCareerServices(user.organizationId);
+  }
+
+  @Patch("career-services/:id")
+  @RequirePermissions("alumni:manage")
+  updateCareerService(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: UpdateCareerServiceDto) {
+    return this.alumni.updateCareerService(user.organizationId, id, dto);
+  }
+
+  // ── Graduate outcomes ───────────────────────────────────────────────
+
+  @Post("alumni-profiles/:id/graduate-outcome")
+  @RequirePermissions("alumni:manage")
+  setGraduateOutcome(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: SetGraduateOutcomeDto) {
+    return this.alumni.setGraduateOutcome(user.organizationId, id, dto);
   }
 }

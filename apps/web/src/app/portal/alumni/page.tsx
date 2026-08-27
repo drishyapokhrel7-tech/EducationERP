@@ -9,15 +9,23 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
+import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
-import type { MentorshipStatus } from "@education-erp/api-client";
+import type { ApplicationStatus, MentorshipStatus, OpportunityType } from "@education-erp/api-client";
 
 function mentorshipBadgeVariant(status: MentorshipStatus) {
   if (status === "ACTIVE") return "success" as const;
   if (status === "COMPLETED") return "secondary" as const;
   if (status === "DECLINED") return "destructive" as const;
   return "info" as const;
+}
+
+function applicationBadgeVariant(status: ApplicationStatus) {
+  if (status === "ACCEPTED") return "success" as const;
+  if (status === "SHORTLISTED") return "info" as const;
+  if (status === "REJECTED" || status === "WITHDRAWN") return "destructive" as const;
+  return "outline" as const;
 }
 
 function errorMessage(err: unknown, fallback: string) {
@@ -56,8 +64,191 @@ export default function PortalAlumniPage() {
   // submit rather than adding a dedicated "have I responded" endpoint
   // for what's otherwise a one-time action.
   const [respondedSurveyIds, setRespondedSurveyIds] = useState<Set<string>>(new Set());
+  const opportunities = useSWR("portal-career-opportunities", () => api.listApprovedCareerOpportunities());
+  const ownApplications = useSWR("portal-career-applications", () => api.listOwnCareerApplications());
+  const careerServices = useSWR("portal-career-services", () => api.listActiveCareerServices());
+  const [coverNotes, setCoverNotes] = useState<Record<string, string>>({});
+  const [opportunityForm, setOpportunityForm] = useState({ companyId: "", title: "", type: "JOB" as OpportunityType, description: "", location: "" });
 
   const data = profile.data;
+
+  // Career opportunities, my applications, and career services — none
+  // of these depend on having an alumni profile (a current student can
+  // browse/apply/withdraw too, same "not alumni-only" reasoning as the
+  // mentee card above). The one exception is submitting a new
+  // opportunity posting, gated inline below since only an alumnus can
+  // post a job/internship on an employer's behalf.
+  const careerCards = (
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle>Career opportunities</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {!opportunities.data || opportunities.data.length === 0 ? (
+            <p className="text-muted-foreground text-sm">No open opportunities right now.</p>
+          ) : (
+            <ul className="space-y-2 text-sm">
+              {opportunities.data.map((o) => {
+                const already = ownApplications.data?.find((a) => a.opportunityId === o.id);
+                return (
+                  <li key={o.id} className="space-y-1 rounded-md border p-2">
+                    <p className="font-medium">
+                      {o.title} <span className="text-muted-foreground">at {o.company.name}</span>{" "}
+                      <Badge variant="outline">{o.type}</Badge>
+                      {o.status === "CLOSED" ? (
+                        <Badge variant="secondary" className="ml-1">
+                          Closed
+                        </Badge>
+                      ) : null}
+                    </p>
+                    <p className="text-muted-foreground text-xs">{o.description}</p>
+                    {already ? (
+                      <Badge variant={applicationBadgeVariant(already.status)}>Applied — {already.status}</Badge>
+                    ) : o.status === "APPROVED" ? (
+                      <form
+                        className="flex flex-wrap items-end gap-2"
+                        onSubmit={(e: FormEvent) => {
+                          e.preventDefault();
+                          submitAction(
+                            () => api.applyToCareerOpportunity(o.id, { coverNote: coverNotes[o.id] || undefined }),
+                            () => {
+                              setCoverNotes((prev) => ({ ...prev, [o.id]: "" }));
+                              ownApplications.mutate();
+                            },
+                          );
+                        }}
+                      >
+                        <Input
+                          className="h-7 w-56"
+                          placeholder="Cover note (optional)"
+                          value={coverNotes[o.id] ?? ""}
+                          onChange={(e) => setCoverNotes((prev) => ({ ...prev, [o.id]: e.target.value }))}
+                        />
+                        <Button type="submit" size="sm" className="h-7">
+                          Apply
+                        </Button>
+                      </form>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {data ? (
+            <>
+              <Separator />
+              <form
+                className="flex flex-wrap items-end gap-2"
+                onSubmit={(e: FormEvent) => {
+                  e.preventDefault();
+                  submitAction(
+                    () =>
+                      api.createOwnCareerOpportunity({
+                        companyId: opportunityForm.companyId,
+                        title: opportunityForm.title,
+                        type: opportunityForm.type,
+                        description: opportunityForm.description,
+                        location: opportunityForm.location || undefined,
+                      }),
+                    () => {
+                      setOpportunityForm({ companyId: "", title: "", type: "JOB", description: "", location: "" });
+                      toast.success("Submitted for review");
+                    },
+                  );
+                }}
+              >
+                <NativeSelect
+                  className="h-7 w-36"
+                  placeholder="Company"
+                  value={opportunityForm.companyId}
+                  onChange={(v) => setOpportunityForm((f) => ({ ...f, companyId: v }))}
+                  options={(companies.data ?? []).map((c) => ({ value: c.id, label: c.name }))}
+                />
+                <Input
+                  className="h-7 w-36"
+                  placeholder="Title"
+                  value={opportunityForm.title}
+                  onChange={(e) => setOpportunityForm((f) => ({ ...f, title: e.target.value }))}
+                />
+                <Input
+                  className="h-7 w-48"
+                  placeholder="Description"
+                  value={opportunityForm.description}
+                  onChange={(e) => setOpportunityForm((f) => ({ ...f, description: e.target.value }))}
+                />
+                <Button
+                  type="submit"
+                  size="sm"
+                  className="h-7"
+                  disabled={!opportunityForm.companyId || !opportunityForm.title || !opportunityForm.description}
+                >
+                  Submit a listing
+                </Button>
+              </form>
+              <p className="text-muted-foreground text-xs">Submitted listings are reviewed by your institution before appearing here.</p>
+            </>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>My applications</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {!ownApplications.data || ownApplications.data.length === 0 ? (
+            <p className="text-muted-foreground text-sm">No applications yet.</p>
+          ) : (
+            <ul className="space-y-2 text-sm">
+              {ownApplications.data.map((a) => (
+                <li key={a.id} className="flex items-center justify-between gap-2">
+                  <span>
+                    {a.opportunity?.title} <span className="text-muted-foreground">at {a.opportunity?.company.name}</span>
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <Badge variant={applicationBadgeVariant(a.status)}>{a.status}</Badge>
+                    {!["REJECTED", "ACCEPTED", "WITHDRAWN"].includes(a.status) ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7"
+                        onClick={() => submitAction(() => api.withdrawOwnCareerApplication(a.id), () => ownApplications.mutate())}
+                      >
+                        Withdraw
+                      </Button>
+                    ) : null}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Career services</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {!careerServices.data || careerServices.data.length === 0 ? (
+            <p className="text-muted-foreground text-sm">No career services listed right now.</p>
+          ) : (
+            <ul className="space-y-2 text-sm">
+              {careerServices.data.map((s) => (
+                <li key={s.id}>
+                  <span className="font-medium">{s.name}</span>
+                  {s.description ? <span className="text-muted-foreground"> — {s.description}</span> : null}
+                  {s.contactEmail ? <span className="text-muted-foreground"> ({s.contactEmail})</span> : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+    </>
+  );
   // A mentee's own mentorships don't depend on having an alumni
   // profile at all — a current student receiving mentorship from an
   // alumnus mentor isn't necessarily graduated. Rendered regardless of
@@ -103,6 +294,7 @@ export default function PortalAlumniPage() {
           </p>
         </div>
         {menteeCard}
+        {careerCards}
       </div>
     );
   }
@@ -518,6 +710,7 @@ export default function PortalAlumniPage() {
           </Card>
 
           {menteeCard}
+          {careerCards}
         </>
       )}
     </div>

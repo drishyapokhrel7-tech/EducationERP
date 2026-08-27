@@ -11,7 +11,14 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
-import type { MentorshipStatus, SurveyQuestion, SurveyQuestionType } from "@education-erp/api-client";
+import type {
+  ApplicationStatus,
+  EmploymentStatus,
+  MentorshipStatus,
+  OpportunityType,
+  SurveyQuestion,
+  SurveyQuestionType,
+} from "@education-erp/api-client";
 
 function mentorshipBadgeVariant(status: MentorshipStatus) {
   if (status === "ACTIVE") return "success" as const;
@@ -25,6 +32,29 @@ function surveyBadgeVariant(status: string) {
   if (status === "CLOSED") return "secondary" as const;
   return "outline" as const;
 }
+
+function opportunityBadgeVariant(status: string) {
+  if (status === "APPROVED") return "success" as const;
+  if (status === "CLOSED") return "secondary" as const;
+  if (status === "REJECTED") return "destructive" as const;
+  return "info" as const;
+}
+
+function applicationBadgeVariant(status: ApplicationStatus) {
+  if (status === "ACCEPTED") return "success" as const;
+  if (status === "SHORTLISTED") return "info" as const;
+  if (status === "REJECTED" || status === "WITHDRAWN") return "destructive" as const;
+  return "outline" as const;
+}
+
+const EMPLOYMENT_STATUS_OPTIONS: { value: EmploymentStatus; label: string }[] = [
+  { value: "EMPLOYED", label: "Employed" },
+  { value: "SELF_EMPLOYED", label: "Self-employed" },
+  { value: "FURTHER_STUDY", label: "Further study" },
+  { value: "UNEMPLOYED_SEEKING", label: "Unemployed — seeking" },
+  { value: "UNEMPLOYED_NOT_SEEKING", label: "Unemployed — not seeking" },
+  { value: "UNKNOWN", label: "Unknown" },
+];
 
 let questionIdCounter = 0;
 function newQuestionId() {
@@ -72,6 +102,19 @@ export default function AlumniPage() {
     () => api.listAlumniSurveyResponses(expandedResponsesSurveyId),
   );
   const [mentorshipForm, setMentorshipForm] = useState({ mentorAlumniProfileId: "", menteeStudentId: "", topic: "" });
+  const [outcomeForm, setOutcomeForm] = useState<{ employmentStatus: EmploymentStatus; employerOrInstitution: string }>({
+    employmentStatus: "EMPLOYED",
+    employerOrInstitution: "",
+  });
+  const opportunities = useSWR("career-opportunities", () => api.listCareerOpportunities());
+  const [opportunityForm, setOpportunityForm] = useState({ companyId: "", title: "", type: "JOB" as OpportunityType, description: "", location: "" });
+  const [expandedApplicationsOpportunityId, setExpandedApplicationsOpportunityId] = useState("");
+  const applications = useSWR(
+    expandedApplicationsOpportunityId ? ["career-applications", expandedApplicationsOpportunityId] : null,
+    () => api.listApplicationsForOpportunity(expandedApplicationsOpportunityId),
+  );
+  const careerServices = useSWR("career-services", () => api.listCareerServices());
+  const [serviceForm, setServiceForm] = useState({ name: "", description: "", contactEmail: "" });
 
   const graduatedStudents = (students.data ?? []).filter((s) => s.status === "GRADUATED");
   const selectedProfile = profiles.data?.find((p) => p.id === selectedProfileId);
@@ -336,6 +379,49 @@ export default function AlumniPage() {
                   />
                   <Button type="submit" size="sm" className="h-7" disabled={!achievementForm.title}>
                     Add
+                  </Button>
+                </form>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-xs font-medium">Graduate outcome</p>
+                {selectedProfile.graduateOutcome ? (
+                  <p className="text-muted-foreground text-xs">
+                    {EMPLOYMENT_STATUS_OPTIONS.find((o) => o.value === selectedProfile.graduateOutcome!.employmentStatus)?.label}
+                    {selectedProfile.graduateOutcome.employerOrInstitution ? ` — ${selectedProfile.graduateOutcome.employerOrInstitution}` : ""}
+                  </p>
+                ) : (
+                  <p className="text-muted-foreground text-xs">Not recorded yet.</p>
+                )}
+                <form
+                  className="flex flex-wrap items-end gap-2"
+                  onSubmit={(e: FormEvent) => {
+                    e.preventDefault();
+                    submitAction(
+                      () =>
+                        api.setGraduateOutcome(selectedProfile.id, {
+                          employmentStatus: outcomeForm.employmentStatus,
+                          employerOrInstitution: outcomeForm.employerOrInstitution || undefined,
+                        }),
+                      () => profiles.mutate(),
+                    );
+                  }}
+                >
+                  <NativeSelect
+                    className="h-7 w-44"
+                    placeholder="Status"
+                    value={outcomeForm.employmentStatus}
+                    onChange={(v) => setOutcomeForm((f) => ({ ...f, employmentStatus: v as EmploymentStatus }))}
+                    options={EMPLOYMENT_STATUS_OPTIONS}
+                  />
+                  <Input
+                    className="h-7 w-40"
+                    placeholder="Employer / institution"
+                    value={outcomeForm.employerOrInstitution}
+                    onChange={(e) => setOutcomeForm((f) => ({ ...f, employerOrInstitution: e.target.value }))}
+                  />
+                  <Button type="submit" size="sm" className="h-7">
+                    Save
                   </Button>
                 </form>
               </div>
@@ -658,6 +744,274 @@ export default function AlumniPage() {
               disabled={!mentorshipForm.mentorAlumniProfileId || !mentorshipForm.menteeStudentId}
             >
               Create pairing
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Career opportunities</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {!opportunities.data || opportunities.data.length === 0 ? (
+            <p className="text-muted-foreground text-sm">No opportunities yet.</p>
+          ) : (
+            <ul className="space-y-2 text-sm">
+              {opportunities.data.map((o) => (
+                <li key={o.id} className="space-y-1 rounded-md border p-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span>
+                      <span className="font-medium">{o.title}</span> <span className="text-muted-foreground">at {o.company.name}</span>{" "}
+                      <Badge variant="outline">{o.type}</Badge>
+                      {o.postedByAlumniProfile ? (
+                        <span className="text-muted-foreground">
+                          {" "}
+                          — submitted by {o.postedByAlumniProfile.student.firstName} {o.postedByAlumniProfile.student.lastName}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="flex items-center gap-2">
+                      <Badge variant={opportunityBadgeVariant(o.status)}>{o.status}</Badge>
+                      {o.status === "PENDING" ? (
+                        <>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7"
+                            onClick={() => submitAction(() => api.reviewCareerOpportunity(o.id, { status: "APPROVED" }), () => opportunities.mutate())}
+                          >
+                            Approve
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7"
+                            onClick={() => submitAction(() => api.reviewCareerOpportunity(o.id, { status: "REJECTED" }), () => opportunities.mutate())}
+                          >
+                            Reject
+                          </Button>
+                        </>
+                      ) : null}
+                      {o.status === "APPROVED" ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-7"
+                          onClick={() => submitAction(() => api.closeCareerOpportunity(o.id), () => opportunities.mutate())}
+                        >
+                          Close
+                        </Button>
+                      ) : null}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7"
+                        onClick={() =>
+                          setExpandedApplicationsOpportunityId(expandedApplicationsOpportunityId === o.id ? "" : o.id)
+                        }
+                      >
+                        Applications
+                      </Button>
+                    </span>
+                  </div>
+                  {expandedApplicationsOpportunityId === o.id ? (
+                    <div className="bg-muted/30 space-y-1 rounded p-2 text-xs">
+                      {!applications.data || applications.data.length === 0 ? (
+                        <p className="text-muted-foreground">No applications yet.</p>
+                      ) : (
+                        applications.data.map((a) => (
+                          <div key={a.id} className="flex items-center justify-between gap-2">
+                            <span>
+                              {a.applicantStudent?.firstName} {a.applicantStudent?.lastName}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Badge variant={applicationBadgeVariant(a.status)}>{a.status}</Badge>
+                              {!["REJECTED", "ACCEPTED", "WITHDRAWN"].includes(a.status) ? (
+                                <>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-6"
+                                    onClick={() =>
+                                      submitAction(() => api.updateApplicationStatus(a.id, { status: "SHORTLISTED" }), () => applications.mutate())
+                                    }
+                                  >
+                                    Shortlist
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-6"
+                                    onClick={() =>
+                                      submitAction(() => api.updateApplicationStatus(a.id, { status: "ACCEPTED" }), () => applications.mutate())
+                                    }
+                                  >
+                                    Accept
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-6"
+                                    onClick={() =>
+                                      submitAction(() => api.updateApplicationStatus(a.id, { status: "REJECTED" }), () => applications.mutate())
+                                    }
+                                  >
+                                    Reject
+                                  </Button>
+                                </>
+                              ) : null}
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+          <Separator />
+          <form
+            className="flex flex-wrap items-end gap-3"
+            onSubmit={(e: FormEvent) => {
+              e.preventDefault();
+              submitAction(
+                () =>
+                  api.createCareerOpportunity({
+                    companyId: opportunityForm.companyId,
+                    title: opportunityForm.title,
+                    type: opportunityForm.type,
+                    description: opportunityForm.description,
+                    location: opportunityForm.location || undefined,
+                  }),
+                () => {
+                  setOpportunityForm({ companyId: "", title: "", type: "JOB", description: "", location: "" });
+                  opportunities.mutate();
+                },
+              );
+            }}
+          >
+            <NativeSelect
+              className="w-40"
+              placeholder="Company"
+              value={opportunityForm.companyId}
+              onChange={(v) => setOpportunityForm((f) => ({ ...f, companyId: v }))}
+              options={(companies.data ?? []).map((c) => ({ value: c.id, label: c.name }))}
+            />
+            <Input
+              className="w-40"
+              placeholder="Title"
+              value={opportunityForm.title}
+              onChange={(e) => setOpportunityForm((f) => ({ ...f, title: e.target.value }))}
+            />
+            <NativeSelect
+              className="w-32"
+              placeholder="Type"
+              value={opportunityForm.type}
+              onChange={(v) => setOpportunityForm((f) => ({ ...f, type: v as OpportunityType }))}
+              options={[
+                { value: "JOB", label: "Job" },
+                { value: "INTERNSHIP", label: "Internship" },
+              ]}
+            />
+            <Input
+              className="w-56"
+              placeholder="Description"
+              value={opportunityForm.description}
+              onChange={(e) => setOpportunityForm((f) => ({ ...f, description: e.target.value }))}
+            />
+            <Input
+              className="w-32"
+              placeholder="Location (optional)"
+              value={opportunityForm.location}
+              onChange={(e) => setOpportunityForm((f) => ({ ...f, location: e.target.value }))}
+            />
+            <Button
+              type="submit"
+              size="sm"
+              disabled={!opportunityForm.companyId || !opportunityForm.title || !opportunityForm.description}
+            >
+              Post opportunity
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Career services</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {!careerServices.data || careerServices.data.length === 0 ? (
+            <p className="text-muted-foreground text-sm">No career services yet.</p>
+          ) : (
+            <ul className="divide-y text-sm">
+              {careerServices.data.map((s) => (
+                <li key={s.id} className="flex items-center justify-between gap-2 py-2">
+                  <span>
+                    <span className="font-medium">{s.name}</span>
+                    {s.description ? <span className="text-muted-foreground"> — {s.description}</span> : null}
+                    {!s.isActive ? <Badge variant="secondary" className="ml-2">Inactive</Badge> : null}
+                  </span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => submitAction(() => api.updateCareerService(s.id, { isActive: !s.isActive }), () => careerServices.mutate())}
+                  >
+                    {s.isActive ? "Deactivate" : "Activate"}
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <Separator />
+          <form
+            className="flex flex-wrap items-end gap-3"
+            onSubmit={(e: FormEvent) => {
+              e.preventDefault();
+              submitAction(
+                () =>
+                  api.createCareerService({
+                    name: serviceForm.name,
+                    description: serviceForm.description || undefined,
+                    contactEmail: serviceForm.contactEmail || undefined,
+                  }),
+                () => {
+                  setServiceForm({ name: "", description: "", contactEmail: "" });
+                  careerServices.mutate();
+                },
+              );
+            }}
+          >
+            <Input
+              className="w-40"
+              placeholder="Service name"
+              value={serviceForm.name}
+              onChange={(e) => setServiceForm((f) => ({ ...f, name: e.target.value }))}
+            />
+            <Input
+              className="w-56"
+              placeholder="Description (optional)"
+              value={serviceForm.description}
+              onChange={(e) => setServiceForm((f) => ({ ...f, description: e.target.value }))}
+            />
+            <Input
+              className="w-48"
+              placeholder="Contact email (optional)"
+              value={serviceForm.contactEmail}
+              onChange={(e) => setServiceForm((f) => ({ ...f, contactEmail: e.target.value }))}
+            />
+            <Button type="submit" size="sm" disabled={!serviceForm.name}>
+              Add service
             </Button>
           </form>
         </CardContent>

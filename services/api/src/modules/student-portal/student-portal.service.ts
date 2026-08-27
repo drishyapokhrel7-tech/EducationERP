@@ -18,6 +18,9 @@ import { CreateCertificationDto } from "../alumni/dto/create-certification.dto";
 import { SubmitSurveyResponseDto } from "../alumni/dto/submit-survey-response.dto";
 import { RespondMentorshipDto } from "../alumni/dto/respond-mentorship.dto";
 import { CreateAchievementDto } from "../alumni/dto/create-achievement.dto";
+import { CreateOpportunityDto } from "../alumni/dto/create-opportunity.dto";
+import { CreateApplicationDto } from "../alumni/dto/create-application.dto";
+import { SetGraduateOutcomeDto } from "../alumni/dto/set-graduate-outcome.dto";
 
 /**
  * Self-service, not admin-facing — studentId is derived exclusively from
@@ -146,6 +149,45 @@ export class StudentPortalService {
   async addOwnAlumniAchievement(organizationId: string, userId: string, dto: CreateAchievementDto) {
     const student = await this.getOwnStudent(organizationId, userId);
     return this.alumni.addOwnAchievement(organizationId, student.id, dto);
+  }
+
+  // ── Career services self-service (Phase 8 slice 8c) ──────────────
+
+  // Alumni-submitted opportunity postings — needs an alumni profile
+  // (only an alumnus can post a job/internship on an employer's
+  // behalf), unlike browsing/applying below which any portal user
+  // (current student or alumnus) can do.
+  async createOwnCareerOpportunity(organizationId: string, userId: string, dto: CreateOpportunityDto) {
+    const student = await this.getOwnStudent(organizationId, userId);
+    return this.alumni.createOwnOpportunity(organizationId, student.id, dto);
+  }
+
+  async listApprovedCareerOpportunities(organizationId: string) {
+    return this.alumni.listApprovedOpportunities(organizationId);
+  }
+
+  async applyToCareerOpportunity(organizationId: string, userId: string, opportunityId: string, dto: CreateApplicationDto) {
+    const student = await this.getOwnStudent(organizationId, userId);
+    return this.alumni.applyToOpportunity(organizationId, student.id, opportunityId, dto);
+  }
+
+  async listOwnCareerApplications(organizationId: string, userId: string) {
+    const student = await this.getOwnStudent(organizationId, userId);
+    return this.alumni.listOwnApplications(organizationId, student.id);
+  }
+
+  async withdrawOwnCareerApplication(organizationId: string, userId: string, id: string) {
+    const student = await this.getOwnStudent(organizationId, userId);
+    return this.alumni.withdrawOwnApplication(organizationId, student.id, id);
+  }
+
+  async listActiveCareerServices(organizationId: string) {
+    return this.alumni.listActiveCareerServices(organizationId);
+  }
+
+  async setOwnGraduateOutcome(organizationId: string, userId: string, dto: SetGraduateOutcomeDto) {
+    const student = await this.getOwnStudent(organizationId, userId);
+    return this.alumni.setOwnGraduateOutcome(organizationId, student.id, dto);
   }
 
   // ── Finance self-service (slice 7a-2) ────────────────────────────────

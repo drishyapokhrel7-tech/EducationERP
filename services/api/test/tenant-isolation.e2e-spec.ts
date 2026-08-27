@@ -318,6 +318,17 @@ describe("Tenant isolation (e2e)", () => {
         // so it leads both; alumniMentorship references alumniProfile
         // and student (RESTRICT); alumniAchievement references
         // alumniProfile only.
+        // Career services (Phase 8 slice 8c) — careerApplication
+        // references careerOpportunity and student (RESTRICT), so it
+        // leads both; careerOpportunity references alumniCompany
+        // (RESTRICT, leads it) and alumniProfile (SET NULL, no
+        // ordering requirement); graduateOutcome references
+        // alumniProfile (RESTRICT, leads it); careerService only
+        // references organization.
+        "careerApplication",
+        "careerOpportunity",
+        "careerService",
+        "graduateOutcome",
         "alumniSurveyResponse",
         "alumniSurvey",
         "alumniMentorship",
@@ -9626,6 +9637,290 @@ describe("Tenant isolation (e2e)", () => {
         .post("/organizations/me/alumni-mentorship")
         .set(...auth(tokenB))
         .send({ mentorAlumniProfileId: mentorProfile.body.id, menteeStudentId: menteeStudent.body.id })
+        .expect(404);
+    }, 120000);
+  });
+
+  describe("Career services — opportunities, applications, services, graduate outcomes (Phase 8 slice 8c)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    it("runs an opportunity through admin-post/self-submit/review/close, applications through submit/review/withdraw, a career service catalog, graduate outcomes, and stays tenant-scoped", async () => {
+      const suffix = `CSVC${run}`;
+
+      // ── Set up a graduated alumnus (poster/mentor-style role reused
+      // as opportunity poster) and a company.
+      const alumnusStudent = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({ studentCode: `CSVC-ALUM-${suffix}`, firstName: "Poster", lastName: suffix, dateOfBirth: "1998-01-01" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .put(`/organizations/me/students/${alumnusStudent.body.id}/status`)
+        .set(...auth(tokenA))
+        .send({ status: "GRADUATED", reason: "Completed program", effectiveDate: "2022-06-01" })
+        .expect(200);
+      const alumnusProfile = await request(app.getHttpServer())
+        .post("/organizations/me/alumni-profiles")
+        .set(...auth(tokenA))
+        .send({ studentId: alumnusStudent.body.id, graduationYear: 2022 })
+        .expect(201);
+      const company = await request(app.getHttpServer())
+        .post("/organizations/me/alumni-companies")
+        .set(...auth(tokenA))
+        .send({ name: `Career Corp ${suffix}` })
+        .expect(201);
+
+      // ── Admin-posted opportunity is auto-APPROVED.
+      const adminOpportunity = await request(app.getHttpServer())
+        .post("/organizations/me/career-opportunities")
+        .set(...auth(tokenA))
+        .send({ companyId: company.body.id, title: "Software Engineer", type: "JOB", description: "Build things." })
+        .expect(201);
+      expect(adminOpportunity.body.status).toBe("APPROVED");
+
+      // ── Self-service: alumnus logs in, sees the approved opportunity,
+      // submits their own listing (starts PENDING, not visible yet).
+      const alumnusLogin = await request(app.getHttpServer())
+        .post(`/organizations/me/students/${alumnusStudent.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "PosterPortalPass123" })
+        .expect(201);
+      const alumnusSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: alumnusLogin.body.username, password: "PosterPortalPass123" })
+        .expect(201);
+
+      const approvedList = await request(app.getHttpServer())
+        .get("/organizations/me/portal/career-opportunities")
+        .set(...auth(alumnusSession.body.accessToken))
+        .expect(200);
+      expect(approvedList.body.some((o: { id: string }) => o.id === adminOpportunity.body.id)).toBe(true);
+
+      const selfSubmitted = await request(app.getHttpServer())
+        .post("/organizations/me/portal/career-opportunities")
+        .set(...auth(alumnusSession.body.accessToken))
+        .send({ companyId: company.body.id, title: "Internship", type: "INTERNSHIP", description: "Learn things." })
+        .expect(201);
+      expect(selfSubmitted.body.status).toBe("PENDING");
+
+      const approvedListAfter = await request(app.getHttpServer())
+        .get("/organizations/me/portal/career-opportunities")
+        .set(...auth(alumnusSession.body.accessToken))
+        .expect(200);
+      expect(approvedListAfter.body.some((o: { id: string }) => o.id === selfSubmitted.body.id)).toBe(false);
+
+      // ── Admin reviews the self-submitted opportunity.
+      const adminList = await request(app.getHttpServer())
+        .get("/organizations/me/career-opportunities")
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(adminList.body.some((o: { id: string }) => o.id === selfSubmitted.body.id)).toBe(true);
+
+      const reviewed = await request(app.getHttpServer())
+        .post(`/organizations/me/career-opportunities/${selfSubmitted.body.id}/review`)
+        .set(...auth(tokenA))
+        .send({ status: "APPROVED" })
+        .expect(201);
+      expect(reviewed.body.status).toBe("APPROVED");
+
+      // Reviewing an already-reviewed opportunity is rejected.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/career-opportunities/${selfSubmitted.body.id}/review`)
+        .set(...auth(tokenA))
+        .send({ status: "REJECTED" })
+        .expect(409);
+
+      // ── Applications: a plain (not necessarily graduated) student
+      // applies. Career services serves current students too.
+      const applicantStudent = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({ studentCode: `CSVC-APPLICANT-${suffix}`, firstName: "Applicant", lastName: suffix, dateOfBirth: "2005-01-01" })
+        .expect(201);
+      const applicantLogin = await request(app.getHttpServer())
+        .post(`/organizations/me/students/${applicantStudent.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "ApplicantPortalPass123" })
+        .expect(201);
+      const applicantSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: applicantLogin.body.username, password: "ApplicantPortalPass123" })
+        .expect(201);
+
+      // Can't apply to a PENDING opportunity — use a fresh one that
+      // hasn't been reviewed yet.
+      const pendingOpportunity = await request(app.getHttpServer())
+        .post("/organizations/me/portal/career-opportunities")
+        .set(...auth(alumnusSession.body.accessToken))
+        .send({ companyId: company.body.id, title: "Still pending", type: "JOB", description: "Not reviewed yet." })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/portal/career-opportunities/${pendingOpportunity.body.id}/apply`)
+        .set(...auth(applicantSession.body.accessToken))
+        .send({ coverNote: "Interested!" })
+        .expect(400);
+
+      const application = await request(app.getHttpServer())
+        .post(`/organizations/me/portal/career-opportunities/${adminOpportunity.body.id}/apply`)
+        .set(...auth(applicantSession.body.accessToken))
+        .send({ coverNote: "I'd love to join." })
+        .expect(201);
+      expect(application.body.status).toBe("SUBMITTED");
+
+      // Can't apply twice to the same opportunity.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/portal/career-opportunities/${adminOpportunity.body.id}/apply`)
+        .set(...auth(applicantSession.body.accessToken))
+        .send({})
+        .expect(409);
+
+      const ownApplications = await request(app.getHttpServer())
+        .get("/organizations/me/portal/career-applications")
+        .set(...auth(applicantSession.body.accessToken))
+        .expect(200);
+      expect(ownApplications.body).toHaveLength(1);
+
+      // Admin sees and reviews the application.
+      const opportunityApplications = await request(app.getHttpServer())
+        .get(`/organizations/me/career-opportunities/${adminOpportunity.body.id}/applications`)
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(opportunityApplications.body).toHaveLength(1);
+
+      const shortlisted = await request(app.getHttpServer())
+        .patch(`/organizations/me/career-applications/${application.body.id}`)
+        .set(...auth(tokenA))
+        .send({ status: "SHORTLISTED", reviewNotes: "Strong candidate" })
+        .expect(200);
+      expect(shortlisted.body.status).toBe("SHORTLISTED");
+
+      const accepted = await request(app.getHttpServer())
+        .patch(`/organizations/me/career-applications/${application.body.id}`)
+        .set(...auth(tokenA))
+        .send({ status: "ACCEPTED" })
+        .expect(200);
+      expect(accepted.body.status).toBe("ACCEPTED");
+
+      // Already final — rejected.
+      await request(app.getHttpServer())
+        .patch(`/organizations/me/career-applications/${application.body.id}`)
+        .set(...auth(tokenA))
+        .send({ status: "REJECTED" })
+        .expect(409);
+
+      // ── Withdraw, on a second application (the first is terminal).
+      const secondOpportunity = await request(app.getHttpServer())
+        .post("/organizations/me/career-opportunities")
+        .set(...auth(tokenA))
+        .send({ companyId: company.body.id, title: "Second role", type: "JOB", description: "Another one." })
+        .expect(201);
+      const secondApplication = await request(app.getHttpServer())
+        .post(`/organizations/me/portal/career-opportunities/${secondOpportunity.body.id}/apply`)
+        .set(...auth(applicantSession.body.accessToken))
+        .send({})
+        .expect(201);
+      const withdrawn = await request(app.getHttpServer())
+        .post(`/organizations/me/portal/career-applications/${secondApplication.body.id}/withdraw`)
+        .set(...auth(applicantSession.body.accessToken))
+        .expect(201);
+      expect(withdrawn.body.status).toBe("WITHDRAWN");
+      await request(app.getHttpServer())
+        .post(`/organizations/me/portal/career-applications/${secondApplication.body.id}/withdraw`)
+        .set(...auth(applicantSession.body.accessToken))
+        .expect(409);
+
+      // A different student can't withdraw someone else's application —
+      // IDOR guard, 404.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/portal/career-applications/${application.body.id}/withdraw`)
+        .set(...auth(alumnusSession.body.accessToken))
+        .expect(404);
+
+      // ── Closing an opportunity stops new applications but keeps it
+      // visible (self-service list includes APPROVED + CLOSED).
+      const closed = await request(app.getHttpServer())
+        .post(`/organizations/me/career-opportunities/${secondOpportunity.body.id}/close`)
+        .set(...auth(tokenA))
+        .expect(201);
+      expect(closed.body.status).toBe("CLOSED");
+      await request(app.getHttpServer())
+        .post(`/organizations/me/career-opportunities/${secondOpportunity.body.id}/close`)
+        .set(...auth(tokenA))
+        .expect(409);
+      const listAfterClose = await request(app.getHttpServer())
+        .get("/organizations/me/portal/career-opportunities")
+        .set(...auth(applicantSession.body.accessToken))
+        .expect(200);
+      expect(listAfterClose.body.some((o: { id: string }) => o.id === secondOpportunity.body.id)).toBe(true);
+
+      // ── Career services: simple admin catalog, self-service sees
+      // only active ones.
+      const service = await request(app.getHttpServer())
+        .post("/organizations/me/career-services")
+        .set(...auth(tokenA))
+        .send({ name: `Resume Review ${suffix}`, contactEmail: "careers@example.test" })
+        .expect(201);
+      const activeList = await request(app.getHttpServer())
+        .get("/organizations/me/portal/career-services")
+        .set(...auth(applicantSession.body.accessToken))
+        .expect(200);
+      expect(activeList.body.some((s: { id: string }) => s.id === service.body.id)).toBe(true);
+
+      await request(app.getHttpServer())
+        .patch(`/organizations/me/career-services/${service.body.id}`)
+        .set(...auth(tokenA))
+        .send({ isActive: false })
+        .expect(200);
+      const activeListAfter = await request(app.getHttpServer())
+        .get("/organizations/me/portal/career-services")
+        .set(...auth(applicantSession.body.accessToken))
+        .expect(200);
+      expect(activeListAfter.body.some((s: { id: string }) => s.id === service.body.id)).toBe(false);
+
+      // ── Graduate outcomes: admin sets, self-service updates (upsert,
+      // one row per alumnus).
+      const outcome = await request(app.getHttpServer())
+        .post(`/organizations/me/alumni-profiles/${alumnusProfile.body.id}/graduate-outcome`)
+        .set(...auth(tokenA))
+        .send({ employmentStatus: "EMPLOYED", employerOrInstitution: `Career Corp ${suffix}` })
+        .expect(201);
+      expect(outcome.body.employmentStatus).toBe("EMPLOYED");
+
+      const profileWithOutcome = await request(app.getHttpServer())
+        .get(`/organizations/me/alumni-profiles/${alumnusProfile.body.id}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(profileWithOutcome.body.graduateOutcome.employmentStatus).toBe("EMPLOYED");
+
+      const ownOutcome = await request(app.getHttpServer())
+        .patch("/organizations/me/portal/alumni-profile/graduate-outcome")
+        .set(...auth(alumnusSession.body.accessToken))
+        .send({ employmentStatus: "FURTHER_STUDY", employerOrInstitution: "Grad School" })
+        .expect(200);
+      expect(ownOutcome.body.employmentStatus).toBe("FURTHER_STUDY");
+      // Upsert, not a second row — the profile still shows exactly one.
+      const profileAfterOwnUpdate = await request(app.getHttpServer())
+        .get(`/organizations/me/alumni-profiles/${alumnusProfile.body.id}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(profileAfterOwnUpdate.body.graduateOutcome.employmentStatus).toBe("FURTHER_STUDY");
+      expect(profileAfterOwnUpdate.body.graduateOutcome.id).toBe(outcome.body.id);
+
+      // ── Cross-tenant isolation.
+      const orgBOpportunities = await request(app.getHttpServer())
+        .get("/organizations/me/career-opportunities")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(orgBOpportunities.body.some((o: { id: string }) => o.id === adminOpportunity.body.id)).toBe(false);
+      const orgBServices = await request(app.getHttpServer())
+        .get("/organizations/me/career-services")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(orgBServices.body.some((s: { id: string }) => s.id === service.body.id)).toBe(false);
+      await request(app.getHttpServer())
+        .post("/organizations/me/career-opportunities")
+        .set(...auth(tokenB))
+        .send({ companyId: company.body.id, title: "Cross-tenant", type: "JOB", description: "Should 404." })
         .expect(404);
     }, 120000);
   });

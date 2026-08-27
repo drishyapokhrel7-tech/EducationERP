@@ -22,9 +22,8 @@ has been:
 
 - **8a** — Alumni & Career core: profile, education, career history,
   companies, skills, certifications.
-- **8b** (this slice) — Alumni engagement: surveys, mentorship,
-  achievements.
-- **8c** (not started) — Career services: opportunities, applications,
+- **8b** — Alumni engagement: surveys, mentorship, achievements.
+- **8c** (this slice) — Career services: opportunities, applications,
   services, graduate outcomes.
 - **8d** (not started) — Analytics & Reports, cross-cutting over all of
   the above plus every prior phase.
@@ -363,10 +362,166 @@ pass below, both of which are unambiguous.
   by this slice — confirming it wasn't anything new-code-specific.
   Cleared immediately on a page reload.
 
-## Next step (as of slice 8b)
+## Slice 8c — Career services (opportunities, applications, services, graduate outcomes)
 
-Slice 8b done. Per this project's standing per-slice check-in rule,
-"go-ahead" authorized 8b specifically, not an indefinite push through
-8c/8d — the next slice (8c, Career services: opportunities/
-applications/services/graduate outcomes) needs its own fresh
-go-ahead.
+User said "go-ahead" to the slice 8b check-in, authorizing 8c. Four
+new tables closing out the plan's Alumni & Career ERD.
+
+### Schema
+
+New section in `schema.prisma`, all four tables RLS-protected
+normally:
+
+- `CareerOpportunity` — reuses `AlumniCompany` (`companyId`), same
+  "real catalog, mainly for aggregate reporting" reasoning as career
+  history — "which companies are hiring the most" becomes answerable.
+  `postedByAlumniProfileId` is nullable: an admin-posted opportunity
+  has no alumni poster and is `APPROVED` immediately (no self-review
+  needed); an alumnus-submitted one — the plan's own "approved
+  opportunities" phrasing for the Alumni role view implies exactly
+  this two-source, one-approval-gate model — starts `PENDING` and
+  needs an explicit admin approve/reject, same moderation-gate shape
+  as `AlumniSurvey`'s publish step but with an added self-submission
+  channel surveys don't have.
+- `CareerApplication` — applicant is a `Student`, not an
+  `AlumniProfile`: career services serves current students (job
+  placement) and alumni alike, and `Student` already covers both
+  regardless of graduation status, same "one identity, no parallel
+  model" reasoning as reusing the existing portal login for alumni
+  self-service throughout this domain. `@@unique([opportunityId,
+  applicantStudentId])` stops one applicant applying twice. Review
+  (`UNDER_REVIEW`/`SHORTLISTED`/`REJECTED`/`ACCEPTED`) is admin-only
+  even for an alumni-posted opportunity — giving the original poster
+  their own review authority over applicants is real added complexity
+  the plan doesn't call for, matching this project's standing "don't
+  build unrequested flexibility" precedent (mentorship stayed
+  alumni-to-student only, no alumni-to-alumni, for the same reason).
+  `WITHDRAWN` is the one self-service transition, from the
+  applicant's own side.
+- `CareerService` — a simple admin-configurable listing (resume
+  review, mock interviews, career counseling), no reservation/
+  scheduling system — matches this project's "defer a booking engine
+  until actually asked for" precedent (Class Sessions in Phase 3
+  avoided the same scope).
+- `GraduateOutcome` — deliberately distinct from `AlumniProfile.
+  currentOccupation`/`currentEmployer` (8a): those are an informal,
+  always-current self-reported bio field; this is the institution's
+  structured outcome record (the plan's own separate
+  `graduate_outcomes` ERD table, distinct from `alumni_surveys`/
+  `alumni_survey_responses` too — a generic JSON survey response isn't
+  queryable/reportable the way dedicated columns are, which is the
+  whole point of tracking this separately). One row per alumnus
+  (`@@unique`), a snapshot of latest known status (not a dated
+  history — no "outcomes over time" scope was asked for), editable
+  by an admin or the alumnus themselves via upsert. Feeds the plan's
+  separate Analytics & Reports slice (8d, "Alumni/graduate outcomes"
+  dashboards) — not aggregated here.
+
+Two migrations: `20260827135727_career_services_part3` +
+`20260827135812_career_services_part3_rls`.
+
+### Backend
+
+`AlumniService` gained opportunity methods (`createOpportunity`
+admin/auto-approved, `createOwnOpportunity` self-submitted/pending,
+`listOpportunities`/`listApprovedOpportunities`, `reviewOpportunity`,
+`closeOpportunity`), application methods (`applyToOpportunity`,
+`listApplicationsForOpportunity`, `updateApplicationStatus`,
+`listOwnApplications`, `withdrawOwnApplication`), career service
+methods (`createCareerService`/`listCareerServices`/
+`listActiveCareerServices`/`updateCareerService`), and graduate
+outcome methods (`setGraduateOutcome`, upsert-based). `AlumniController`
+exposes all of these under the existing `alumni` RBAC resource (no
+new resource needed, same fold-in precedent as every prior slice in
+this domain). `StudentPortalService`/`Controller` gained the matching
+self-service surface: `createOwnCareerOpportunity` (needs an alumni
+profile — only an alumnus can post on an employer's behalf),
+`listApprovedCareerOpportunities`/`applyToCareerOpportunity`/
+`listOwnCareerApplications`/`withdrawOwnCareerApplication` (none of
+these need an alumni profile — a current student can browse/apply/
+withdraw too), `listActiveCareerServices`, `setOwnGraduateOutcome`.
+
+`PROFILE_INCLUDE` extended with `graduateOutcome`; `AlumniProfileRecord`
+(api-client) extended to match.
+
+### Explicitly not in this slice
+
+- Analytics & Reports (8d) — the plan's separate cross-cutting slice
+  that will aggregate over `GraduateOutcome`, survey responses, etc.
+- Alumni-posted-opportunity applicant review authority for the
+  original poster — admin-only, see schema rationale above.
+- A booking/scheduling system for `CareerService` — a simple listing
+  with contact info, same scope line as Class Sessions.
+- Dated history for `GraduateOutcome` — one current snapshot per
+  alumnus, not "outcomes over time."
+
+## Verified
+
+- `pnpm -r typecheck`/`lint`/`build` clean across all six packages
+  (the same pre-existing, unrelated `sso/page.tsx` lint failure from
+  every prior slice, still untouched, still flagged separately).
+- Continued the slice-8b-established diagnostic discipline: before
+  running the actual jest suite, a standalone script exercised every
+  new Prisma operation directly (opportunity create/self-submit/
+  review, application create/review/status-update, career service
+  create, graduate outcome upsert-create/upsert-update, full cleanup)
+  — every operation succeeded correctly and quickly (`ALL DONE`),
+  confirming correctness at the DB layer before the slower harness
+  even started.
+- `services/api` e2e: one new comprehensive test (Career services) —
+  admin-posted opportunity auto-`APPROVED`; self-submitted one starts
+  `PENDING` and isn't visible in the self-service list until reviewed;
+  reviewing an already-reviewed opportunity rejected (409); a plain
+  (non-graduated) student applies, confirming career services serves
+  current students too; applying to a still-`PENDING` opportunity
+  rejected (400); applying twice rejected (409); admin reviews an
+  application through `SHORTLISTED`→`ACCEPTED`, a further status
+  change on a final-status application rejected (409); a separate
+  application is withdrawn by its own applicant (self-service),
+  withdrawing twice rejected (409), a different alumnus withdrawing
+  someone else's application rejected as a 404 (IDOR guard); closing
+  an opportunity stops it accepting new state changes but keeps it
+  visible in the self-service list (`APPROVED`+`CLOSED` both shown);
+  a career service is created, visible to self-service while active,
+  hidden once deactivated; a graduate outcome is admin-set, then
+  self-service-updated via upsert (confirmed exactly one row, same
+  `id`, not a duplicate); cross-tenant isolation throughout. **Passed
+  clean on this run** (`-t "Career services"`, 79 total/78 skipped/1
+  passed, 46.4s for the new test) — this slice's jest harness behaved
+  normally, unlike 8b's session-wide Neon instability.
+- Full browser pass, as the demo admin and as the demo alumnus (Rohan
+  Thapa): posted a real "Frontend Engineer" opportunity through the
+  admin UI (confirmed auto-`APPROVED`, `postedByAlumniProfileId:
+  null` via the real network response), added a "Resume Review"
+  career service. Logged in as Rohan: confirmed the self-service page
+  correctly listed the approved opportunity with an apply form and a
+  "submit your own listing" form (present specifically because he has
+  an alumni profile), applied to it with a cover note (`201`),
+  submitted his own listing ("Referral: Backend Intern", confirmed
+  `PENDING` with his own `postedByAlumniProfileId` via the real
+  response), confirmed "My applications" and "Career services"
+  render correctly. Back as admin: confirmed the self-submitted
+  listing appeared with "submitted by Rohan Thapa" attribution and
+  Approve/Reject controls, approved it, opened the Frontend Engineer
+  role's applications view and confirmed Rohan's application appeared
+  with Shortlist/Accept/Reject controls, shortlisted it and confirmed
+  the real response showed `SHORTLISTED` with the original cover note
+  preserved. Set a graduate outcome for Rohan through the admin
+  "Manage" panel's new Graduate outcome sub-section, confirmed via the
+  real `201 Created` response. Two stale-render timing artifacts hit
+  during this pass (a "No mentorship requests yet" and a "No surveys
+  right now" moment) — both confirmed, via the actual network
+  response, to be a UI-render-before-refetch timing gap, not a real
+  bug, matching this project's long-established "check the actual API
+  response before treating a UI-visual gap as a bug" lesson. All
+  demo/test data left in place per this project's standing "don't
+  clean up test/demo data" instruction.
+
+## Next step (as of slice 8c)
+
+Slice 8c done — this closes out the plan's entire Alumni & Career ERD
+(all 14 tables now shipped across 8a/8b/8c). Per this project's
+standing per-slice check-in rule, "go-ahead" authorized 8c
+specifically, not an indefinite push through 8d — the next slice
+(8d, Analytics & Reports, cross-cutting over Alumni & Career and
+every prior phase) needs its own fresh go-ahead.
