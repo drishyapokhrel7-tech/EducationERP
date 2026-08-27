@@ -3064,4 +3064,103 @@ export interface AlumniProfileRecord {
   careerHistory: AlumniCareerHistoryRecord[];
   skills: AlumniSkillRecord[];
   certifications: AlumniCertificationRecord[];
+  achievements: AlumniAchievementRecord[];
+}
+
+// ── Phase 8 slice 8b — Alumni engagement ──────────────────────────
+
+export type SurveyQuestionType = "TEXT" | "RATING" | "SINGLE_CHOICE";
+
+export interface SurveyQuestion {
+  id: string;
+  text: string;
+  type: SurveyQuestionType;
+  options?: string[];
+}
+
+export type AlumniSurveyStatus = "DRAFT" | "PUBLISHED" | "CLOSED";
+
+export interface AlumniSurveyRecord {
+  id: string;
+  organizationId: string;
+  title: string;
+  description: string | null;
+  questions: SurveyQuestion[];
+  status: AlumniSurveyStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateAlumniSurveyInput {
+  title: string;
+  description?: string;
+  questions: SurveyQuestion[];
+}
+
+export interface UpdateAlumniSurveyInput {
+  title?: string;
+  description?: string;
+  questions?: SurveyQuestion[];
+}
+
+export interface SurveyAnswer {
+  questionId: string;
+  value: string;
+}
+
+export interface SubmitAlumniSurveyResponseInput {
+  answers: SurveyAnswer[];
+}
+
+export interface AlumniSurveyResponseRecord {
+  id: string;
+  organizationId: string;
+  surveyId: string;
+  alumniProfileId: string;
+  answers: SurveyAnswer[];
+  submittedAt: string;
+  alumniProfile?: AlumniProfileRecord;
+}
+
+export type MentorshipStatus = "REQUESTED" | "ACTIVE" | "DECLINED" | "COMPLETED";
+
+export interface AlumniMentorshipRecord {
+  id: string;
+  organizationId: string;
+  mentorAlumniProfileId: string;
+  menteeStudentId: string;
+  topic: string | null;
+  status: MentorshipStatus;
+  notes: string | null;
+  requestedAt: string;
+  respondedAt: string | null;
+  completedAt: string | null;
+  mentorAlumniProfile?: AlumniProfileRecord;
+  menteeStudent?: Student;
+}
+
+export interface CreateAlumniMentorshipInput {
+  mentorAlumniProfileId: string;
+  menteeStudentId: string;
+  topic?: string;
+}
+
+export interface RespondAlumniMentorshipInput {
+  status: "ACTIVE" | "DECLINED";
+}
+
+export interface AlumniAchievementRecord {
+  id: string;
+  organizationId: string;
+  alumniProfileId: string;
+  title: string;
+  description: string | null;
+  achievedAt: string | null;
+  createdAt: string;
+}
+
+export interface CreateAlumniAchievementInput {
+  title: string;
+  description?: string;
+  achievedAt?: string;
 }

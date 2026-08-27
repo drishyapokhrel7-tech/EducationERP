@@ -117,41 +117,45 @@ model Organization {
   courseModuleItems           CourseModuleItem[]
   courseModuleItemCompletions CourseModuleItemCompletion[]
   announcements               Announcement[]
-  discussionTopics             DiscussionTopic[]
-  discussionPosts              DiscussionPost[]
-  notifications                Notification[]
-  hostels                       Hostel[]
-  hostelBuildings                HostelBuilding[]
-  hostelRooms                    HostelRoom[]
-  hostelBeds                     HostelBed[]
-  hostelAllocations               HostelAllocation[]
-  hostelAttendance                HostelAttendance[]
-  hostelVisitors                  HostelVisitor[]
-  hostelComplaints                HostelComplaint[]
-  hostelMaintenanceRequests        HostelMaintenanceRequest[]
-  hostelLookups                    HostelLookup[]
-  inventoryCategories               InventoryCategory[]
-  suppliers                         Supplier[]
-  inventoryItems                    InventoryItem[]
-  purchaseOrders                    PurchaseOrder[]
-  purchaseOrderItems                PurchaseOrderItem[]
-  stockMovements                    StockMovement[]
-  assets                            Asset[]
-  assetAssignments                  AssetAssignment[]
-  messageTemplates                  MessageTemplate[]
-  messages                          Message[]
-  emailLogs                         EmailLog[]
-  smsLogs                           SmsLog[]
-  pushNotificationLogs              PushNotificationLog[]
-  studentDocuments                   StudentDocument[]
-  staffDocuments                     StaffDocument[]
-  certificates                       Certificate[]
-  alumniProfiles                     AlumniProfile[]
-  alumniEducation                    AlumniEducation[]
-  alumniCompanies                    AlumniCompany[]
-  alumniCareerHistory                AlumniCareerHistory[]
-  alumniSkills                       AlumniSkill[]
-  alumniCertifications               AlumniCertification[]
+  discussionTopics            DiscussionTopic[]
+  discussionPosts             DiscussionPost[]
+  notifications               Notification[]
+  hostels                     Hostel[]
+  hostelBuildings             HostelBuilding[]
+  hostelRooms                 HostelRoom[]
+  hostelBeds                  HostelBed[]
+  hostelAllocations           HostelAllocation[]
+  hostelAttendance            HostelAttendance[]
+  hostelVisitors              HostelVisitor[]
+  hostelComplaints            HostelComplaint[]
+  hostelMaintenanceRequests   HostelMaintenanceRequest[]
+  hostelLookups               HostelLookup[]
+  inventoryCategories         InventoryCategory[]
+  suppliers                   Supplier[]
+  inventoryItems              InventoryItem[]
+  purchaseOrders              PurchaseOrder[]
+  purchaseOrderItems          PurchaseOrderItem[]
+  stockMovements              StockMovement[]
+  assets                      Asset[]
+  assetAssignments            AssetAssignment[]
+  messageTemplates            MessageTemplate[]
+  messages                    Message[]
+  emailLogs                   EmailLog[]
+  smsLogs                     SmsLog[]
+  pushNotificationLogs        PushNotificationLog[]
+  studentDocuments            StudentDocument[]
+  staffDocuments              StaffDocument[]
+  certificates                Certificate[]
+  alumniProfiles              AlumniProfile[]
+  alumniEducation             AlumniEducation[]
+  alumniCompanies             AlumniCompany[]
+  alumniCareerHistory         AlumniCareerHistory[]
+  alumniSkills                AlumniSkill[]
+  alumniCertifications        AlumniCertification[]
+  alumniSurveys               AlumniSurvey[]
+  alumniSurveyResponses       AlumniSurveyResponse[]
+  alumniMentorships           AlumniMentorship[]
+  alumniAchievements          AlumniAchievement[]
 
   @@map("organizations")
 }
@@ -790,6 +794,7 @@ model Student {
   documents                   StudentDocument[]
   certificates                Certificate[]
   alumniProfile               AlumniProfile?
+  alumniMentorships           AlumniMentorship[]
 
   @@unique([organizationId, studentCode])
   @@index([organizationId])
@@ -1020,17 +1025,17 @@ model TeachingAssignment {
   termId         String
   createdAt      DateTime @default(now())
 
-  organization    Organization     @relation(fields: [organizationId], references: [id])
-  employee        Employee         @relation(fields: [employeeId], references: [id])
-  subject         Subject          @relation(fields: [subjectId], references: [id])
-  section         Section          @relation(fields: [sectionId], references: [id])
-  term            Term             @relation(fields: [termId], references: [id])
-  classSchedules  ClassSchedule[]
-  lessonPlans     LessonPlan[]
-  assignments     Assignment[]
-  knowledgeChecks KnowledgeCheck[]
-  courseModules   CourseModule[]
-  announcements   Announcement[]
+  organization     Organization      @relation(fields: [organizationId], references: [id])
+  employee         Employee          @relation(fields: [employeeId], references: [id])
+  subject          Subject           @relation(fields: [subjectId], references: [id])
+  section          Section           @relation(fields: [sectionId], references: [id])
+  term             Term              @relation(fields: [termId], references: [id])
+  classSchedules   ClassSchedule[]
+  lessonPlans      LessonPlan[]
+  assignments      Assignment[]
+  knowledgeChecks  KnowledgeCheck[]
+  courseModules    CourseModule[]
+  announcements    Announcement[]
   discussionTopics DiscussionTopic[]
 
   // One teacher per subject+section+term — re-assigning means changing
@@ -1728,7 +1733,7 @@ model KnowledgeCheckQuestion {
 }
 
 model KnowledgeCheckAttempt {
-  id               String   @id @default(uuid())
+  id               String    @id @default(uuid())
   organizationId   String
   knowledgeCheckId String
   studentId        String
@@ -2939,10 +2944,10 @@ model DiscussionPost {
   // of an untyped personId+personType pair" pattern as
   // FaceEnrollment.studentId/staffId; the XOR is enforced at the
   // service layer, not a DB constraint.
-  authorStudentId  String?
-  authorEmployeeId String?
-  body             String
-  createdAt        DateTime @default(now())
+  authorStudentId   String?
+  authorEmployeeId  String?
+  body              String
+  createdAt         DateTime @default(now())
 
   organization    Organization    @relation(fields: [organizationId], references: [id])
   discussionTopic DiscussionTopic @relation(fields: [discussionTopicId], references: [id])
@@ -3014,7 +3019,7 @@ model Hostel {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization      @relation(fields: [organizationId], references: [id])
+  organization Organization     @relation(fields: [organizationId], references: [id])
   buildings    HostelBuilding[]
 
   @@unique([organizationId, code])
@@ -3031,8 +3036,8 @@ model HostelBuilding {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization  @relation(fields: [organizationId], references: [id])
-  hostel       Hostel        @relation(fields: [hostelId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id])
+  hostel       Hostel       @relation(fields: [hostelId], references: [id])
   rooms        HostelRoom[]
 
   @@unique([hostelId, code])
@@ -3052,9 +3057,9 @@ model HostelRoom {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization  @relation(fields: [organizationId], references: [id])
-  building     HostelBuilding @relation(fields: [buildingId], references: [id])
-  beds         HostelBed[]
+  organization        Organization               @relation(fields: [organizationId], references: [id])
+  building            HostelBuilding             @relation(fields: [buildingId], references: [id])
+  beds                HostelBed[]
   maintenanceRequests HostelMaintenanceRequest[]
 
   @@unique([buildingId, roomNumber])
@@ -3096,9 +3101,9 @@ model HostelAllocation {
   bedId               String   @unique
   allocatedAt         DateTime @default(now())
 
-  organization      Organization      @relation(fields: [organizationId], references: [id])
-  studentEnrollment StudentEnrollment @relation(fields: [studentEnrollmentId], references: [id])
-  bed               HostelBed         @relation(fields: [bedId], references: [id])
+  organization      Organization       @relation(fields: [organizationId], references: [id])
+  studentEnrollment StudentEnrollment  @relation(fields: [studentEnrollmentId], references: [id])
+  bed               HostelBed          @relation(fields: [bedId], references: [id])
   attendance        HostelAttendance[]
   visitors          HostelVisitor[]
   complaints        HostelComplaint[]
@@ -3284,8 +3289,8 @@ model Supplier {
   address        String?
   createdAt      DateTime @default(now())
 
-  organization    Organization     @relation(fields: [organizationId], references: [id])
-  purchaseOrders  PurchaseOrder[]
+  organization   Organization    @relation(fields: [organizationId], references: [id])
+  purchaseOrders PurchaseOrder[]
 
   @@index([organizationId])
   @@map("suppliers")
@@ -3303,10 +3308,10 @@ model InventoryItem {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization       Organization         @relation(fields: [organizationId], references: [id])
-  category           InventoryCategory    @relation(fields: [categoryId], references: [id])
-  stockMovements      StockMovement[]
-  purchaseOrderItems  PurchaseOrderItem[]
+  organization       Organization        @relation(fields: [organizationId], references: [id])
+  category           InventoryCategory   @relation(fields: [categoryId], references: [id])
+  stockMovements     StockMovement[]
+  purchaseOrderItems PurchaseOrderItem[]
 
   @@unique([organizationId, sku])
   @@index([organizationId])
@@ -3330,23 +3335,23 @@ model PurchaseOrder {
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
 
-  organization    Organization        @relation(fields: [organizationId], references: [id])
-  supplier        Supplier            @relation(fields: [supplierId], references: [id])
-  items           PurchaseOrderItem[]
-  stockMovements  StockMovement[]
+  organization   Organization        @relation(fields: [organizationId], references: [id])
+  supplier       Supplier            @relation(fields: [supplierId], references: [id])
+  items          PurchaseOrderItem[]
+  stockMovements StockMovement[]
 
   @@index([organizationId])
   @@map("purchase_orders")
 }
 
 model PurchaseOrderItem {
-  id                String   @id @default(uuid())
-  organizationId    String
-  purchaseOrderId   String
-  itemId            String
-  quantityOrdered   Int
-  quantityReceived  Int      @default(0)
-  unitPrice         Decimal  @db.Decimal(12, 2)
+  id               String  @id @default(uuid())
+  organizationId   String
+  purchaseOrderId  String
+  itemId           String
+  quantityOrdered  Int
+  quantityReceived Int     @default(0)
+  unitPrice        Decimal @db.Decimal(12, 2)
 
   organization  Organization  @relation(fields: [organizationId], references: [id])
   purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
@@ -3409,13 +3414,13 @@ model Asset {
 }
 
 model AssetAssignment {
-  id                    String    @id @default(uuid())
-  organizationId        String
-  assetId               String
-  assignedToEmployeeId  String
-  assignedAt            DateTime  @default(now())
-  returnedAt            DateTime?
-  notes                 String?
+  id                   String    @id @default(uuid())
+  organizationId       String
+  assetId              String
+  assignedToEmployeeId String
+  assignedAt           DateTime  @default(now())
+  returnedAt           DateTime?
+  notes                String?
 
   organization       Organization @relation(fields: [organizationId], references: [id])
   asset              Asset        @relation(fields: [assetId], references: [id])
@@ -3496,24 +3501,24 @@ model MessageTemplate {
 }
 
 model Message {
-  id               String           @id @default(uuid())
-  organizationId   String
-  createdByUserId  String
-  templateId       String?
-  channel          MessageChannel
-  audience         MessageAudience
+  id              String          @id @default(uuid())
+  organizationId  String
+  createdByUserId String
+  templateId      String?
+  channel         MessageChannel
+  audience        MessageAudience
   // Only meaningful (and required) when audience = SPECIFIC_USER.
-  recipientUserId  String?
-  subject          String?
-  body             String
-  status           MessageStatus    @default(DRAFT)
-  sentAt           DateTime?
-  createdAt        DateTime         @default(now())
+  recipientUserId String?
+  subject         String?
+  body            String
+  status          MessageStatus   @default(DRAFT)
+  sentAt          DateTime?
+  createdAt       DateTime        @default(now())
 
-  organization  Organization      @relation(fields: [organizationId], references: [id])
-  createdBy     User              @relation("MessagesCreated", fields: [createdByUserId], references: [id])
-  template      MessageTemplate?  @relation(fields: [templateId], references: [id])
-  recipientUser User?             @relation("MessagesToSpecificUser", fields: [recipientUserId], references: [id])
+  organization  Organization          @relation(fields: [organizationId], references: [id])
+  createdBy     User                  @relation("MessagesCreated", fields: [createdByUserId], references: [id])
+  template      MessageTemplate?      @relation(fields: [templateId], references: [id])
+  recipientUser User?                 @relation("MessagesToSpecificUser", fields: [recipientUserId], references: [id])
   emailLogs     EmailLog[]
   smsLogs       SmsLog[]
   pushLogs      PushNotificationLog[]
@@ -3528,14 +3533,14 @@ enum DeliveryStatus {
 }
 
 model EmailLog {
-  id             String         @id @default(uuid())
-  organizationId String
-  messageId      String
-  recipientEmail String
-  recipientName  String?
-  status         DeliveryStatus
+  id               String         @id @default(uuid())
+  organizationId   String
+  messageId        String
+  recipientEmail   String
+  recipientName    String?
+  status           DeliveryStatus
   providerResponse String?
-  sentAt         DateTime       @default(now())
+  sentAt           DateTime       @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id])
   message      Message      @relation(fields: [messageId], references: [id])
@@ -3546,14 +3551,14 @@ model EmailLog {
 }
 
 model SmsLog {
-  id             String         @id @default(uuid())
-  organizationId String
-  messageId      String
-  recipientPhone String
-  recipientName  String?
-  status         DeliveryStatus
+  id               String         @id @default(uuid())
+  organizationId   String
+  messageId        String
+  recipientPhone   String
+  recipientName    String?
+  status           DeliveryStatus
   providerResponse String?
-  sentAt         DateTime       @default(now())
+  sentAt           DateTime       @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id])
   message      Message      @relation(fields: [messageId], references: [id])
@@ -3564,13 +3569,13 @@ model SmsLog {
 }
 
 model PushNotificationLog {
-  id             String         @id @default(uuid())
-  organizationId String
-  messageId      String
-  recipientUserId String
-  status         DeliveryStatus
+  id               String         @id @default(uuid())
+  organizationId   String
+  messageId        String
+  recipientUserId  String
+  status           DeliveryStatus
   providerResponse String?
-  sentAt         DateTime       @default(now())
+  sentAt           DateTime       @default(now())
 
   organization  Organization @relation(fields: [organizationId], references: [id])
   message       Message      @relation(fields: [messageId], references: [id])
@@ -3690,11 +3695,12 @@ model Certificate {
 // alumni_surveys, alumni_survey_responses, alumni_mentorship,
 // career_opportunities, career_applications, alumni_achievements,
 // career_services, graduate_outcomes. Split the same way every other
-// large Phase 2-7 domain was: this slice (8a) ships the core identity
-// layer — the profile itself plus post-graduation education/career/
-// company/skill/certification records — everything else (surveys,
-// mentorship, achievements = 8b; career_opportunities/applications/
-// services/graduate_outcomes = 8c) needs its own go-ahead.
+// large Phase 2-7 domain was: 8a shipped the core identity layer —
+// the profile itself plus post-graduation education/career/company/
+// skill/certification records. 8b (this slice) adds engagement:
+// surveys, mentorship, achievements. career_opportunities/
+// applications/services/graduate_outcomes (8c) still need their own
+// go-ahead.
 //
 // An alumnus is a graduated Student (StudentStatus.GRADUATED already
 // exists, set via the existing PATCH students/:id/status), converted
@@ -3707,25 +3713,28 @@ model Certificate {
 // it to manage their own alumni profile once one exists for them.
 
 model AlumniProfile {
-  id               String    @id @default(uuid())
-  organizationId   String
-  studentId        String    @unique
-  graduationYear   Int
+  id                String   @id @default(uuid())
+  organizationId    String
+  studentId         String   @unique
+  graduationYear    Int
   currentOccupation String?
-  currentEmployer  String?
-  currentLocation  String?
-  bio              String?
-  linkedinUrl      String?
+  currentEmployer   String?
+  currentLocation   String?
+  bio               String?
+  linkedinUrl       String?
   isPubliclyVisible Boolean  @default(false)
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  organization  Organization         @relation(fields: [organizationId], references: [id])
-  student       Student              @relation(fields: [studentId], references: [id])
-  education     AlumniEducation[]
-  careerHistory AlumniCareerHistory[]
-  skills        AlumniSkill[]
-  certifications AlumniCertification[]
+  organization    Organization           @relation(fields: [organizationId], references: [id])
+  student         Student                @relation(fields: [studentId], references: [id])
+  education       AlumniEducation[]
+  careerHistory   AlumniCareerHistory[]
+  skills          AlumniSkill[]
+  certifications  AlumniCertification[]
+  surveyResponses AlumniSurveyResponse[]
+  mentorships     AlumniMentorship[]
+  achievements    AlumniAchievement[]
 
   @@index([organizationId])
   @@map("alumni_profiles")
@@ -3814,15 +3823,15 @@ model AlumniSkill {
 }
 
 model AlumniCertification {
-  id                 String    @id @default(uuid())
-  organizationId     String
-  alumniProfileId    String
-  name               String
+  id                  String    @id @default(uuid())
+  organizationId      String
+  alumniProfileId     String
+  name                String
   issuingOrganization String?
-  issuedDate         DateTime?
-  expiryDate         DateTime?
-  credentialUrl      String?
-  createdAt          DateTime  @default(now())
+  issuedDate          DateTime?
+  expiryDate          DateTime?
+  credentialUrl       String?
+  createdAt           DateTime  @default(now())
 
   organization  Organization  @relation(fields: [organizationId], references: [id])
   alumniProfile AlumniProfile @relation(fields: [alumniProfileId], references: [id])
@@ -3830,4 +3839,124 @@ model AlumniCertification {
   @@index([organizationId])
   @@index([alumniProfileId])
   @@map("alumni_certifications")
+}
+
+// ── Phase 8 slice 8b — Alumni engagement (surveys, mentorship,
+// achievements) ──────────────────────────────────────────────────
+
+enum AlumniSurveyStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+}
+
+// Questions collapsed into one JSON array on the survey itself,
+// same reasoning as KnowledgeCheckQuestion.options/SyllabusNode
+// elsewhere in this project — a survey's question set has no need
+// for independent identity or its own relations, so a separate
+// Question table would be unused structure. Each element:
+// { id: string, text: string, type: "TEXT"|"RATING"|"SINGLE_CHOICE",
+// options?: string[] } (options only for SINGLE_CHOICE). Publishing
+// locks the question set (mirrors KnowledgeCheck's publish-locks-
+// questions precedent) — editing questions after PUBLISHED is 400.
+model AlumniSurvey {
+  id             String             @id @default(uuid())
+  organizationId String
+  title          String
+  description    String?
+  questions      Json
+  status         AlumniSurveyStatus @default(DRAFT)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  organization Organization           @relation(fields: [organizationId], references: [id])
+  responses    AlumniSurveyResponse[]
+
+  @@index([organizationId])
+  @@map("alumni_surveys")
+}
+
+// One response per alumnus per survey (@@unique below) — a survey
+// is answered once, not resubmitted, matching KnowledgeCheckAttempt's
+// one-attempt precedent rather than Assignment's resubmission model
+// (a feedback survey has no "resubmission allowed" concept in the
+// plan). answers: [{ questionId: string, value: string | number }].
+// Only accepted while the parent survey is PUBLISHED.
+model AlumniSurveyResponse {
+  id              String   @id @default(uuid())
+  organizationId  String
+  surveyId        String
+  alumniProfileId String
+  answers         Json
+  submittedAt     DateTime @default(now())
+
+  organization  Organization  @relation(fields: [organizationId], references: [id])
+  survey        AlumniSurvey  @relation(fields: [surveyId], references: [id])
+  alumniProfile AlumniProfile @relation(fields: [alumniProfileId], references: [id])
+
+  @@unique([surveyId, alumniProfileId])
+  @@index([organizationId])
+  @@map("alumni_survey_responses")
+}
+
+enum MentorshipStatus {
+  REQUESTED
+  ACTIVE
+  DECLINED
+  COMPLETED
+}
+
+// Alumni mentoring current students — the standard "give back to
+// current students" shape of alumni mentorship (distinct from
+// alumni-mentoring-alumni, which the plan never specifies and this
+// project has no existing precedent for). An admin creates the
+// pairing (mirrors HostelAllocation/StudentTransportAssignment —
+// admin-brokered, not self-service-initiated, since there's no
+// alumni directory/browse feature in this slice's scope for a
+// student to discover a mentor on their own); the mentor then
+// accepts/declines via their own portal (REQUESTED→ACTIVE/DECLINED,
+// 409 on an invalid transition — same explicit-transition precedent
+// as LeaveRequest/Payroll), and either side can mark ACTIVE→
+// COMPLETED once the engagement is done.
+model AlumniMentorship {
+  id                    String           @id @default(uuid())
+  organizationId        String
+  mentorAlumniProfileId String
+  menteeStudentId       String
+  topic                 String?
+  status                MentorshipStatus @default(REQUESTED)
+  notes                 String?
+  requestedAt           DateTime         @default(now())
+  respondedAt           DateTime?
+  completedAt           DateTime?
+
+  organization        Organization  @relation(fields: [organizationId], references: [id])
+  mentorAlumniProfile AlumniProfile @relation(fields: [mentorAlumniProfileId], references: [id])
+  menteeStudent       Student       @relation(fields: [menteeStudentId], references: [id])
+
+  @@index([organizationId])
+  @@index([mentorAlumniProfileId])
+  @@index([menteeStudentId])
+  @@map("alumni_mentorship")
+}
+
+// Both admin- and self-addable (same pattern as
+// AlumniEducation/AlumniSkill/AlumniCertification) — an institution
+// might record an honor it grants ("Distinguished Alumnus Award"),
+// and an alumnus might record their own accomplishment.
+model AlumniAchievement {
+  id              String    @id @default(uuid())
+  organizationId  String
+  alumniProfileId String
+  title           String
+  description     String?
+  achievedAt      DateTime?
+  createdAt       DateTime  @default(now())
+
+  organization  Organization  @relation(fields: [organizationId], references: [id])
+  alumniProfile AlumniProfile @relation(fields: [alumniProfileId], references: [id])
+
+  @@index([organizationId])
+  @@index([alumniProfileId])
+  @@map("alumni_achievements")
 }

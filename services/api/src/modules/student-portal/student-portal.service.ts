@@ -15,6 +15,9 @@ import { CreateEducationDto } from "../alumni/dto/create-education.dto";
 import { CreateCareerHistoryDto } from "../alumni/dto/create-career-history.dto";
 import { CreateSkillDto } from "../alumni/dto/create-skill.dto";
 import { CreateCertificationDto } from "../alumni/dto/create-certification.dto";
+import { SubmitSurveyResponseDto } from "../alumni/dto/submit-survey-response.dto";
+import { RespondMentorshipDto } from "../alumni/dto/respond-mentorship.dto";
+import { CreateAchievementDto } from "../alumni/dto/create-achievement.dto";
 
 /**
  * Self-service, not admin-facing — studentId is derived exclusively from
@@ -101,6 +104,48 @@ export class StudentPortalService {
   // it's reached from the admin dashboard, not this portal.
   async listAlumniCompanies(organizationId: string) {
     return this.alumni.listCompanies(organizationId);
+  }
+
+  // ── Alumni engagement self-service (Phase 8 slice 8b) ────────────
+
+  // Same reasoning as listAlumniCompanies — a survey catalog is
+  // read-only, org-wide data any logged-in portal user may see (only
+  // PUBLISHED/CLOSED ones; a DRAFT question set stays admin-only).
+  async listPublishedAlumniSurveys(organizationId: string) {
+    return this.alumni.listPublishedSurveys(organizationId);
+  }
+
+  async submitOwnAlumniSurveyResponse(organizationId: string, userId: string, surveyId: string, dto: SubmitSurveyResponseDto) {
+    const student = await this.getOwnStudent(organizationId, userId);
+    return this.alumni.submitOwnSurveyResponse(organizationId, student.id, surveyId, dto);
+  }
+
+  // As mentor (the caller is the alumnus giving mentorship).
+  async listOwnMentorshipsAsMentor(organizationId: string, userId: string) {
+    const student = await this.getOwnStudent(organizationId, userId);
+    return this.alumni.listOwnMentorshipsAsMentor(organizationId, student.id);
+  }
+
+  async respondOwnMentorship(organizationId: string, userId: string, id: string, dto: RespondMentorshipDto) {
+    const student = await this.getOwnStudent(organizationId, userId);
+    return this.alumni.respondOwnMentorship(organizationId, student.id, id, dto);
+  }
+
+  async completeOwnMentorship(organizationId: string, userId: string, id: string) {
+    const student = await this.getOwnStudent(organizationId, userId);
+    return this.alumni.completeOwnMentorship(organizationId, student.id, id);
+  }
+
+  // As mentee (the caller is a current student receiving mentorship) —
+  // no alumni profile involved at all, this is a plain Student lookup.
+  async listOwnMentorshipsAsMentee(organizationId: string, userId: string) {
+    const student = await this.getOwnStudent(organizationId, userId);
+    return this.alumni.listOwnMentorshipsAsMentee(organizationId, student.id);
+  }
+
+  async addOwnAlumniAchievement(organizationId: string, userId: string, dto: CreateAchievementDto) {
+    const student = await this.getOwnStudent(organizationId, userId);
+    return this.alumni.addOwnAchievement(organizationId, student.id, dto);
   }
 
   // ── Finance self-service (slice 7a-2) ────────────────────────────────

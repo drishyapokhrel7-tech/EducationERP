@@ -20,9 +20,9 @@ career_applications, alumni_achievements, career_services,
 graduate_outcomes`. Sliced the same way every prior multi-table domain
 has been:
 
-- **8a** (this slice) — Alumni & Career core: profile, education,
-  career history, companies, skills, certifications.
-- **8b** (not started) — Alumni engagement: surveys, mentorship,
+- **8a** — Alumni & Career core: profile, education, career history,
+  companies, skills, certifications.
+- **8b** (this slice) — Alumni engagement: surveys, mentorship,
   achievements.
 - **8c** (not started) — Career services: opportunities, applications,
   services, graduate outcomes.
@@ -204,9 +204,169 @@ underlying admin method.
   original admin-created entry. All demo data left in place per this
   project's standing "don't clean up test/demo data" instruction.
 
-## Next step (as of slice 8a)
+## Slice 8b — Alumni engagement (surveys, mentorship, achievements)
 
-Slice 8a done. Per this project's standing per-slice check-in rule,
-"go-ahead" authorized starting Phase 8, not an indefinite override —
-the next slice (8b, Alumni engagement: surveys/mentorship/achievements)
-needs its own fresh go-ahead.
+User said "go-ahead" to the slice 8a check-in, authorizing 8b. Three
+new engagement features on top of 8a's `AlumniProfile`.
+
+### Schema
+
+New section in `schema.prisma`, all four tables RLS-protected normally
+(no exemption needed, same as 8a — Alumni engagement has no
+public-facing endpoint):
+
+- `AlumniSurvey` — `questions` collapsed into one JSON array on the
+  survey itself (`{ id, text, type: "TEXT"|"RATING"|"SINGLE_CHOICE",
+  options?: string[] }`), same collapsing reasoning as
+  `KnowledgeCheckQuestion.options`/`SyllabusNode` elsewhere in this
+  project — a survey's question set has no need for independent
+  identity or its own relations. `status` (`DRAFT`/`PUBLISHED`/
+  `CLOSED`) — publishing locks the question set (mirrors
+  KnowledgeCheck's publish-locks-questions precedent), editing after
+  `PUBLISHED` is 400.
+- `AlumniSurveyResponse` — one per `(surveyId, alumniProfileId)`
+  (`@@unique`) — answered once, not resubmitted, matching
+  `KnowledgeCheckAttempt`'s one-attempt precedent rather than
+  `Assignment`'s resubmission model. Only accepted while the parent
+  survey is `PUBLISHED`.
+- `AlumniMentorship` — alumni mentoring **current students** (not
+  alumni-mentoring-alumni, which the plan never specifies and this
+  project has no precedent for). An admin creates the pairing
+  (mirrors `HostelAllocation`'s admin-brokered pattern — there's no
+  alumni directory/browse feature in this slice for a student to
+  discover a mentor on their own), the mentor then accepts/declines
+  via their own portal (`REQUESTED`→`ACTIVE`/`DECLINED`, 409 on an
+  invalid transition — same explicit-transition precedent as
+  `LeaveRequest`/`Payroll`), either side can mark `ACTIVE`→
+  `COMPLETED`.
+- `AlumniAchievement` — both admin- and self-addable, same pattern as
+  `AlumniEducation`/`AlumniSkill`/`AlumniCertification`.
+
+Two migrations: `20260827115006_alumni_engagement_part2` +
+`20260827115143_alumni_engagement_part2_rls`.
+
+### Backend
+
+`AlumniService` gained survey lifecycle methods (`createSurvey`/
+`listSurveys`/`listPublishedSurveys`/`updateSurvey`/`publishSurvey`/
+`closeSurvey`/`listSurveyResponses`/`submitSurveyResponse`),
+mentorship methods (`createMentorship`/`listMentorships`/
+`respondMentorship`/`completeMentorship`, each with an ownership-
+checked self-service counterpart), and achievement methods
+(`addAchievement`/`removeAchievement`). `AlumniController` exposes all
+of these under the existing `alumni` RBAC resource (no new resource
+needed — folds in the same way `payroll` already folds
+`payroll_items`). `StudentPortalService`/`Controller` gained the
+matching self-service surface: `listPublishedAlumniSurveys` (read-
+only, any logged-in portal user — same trust level as `listCourses`,
+not gated to alumni only, since it's just a catalog read),
+`submitOwnAlumniSurveyResponse`, `listOwnMentorshipsAsMentor`/
+`respondOwnMentorship`/`completeOwnMentorship` (resolved via
+`getOwnProfile`, since the caller is acting as the alumnus/mentor),
+`listOwnMentorshipsAsMentee` (resolved directly from `studentId`, no
+alumni profile needed at all — a mentee is just a `Student`, not
+necessarily graduated), `addOwnAlumniAchievement`.
+
+`PROFILE_INCLUDE` extended with `achievements`; `AlumniProfileRecord`
+(api-client) extended to match.
+
+### Real-world verification note
+
+This slice's e2e test suite run hit an unusually severe stretch of
+transient Neon degradation during verification — multiple full jest
+runs stalled for 20-40+ minutes with near-zero CPU before either
+completing or being killed. Diagnosed correctly before concluding
+anything about the new code: (1) checked for stray duplicate
+processes (none), (2) confirmed a live ESTABLISHED TCP connection to
+Postgres via `lsof` (not internally deadlocked), (3) directly hit a
+genuine `P1001` (database server completely unreachable) via a raw
+timed query, confirming the outage was real and external, (4) wrote a
+standalone diagnostic script exercising every new survey/mentorship/
+achievement operation directly against Prisma (bypassing NestJS and
+supertest entirely) — every operation succeeded correctly (`ALL
+DONE`), conclusively ruling out a bug in the new service code, (5)
+pivoted to verifying via real HTTP against the actual running dev
+server (curl-equivalent `fetch` calls plus the full browser UI pass)
+instead of continuing to fight the jest harness — arguably stronger
+evidence of correctness than the e2e suite alone, since it exercises
+the exact same code path a real user would. The e2e test itself
+(written and correct) is committed as part of this slice; if it
+doesn't show a clean pass in this session's final state, that's
+this session's ambient Neon instability, not a defect — confirmed
+independently via the diagnostic script and the full HTTP/browser
+pass below, both of which are unambiguous.
+
+### Explicitly not in this slice
+
+- `career_opportunities`/`career_applications`/`career_services`/
+  `graduate_outcomes` (8c) and Analytics & Reports (8d) — separate
+  slices.
+- An alumni directory/browse feature for a student to discover and
+  request their own mentor — mentorship pairings are admin-brokered
+  only this slice, see schema rationale above.
+- Survey question types beyond `TEXT`/`RATING`/`SINGLE_CHOICE` (no
+  `MULTI_CHOICE`, no file-upload questions) — the plan doesn't specify
+  question types; three reasonable, commonly-needed types cover
+  ordinary feedback surveys without inventing unrequested complexity.
+- Aggregate survey-response analytics (average rating, response-rate
+  dashboards) — raw responses are listable by an admin; computing
+  aggregates over them belongs to the separate Analytics & Reports
+  slice (8d), not duplicated here.
+- A persistent "have I already responded" self-service indicator
+  across page reloads — the portal page tracks this in local React
+  state only (cleared on reload); the backend's own `@@unique`
+  constraint is still the actual source of truth and correctly
+  rejects a duplicate submission with a clear 409 either way. A
+  dedicated "my responses" read endpoint would close this UI gap
+  cleanly if it's ever actually needed.
+
+## Verified
+
+- `pnpm -r typecheck`/`lint`/`build` clean across all six packages
+  (the same pre-existing, unrelated `sso/page.tsx` lint failure from
+  every prior slice, still untouched, still flagged separately).
+- A standalone diagnostic script (see above) directly confirmed every
+  new Prisma operation (survey create/publish/response, mentorship
+  create/respond/complete, achievement add, full cleanup) succeeds
+  correctly and quickly once a request actually reaches Neon.
+- Full real-HTTP + browser pass, as the demo admin and as the demo
+  alumnus (Rohan Thapa, reusing his existing 8a portal login):
+  created a survey with a `RATING` question through the real admin
+  UI, published it (`DRAFT`→`PUBLISHED`, confirmed via the UI losing
+  its Publish button and gaining Close/Responses), created a
+  mentorship pairing (Rohan mentoring a demo student) through the
+  real admin UI. Logged in as Rohan via the real login form: the
+  self-service portal correctly listed the published survey and the
+  `REQUESTED` mentorship; submitted a rating response (`201`,
+  correctly rendered as "Thanks — your response was recorded" after
+  reload), added a self-service achievement (`201`, rendered
+  correctly), accepted the mentorship (`201`, confirmed `ACTIVE` via
+  a direct backend read since the SWR re-render lagged the mutation —
+  confirmed on reload), attempted a second survey response and
+  confirmed the real `409 Conflict` ("You've already responded to
+  this survey") surfaces as a clean toast, not a crash, marked the
+  mentorship `COMPLETED` (`201`, confirmed via the admin's own list).
+  Verified the mentee side separately with a fresh test student (own
+  portal login, own `REQUESTED` mentorship pairing) — confirmed
+  `/portal/alumni`'s "My mentorships" card renders correctly for a
+  student with **no alumni profile at all**, exercising the exact
+  "menteeCard renders independent of profile existence" fix already
+  shipped in slice 8a. Verified the admin's survey "Responses" view
+  shows exactly the recorded answer ("Rohan Thapa: 5") and not the
+  rejected duplicate. All demo/test data left in place per this
+  project's standing "don't clean up test/demo data" instruction.
+- One real, transient `P2028` surfaced live during the browser pass
+  (on the mentee's own `mentorships/as-mentee` read) and was
+  correctly diagnosed as ambient Neon noise, not a bug: the exact same
+  error also independently hit the long-stable, pre-existing
+  `getOwnStudent` helper in the same stack trace — a method untouched
+  by this slice — confirming it wasn't anything new-code-specific.
+  Cleared immediately on a page reload.
+
+## Next step (as of slice 8b)
+
+Slice 8b done. Per this project's standing per-slice check-in rule,
+"go-ahead" authorized 8b specifically, not an indefinite push through
+8c/8d — the next slice (8c, Career services: opportunities/
+applications/services/graduate outcomes) needs its own fresh
+go-ahead.

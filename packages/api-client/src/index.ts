@@ -191,6 +191,16 @@ import type {
   AlumniSkillRecord,
   CreateAlumniCertificationInput,
   AlumniCertificationRecord,
+  AlumniSurveyRecord,
+  CreateAlumniSurveyInput,
+  UpdateAlumniSurveyInput,
+  SubmitAlumniSurveyResponseInput,
+  AlumniSurveyResponseRecord,
+  AlumniMentorshipRecord,
+  CreateAlumniMentorshipInput,
+  RespondAlumniMentorshipInput,
+  AlumniAchievementRecord,
+  CreateAlumniAchievementInput,
   TeacherDashboard,
   StudentDashboard,
   ParentDashboard,
@@ -1451,6 +1461,36 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
     removeAlumniCertification: (id: string) =>
       request<AlumniCertificationRecord>(`/organizations/me/alumni-certifications/${id}`, { method: "DELETE" }),
 
+    // Alumni engagement (Phase 8 slice 8b)
+    createAlumniSurvey: (input: CreateAlumniSurveyInput) =>
+      request<AlumniSurveyRecord>("/organizations/me/alumni-surveys", { method: "POST", body: JSON.stringify(input) }),
+    listAlumniSurveys: () => request<AlumniSurveyRecord[]>("/organizations/me/alumni-surveys"),
+    updateAlumniSurvey: (id: string, input: UpdateAlumniSurveyInput) =>
+      request<AlumniSurveyRecord>(`/organizations/me/alumni-surveys/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    publishAlumniSurvey: (id: string) =>
+      request<AlumniSurveyRecord>(`/organizations/me/alumni-surveys/${id}/publish`, { method: "POST" }),
+    closeAlumniSurvey: (id: string) =>
+      request<AlumniSurveyRecord>(`/organizations/me/alumni-surveys/${id}/close`, { method: "POST" }),
+    listAlumniSurveyResponses: (surveyId: string) =>
+      request<AlumniSurveyResponseRecord[]>(`/organizations/me/alumni-surveys/${surveyId}/responses`),
+    createAlumniMentorship: (input: CreateAlumniMentorshipInput) =>
+      request<AlumniMentorshipRecord>("/organizations/me/alumni-mentorship", { method: "POST", body: JSON.stringify(input) }),
+    listAlumniMentorships: () => request<AlumniMentorshipRecord[]>("/organizations/me/alumni-mentorship"),
+    respondAlumniMentorship: (id: string, input: RespondAlumniMentorshipInput) =>
+      request<AlumniMentorshipRecord>(`/organizations/me/alumni-mentorship/${id}/respond`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    completeAlumniMentorship: (id: string) =>
+      request<AlumniMentorshipRecord>(`/organizations/me/alumni-mentorship/${id}/complete`, { method: "POST" }),
+    addAlumniAchievement: (profileId: string, input: CreateAlumniAchievementInput) =>
+      request<AlumniAchievementRecord>(`/organizations/me/alumni-profiles/${profileId}/achievements`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    removeAlumniAchievement: (id: string) =>
+      request<AlumniAchievementRecord>(`/organizations/me/alumni-achievements/${id}`, { method: "DELETE" }),
+
     // Alumni self-service
     getOwnAlumniProfile: () => request<AlumniProfileRecord>("/organizations/me/portal/alumni-profile"),
     updateOwnAlumniProfile: (input: UpdateAlumniProfileInput) =>
@@ -1476,6 +1516,26 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         body: JSON.stringify(input),
       }),
     listOwnAlumniCompanies: () => request<AlumniCompanyRecord[]>("/organizations/me/portal/alumni-companies"),
+    listPublishedAlumniSurveys: () => request<AlumniSurveyRecord[]>("/organizations/me/portal/alumni-surveys"),
+    submitOwnAlumniSurveyResponse: (surveyId: string, input: SubmitAlumniSurveyResponseInput) =>
+      request<AlumniSurveyResponseRecord>(`/organizations/me/portal/alumni-surveys/${surveyId}/responses`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    listOwnMentorshipsAsMentor: () => request<AlumniMentorshipRecord[]>("/organizations/me/portal/mentorships/as-mentor"),
+    listOwnMentorshipsAsMentee: () => request<AlumniMentorshipRecord[]>("/organizations/me/portal/mentorships/as-mentee"),
+    respondOwnMentorship: (id: string, input: RespondAlumniMentorshipInput) =>
+      request<AlumniMentorshipRecord>(`/organizations/me/portal/mentorships/${id}/respond`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    completeOwnMentorship: (id: string) =>
+      request<AlumniMentorshipRecord>(`/organizations/me/portal/mentorships/${id}/complete`, { method: "POST" }),
+    addOwnAlumniAchievement: (input: CreateAlumniAchievementInput) =>
+      request<AlumniAchievementRecord>("/organizations/me/portal/alumni-profile/achievements", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
 
     // Notifications (LMS discovery slice 9) — one shared endpoint set,
     // not split per portal; a notification is for whoever is logged in.

@@ -8,6 +8,11 @@ import { CreateCareerHistoryDto } from "./dto/create-career-history.dto";
 import { UpdateCareerHistoryDto } from "./dto/update-career-history.dto";
 import { CreateSkillDto } from "./dto/create-skill.dto";
 import { CreateCertificationDto } from "./dto/create-certification.dto";
+import { CreateSurveyDto } from "./dto/create-survey.dto";
+import { UpdateSurveyDto } from "./dto/update-survey.dto";
+import { CreateMentorshipDto } from "./dto/create-mentorship.dto";
+import { RespondMentorshipDto } from "./dto/respond-mentorship.dto";
+import { CreateAchievementDto } from "./dto/create-achievement.dto";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
@@ -107,5 +112,83 @@ export class AlumniController {
   @RequirePermissions("alumni:manage")
   removeCertification(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
     return this.alumni.removeCertification(user.organizationId, id);
+  }
+
+  // ── Surveys (Phase 8 slice 8b) ────────────────────────────────────
+
+  @Post("alumni-surveys")
+  @RequirePermissions("alumni:create")
+  createSurvey(@CurrentUser() user: JwtPayload, @Body() dto: CreateSurveyDto) {
+    return this.alumni.createSurvey(user.organizationId, dto);
+  }
+
+  @Get("alumni-surveys")
+  @RequirePermissions("alumni:view")
+  listSurveys(@CurrentUser() user: JwtPayload) {
+    return this.alumni.listSurveys(user.organizationId);
+  }
+
+  @Patch("alumni-surveys/:id")
+  @RequirePermissions("alumni:manage")
+  updateSurvey(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: UpdateSurveyDto) {
+    return this.alumni.updateSurvey(user.organizationId, id, dto);
+  }
+
+  @Post("alumni-surveys/:id/publish")
+  @RequirePermissions("alumni:manage")
+  publishSurvey(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.alumni.publishSurvey(user.organizationId, id);
+  }
+
+  @Post("alumni-surveys/:id/close")
+  @RequirePermissions("alumni:manage")
+  closeSurvey(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.alumni.closeSurvey(user.organizationId, id);
+  }
+
+  @Get("alumni-surveys/:id/responses")
+  @RequirePermissions("alumni:view")
+  listSurveyResponses(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.alumni.listSurveyResponses(user.organizationId, id);
+  }
+
+  // ── Mentorship (Phase 8 slice 8b) ─────────────────────────────────
+
+  @Post("alumni-mentorship")
+  @RequirePermissions("alumni:create")
+  createMentorship(@CurrentUser() user: JwtPayload, @Body() dto: CreateMentorshipDto) {
+    return this.alumni.createMentorship(user.organizationId, dto);
+  }
+
+  @Get("alumni-mentorship")
+  @RequirePermissions("alumni:view")
+  listMentorships(@CurrentUser() user: JwtPayload) {
+    return this.alumni.listMentorships(user.organizationId);
+  }
+
+  @Post("alumni-mentorship/:id/respond")
+  @RequirePermissions("alumni:manage")
+  respondMentorship(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: RespondMentorshipDto) {
+    return this.alumni.respondMentorship(user.organizationId, id, dto);
+  }
+
+  @Post("alumni-mentorship/:id/complete")
+  @RequirePermissions("alumni:manage")
+  completeMentorship(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.alumni.completeMentorship(user.organizationId, id);
+  }
+
+  // ── Achievements ───────────────────────────────────────────────────
+
+  @Post("alumni-profiles/:id/achievements")
+  @RequirePermissions("alumni:manage")
+  addAchievement(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: CreateAchievementDto) {
+    return this.alumni.addAchievement(user.organizationId, id, dto);
+  }
+
+  @Delete("alumni-achievements/:id")
+  @RequirePermissions("alumni:manage")
+  removeAchievement(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.alumni.removeAchievement(user.organizationId, id);
   }
 }

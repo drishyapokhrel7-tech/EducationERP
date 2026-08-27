@@ -313,6 +313,15 @@ describe("Tenant isolation (e2e)", () => {
         // only; alumniProfile itself references student (RESTRICT),
         // so the whole chain finishes before studentEnrollment/
         // student below.
+        // Alumni engagement (Phase 8 slice 8b) — alumniSurveyResponse
+        // references both alumniSurvey and alumniProfile (RESTRICT),
+        // so it leads both; alumniMentorship references alumniProfile
+        // and student (RESTRICT); alumniAchievement references
+        // alumniProfile only.
+        "alumniSurveyResponse",
+        "alumniSurvey",
+        "alumniMentorship",
+        "alumniAchievement",
         "alumniCareerHistory",
         "alumniEducation",
         "alumniSkill",
@@ -9336,5 +9345,288 @@ describe("Tenant isolation (e2e)", () => {
       expect(education.body.id).toBeTruthy();
       expect(certification.body.id).toBeTruthy();
     }, 90000);
+  });
+
+  describe("Alumni engagement — surveys, mentorship, achievements (Phase 8 slice 8b)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    it("runs a survey through DRAFT/PUBLISHED/CLOSED with self-service responses, a mentorship through REQUESTED/ACTIVE/COMPLETED both self-service and admin-driven, achievements, and stays tenant-scoped", async () => {
+      const suffix = `ALME${run}`;
+
+      // ── Set up a graduated alumnus (mentor) and a current student
+      // (mentee), same pattern as slice 8a's own test.
+      const mentorStudent = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({ studentCode: `ALME-MENTOR-${suffix}`, firstName: "Mentor", lastName: suffix, dateOfBirth: "1999-01-01" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .put(`/organizations/me/students/${mentorStudent.body.id}/status`)
+        .set(...auth(tokenA))
+        .send({ status: "GRADUATED", reason: "Completed program", effectiveDate: "2023-06-01" })
+        .expect(200);
+      const mentorProfile = await request(app.getHttpServer())
+        .post("/organizations/me/alumni-profiles")
+        .set(...auth(tokenA))
+        .send({ studentId: mentorStudent.body.id, graduationYear: 2023 })
+        .expect(201);
+
+      const menteeStudent = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({ studentCode: `ALME-MENTEE-${suffix}`, firstName: "Mentee", lastName: suffix, dateOfBirth: "2005-01-01" })
+        .expect(201);
+
+      // ── Surveys: DRAFT → edit → PUBLISHED → response → CLOSED.
+      const survey = await request(app.getHttpServer())
+        .post("/organizations/me/alumni-surveys")
+        .set(...auth(tokenA))
+        .send({
+          title: `Alumni check-in ${suffix}`,
+          questions: [
+            { id: "q1", text: "How's it going?", type: "TEXT" },
+            { id: "q2", text: "Rate your experience", type: "RATING" },
+          ],
+        })
+        .expect(201);
+      expect(survey.body.status).toBe("DRAFT");
+
+      // Editable while DRAFT.
+      await request(app.getHttpServer())
+        .patch(`/organizations/me/alumni-surveys/${survey.body.id}`)
+        .set(...auth(tokenA))
+        .send({ description: "Quick annual check-in" })
+        .expect(200);
+
+      // Can't publish an unpublished-yet survey twice, and can't
+      // close a still-DRAFT one.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/alumni-surveys/${survey.body.id}/close`)
+        .set(...auth(tokenA))
+        .expect(409);
+
+      const published = await request(app.getHttpServer())
+        .post(`/organizations/me/alumni-surveys/${survey.body.id}/publish`)
+        .set(...auth(tokenA))
+        .expect(201);
+      expect(published.body.status).toBe("PUBLISHED");
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/alumni-surveys/${survey.body.id}/publish`)
+        .set(...auth(tokenA))
+        .expect(409);
+
+      // Locked once PUBLISHED.
+      await request(app.getHttpServer())
+        .patch(`/organizations/me/alumni-surveys/${survey.body.id}`)
+        .set(...auth(tokenA))
+        .send({ title: "Should be rejected" })
+        .expect(400);
+
+      // ── Self-service: mentor logs in via the same portal login
+      // pattern as 8a, sees the published survey, submits a response
+      // once, and gets rejected on a second attempt.
+      const mentorLogin = await request(app.getHttpServer())
+        .post(`/organizations/me/students/${mentorStudent.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "MentorPortalPass123" })
+        .expect(201);
+      const mentorSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: mentorLogin.body.username, password: "MentorPortalPass123" })
+        .expect(201);
+
+      const publishedList = await request(app.getHttpServer())
+        .get("/organizations/me/portal/alumni-surveys")
+        .set(...auth(mentorSession.body.accessToken))
+        .expect(200);
+      expect(publishedList.body.some((s: { id: string }) => s.id === survey.body.id)).toBe(true);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/portal/alumni-surveys/${survey.body.id}/responses`)
+        .set(...auth(mentorSession.body.accessToken))
+        .send({ answers: [{ questionId: "q1", value: "Great!" }, { questionId: "q2", value: "5" }] })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/portal/alumni-surveys/${survey.body.id}/responses`)
+        .set(...auth(mentorSession.body.accessToken))
+        .send({ answers: [{ questionId: "q1", value: "Again" }] })
+        .expect(409);
+
+      const responses = await request(app.getHttpServer())
+        .get(`/organizations/me/alumni-surveys/${survey.body.id}/responses`)
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(responses.body).toHaveLength(1);
+      expect(responses.body[0].alumniProfileId).toBe(mentorProfile.body.id);
+
+      const closed = await request(app.getHttpServer())
+        .post(`/organizations/me/alumni-surveys/${survey.body.id}/close`)
+        .set(...auth(tokenA))
+        .expect(201);
+      expect(closed.body.status).toBe("CLOSED");
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/alumni-surveys/${survey.body.id}/close`)
+        .set(...auth(tokenA))
+        .expect(409);
+
+      // ── Mentorship: admin creates the pairing, mentor responds/
+      // completes it via self-service, mentee sees it read-only.
+      const mentorship = await request(app.getHttpServer())
+        .post("/organizations/me/alumni-mentorship")
+        .set(...auth(tokenA))
+        .send({ mentorAlumniProfileId: mentorProfile.body.id, menteeStudentId: menteeStudent.body.id, topic: "Career advice" })
+        .expect(201);
+      expect(mentorship.body.status).toBe("REQUESTED");
+
+      const asMentor = await request(app.getHttpServer())
+        .get("/organizations/me/portal/mentorships/as-mentor")
+        .set(...auth(mentorSession.body.accessToken))
+        .expect(200);
+      expect(asMentor.body.some((m: { id: string }) => m.id === mentorship.body.id)).toBe(true);
+
+      const accepted = await request(app.getHttpServer())
+        .post(`/organizations/me/portal/mentorships/${mentorship.body.id}/respond`)
+        .set(...auth(mentorSession.body.accessToken))
+        .send({ status: "ACTIVE" })
+        .expect(201);
+      expect(accepted.body.status).toBe("ACTIVE");
+
+      // Already responded — a second respond is rejected.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/portal/mentorships/${mentorship.body.id}/respond`)
+        .set(...auth(mentorSession.body.accessToken))
+        .send({ status: "ACTIVE" })
+        .expect(409);
+
+      const completed = await request(app.getHttpServer())
+        .post(`/organizations/me/portal/mentorships/${mentorship.body.id}/complete`)
+        .set(...auth(mentorSession.body.accessToken))
+        .expect(201);
+      expect(completed.body.status).toBe("COMPLETED");
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/portal/mentorships/${mentorship.body.id}/complete`)
+        .set(...auth(mentorSession.body.accessToken))
+        .expect(409);
+
+      // Mentee's own read-only view.
+      const menteeLogin = await request(app.getHttpServer())
+        .post(`/organizations/me/students/${menteeStudent.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "MenteePortalPass123" })
+        .expect(201);
+      const menteeSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: menteeLogin.body.username, password: "MenteePortalPass123" })
+        .expect(201);
+      const asMentee = await request(app.getHttpServer())
+        .get("/organizations/me/portal/mentorships/as-mentee")
+        .set(...auth(menteeSession.body.accessToken))
+        .expect(200);
+      expect(asMentee.body).toHaveLength(1);
+      expect(asMentee.body[0].status).toBe("COMPLETED");
+
+      // A second alumnus (not the mentor on this pairing) can't
+      // respond to it — IDOR guard, 404 not 403 (same "not visible to
+      // you" convention as everywhere else in this project).
+      const otherStudent = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({ studentCode: `ALME-OTHER-${suffix}`, firstName: "Other", lastName: suffix, dateOfBirth: "1998-01-01" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .put(`/organizations/me/students/${otherStudent.body.id}/status`)
+        .set(...auth(tokenA))
+        .send({ status: "GRADUATED", reason: "Completed program", effectiveDate: "2022-06-01" })
+        .expect(200);
+      await request(app.getHttpServer())
+        .post("/organizations/me/alumni-profiles")
+        .set(...auth(tokenA))
+        .send({ studentId: otherStudent.body.id, graduationYear: 2022 })
+        .expect(201);
+      const otherLogin = await request(app.getHttpServer())
+        .post(`/organizations/me/students/${otherStudent.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "OtherPortalPass123" })
+        .expect(201);
+      const otherSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: otherLogin.body.username, password: "OtherPortalPass123" })
+        .expect(201);
+
+      const mentorship2 = await request(app.getHttpServer())
+        .post("/organizations/me/alumni-mentorship")
+        .set(...auth(tokenA))
+        .send({ mentorAlumniProfileId: mentorProfile.body.id, menteeStudentId: menteeStudent.body.id })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/portal/mentorships/${mentorship2.body.id}/respond`)
+        .set(...auth(otherSession.body.accessToken))
+        .send({ status: "ACTIVE" })
+        .expect(404);
+
+      // Admin can also drive respond/complete directly (not just
+      // self-service) — same pairing, admin path this time.
+      const adminAccepted = await request(app.getHttpServer())
+        .post(`/organizations/me/alumni-mentorship/${mentorship2.body.id}/respond`)
+        .set(...auth(tokenA))
+        .send({ status: "ACTIVE" })
+        .expect(201);
+      expect(adminAccepted.body.status).toBe("ACTIVE");
+      const adminCompleted = await request(app.getHttpServer())
+        .post(`/organizations/me/alumni-mentorship/${mentorship2.body.id}/complete`)
+        .set(...auth(tokenA))
+        .expect(201);
+      expect(adminCompleted.body.status).toBe("COMPLETED");
+
+      // ── Achievements — both admin- and self-addable.
+      const achievement = await request(app.getHttpServer())
+        .post(`/organizations/me/alumni-profiles/${mentorProfile.body.id}/achievements`)
+        .set(...auth(tokenA))
+        .send({ title: "Distinguished Alumnus Award", achievedAt: "2025-01-01" })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post("/organizations/me/portal/alumni-profile/achievements")
+        .set(...auth(mentorSession.body.accessToken))
+        .send({ title: "Published a research paper" })
+        .expect(201);
+
+      const mentorProfileDetail = await request(app.getHttpServer())
+        .get(`/organizations/me/alumni-profiles/${mentorProfile.body.id}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(mentorProfileDetail.body.achievements).toHaveLength(2);
+
+      await request(app.getHttpServer())
+        .delete(`/organizations/me/alumni-achievements/${achievement.body.id}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      const afterRemove = await request(app.getHttpServer())
+        .get(`/organizations/me/alumni-profiles/${mentorProfile.body.id}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(afterRemove.body.achievements).toHaveLength(1);
+
+      // ── Cross-tenant isolation.
+      const orgBSurveys = await request(app.getHttpServer())
+        .get("/organizations/me/alumni-surveys")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(orgBSurveys.body.some((s: { id: string }) => s.id === survey.body.id)).toBe(false);
+      const orgBMentorships = await request(app.getHttpServer())
+        .get("/organizations/me/alumni-mentorship")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(orgBMentorships.body.some((m: { id: string }) => m.id === mentorship.body.id)).toBe(false);
+      await request(app.getHttpServer())
+        .post("/organizations/me/alumni-mentorship")
+        .set(...auth(tokenB))
+        .send({ mentorAlumniProfileId: mentorProfile.body.id, menteeStudentId: menteeStudent.body.id })
+        .expect(404);
+    }, 120000);
   });
 });

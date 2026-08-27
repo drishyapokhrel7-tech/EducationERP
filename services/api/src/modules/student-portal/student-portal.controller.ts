@@ -14,6 +14,9 @@ import { CreateEducationDto } from "../alumni/dto/create-education.dto";
 import { CreateCareerHistoryDto } from "../alumni/dto/create-career-history.dto";
 import { CreateSkillDto } from "../alumni/dto/create-skill.dto";
 import { CreateCertificationDto } from "../alumni/dto/create-certification.dto";
+import { SubmitSurveyResponseDto } from "../alumni/dto/submit-survey-response.dto";
+import { RespondMentorshipDto } from "../alumni/dto/respond-mentorship.dto";
+import { CreateAchievementDto } from "../alumni/dto/create-achievement.dto";
 
 // Deliberately JwtAuthGuard only — no PermissionsGuard/@RequirePermissions.
 // The existing resource:action permission model answers "can this role
@@ -187,5 +190,40 @@ export class StudentPortalController {
   @Get("alumni-companies")
   listAlumniCompanies(@CurrentUser() user: JwtPayload) {
     return this.studentPortal.listAlumniCompanies(user.organizationId);
+  }
+
+  @Get("alumni-surveys")
+  listPublishedAlumniSurveys(@CurrentUser() user: JwtPayload) {
+    return this.studentPortal.listPublishedAlumniSurveys(user.organizationId);
+  }
+
+  @Post("alumni-surveys/:id/responses")
+  submitOwnAlumniSurveyResponse(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: SubmitSurveyResponseDto) {
+    return this.studentPortal.submitOwnAlumniSurveyResponse(user.organizationId, user.sub, id, dto);
+  }
+
+  @Get("mentorships/as-mentor")
+  listOwnMentorshipsAsMentor(@CurrentUser() user: JwtPayload) {
+    return this.studentPortal.listOwnMentorshipsAsMentor(user.organizationId, user.sub);
+  }
+
+  @Post("mentorships/:id/respond")
+  respondOwnMentorship(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: RespondMentorshipDto) {
+    return this.studentPortal.respondOwnMentorship(user.organizationId, user.sub, id, dto);
+  }
+
+  @Post("mentorships/:id/complete")
+  completeOwnMentorship(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.studentPortal.completeOwnMentorship(user.organizationId, user.sub, id);
+  }
+
+  @Get("mentorships/as-mentee")
+  listOwnMentorshipsAsMentee(@CurrentUser() user: JwtPayload) {
+    return this.studentPortal.listOwnMentorshipsAsMentee(user.organizationId, user.sub);
+  }
+
+  @Post("alumni-profile/achievements")
+  addOwnAlumniAchievement(@CurrentUser() user: JwtPayload, @Body() dto: CreateAchievementDto) {
+    return this.studentPortal.addOwnAlumniAchievement(user.organizationId, user.sub, dto);
   }
 }
