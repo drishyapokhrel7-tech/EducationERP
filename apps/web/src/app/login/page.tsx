@@ -88,11 +88,12 @@ export default function LoginPage() {
         <CardContent>
           <form onSubmit={onSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="identifier">Email or Student ID</Label>
+              <Label htmlFor="identifier">Email or username</Label>
               <Input
                 id="identifier"
                 type="text"
                 required
+                placeholder="you@example.com or org.STU001"
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
               />

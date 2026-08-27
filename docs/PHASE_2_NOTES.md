@@ -510,3 +510,53 @@ the thumbnail renders — for both Students and Staff). No delete
 endpoint exists for either model (confirmed via a `404`), so the two
 test records are left in place per this session's standing "don't
 clean up test/demo data" instruction.
+
+### Follow-up (same day) — demo photo seeding + login label
+
+User asked to seed photo data for the demo org, and separately flagged
+that the login field's "Email or Student ID" label was confusing.
+
+**Demo photos**: generated five simple initials-on-a-colored-circle
+avatars locally (no external avatar service, no real photos of real
+people — same "invent identity" reasoning already applied to the org
+name itself) for the four `seed-demo.ts` students (Aarav Sharma, Sita
+Gurung, Rohan Thapa, Anita Poudel) and the one ad hoc demo teacher
+(Sunita Karki, `TCH-001` — created during an earlier slice's live
+verification, not part of any seed script, confirmed by grepping for
+her name across `prisma/*.ts`). The storage service only accepts
+raster/document mime types (`image/svg+xml` is rejected, confirmed via
+a real `400`), so each avatar was authored as SVG and rasterized to
+PNG via macOS's `qlmanage -t` (no new SVG-rendering dependency added
+to the project), then uploaded through the real `POST
+organizations/me/uploads` endpoint (landing in the live Google Drive
+storage backend, same as any real upload) and written onto the actual
+`photoUrl` field — directly via Prisma for the four already-existing
+seeded students and Sunita (no update endpoint exists to reach them
+through the API, per the addendum above), and via `upsert Student`'s
+new `photoUrl` parameter for future fresh reseeds. `upsertStudent`
+itself was extended to backfill `photoUrl` on an *existing* row only
+when the row doesn't already have one — never overwrites a photo an
+admin may have since set for real through the UI. **Known minor gap,
+stated rather than silently accepted**: `STU-0004` (Anita Poudel) is
+created via the separate `enrollApplication`/admissions-bridge code
+path, not `upsertStudent` — her photo is backfilled correctly on the
+*current* DB (verified in the browser pass below) but a genuinely
+fresh database would recreate her without one, since wiring
+`photoUrl` through the admissions-enrollment bridge touches real
+production code (`AdmissionsService.enroll`), not just seed data, and
+wasn't judged worth that for one applicant's demo cosmetic.
+
+**Login label**: `LoginDto.identifier` accepts either a plain email
+(admin/teacher accounts) or a generated `{orgSlug}.{code}` username
+(students, staff, drivers — `students.service.ts`/`staff.service.ts`'s
+own `createLogin` methods) — "Email or Student ID" was both jargon
+and inaccurate once staff/driver logins existed too. Renamed to "Email
+or username" in both places the exact same string appeared
+(`login/page.tsx` and `portal/library/page.tsx`'s ERP-session-connect
+form), and added a placeholder example (`you@example.com or
+org.STU001`) on the main login field for a concrete illustration.
+
+Verified: `pnpm -r typecheck`/`build` clean; full browser pass
+confirmed the new label/placeholder render correctly, and confirmed
+all five avatars render as real circular thumbnails on `/dashboard/
+students` and `/dashboard/staff` after logging in as the demo admin.

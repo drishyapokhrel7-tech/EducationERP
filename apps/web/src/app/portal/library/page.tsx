@@ -91,7 +91,7 @@ export default function PortalLibraryPage() {
           <CardContent>
             <form className="flex flex-wrap items-end gap-3" onSubmit={connect}>
               <div className="space-y-1">
-                <Label className="text-xs">Email or Student ID</Label>
+                <Label className="text-xs">Email or username</Label>
                 <Input
                   className="w-56"
                   value={connectForm.identifier}

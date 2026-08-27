@@ -133,6 +133,14 @@ const COLLEGE_PROGRAMS = [
 // enrolled across a school program and a college program, so the demo
 // shows the full Student → Guardian → Enrollment chain working, not
 // just an empty list.
+// photoUrl values are real files already uploaded through this org's
+// own live Google Drive storage backend (simple initials-on-a-
+// colored-circle avatars, generated locally — not real photos of real
+// people, matching the "invent identity" precedent already applied to
+// the org name itself). Hardcoded here rather than generated at seed
+// time because this script is pure Prisma writes with no HTTP
+// dependency on the API server being up — adding an upload call here
+// would introduce that coupling for a five-avatar demo convenience.
 const STUDENTS: {
   code: string;
   firstName: string;
@@ -142,6 +150,7 @@ const STUDENTS: {
   programCode: string;
   sectionCode: string;
   guardian: { firstName: string; lastName: string; phone: string; relationship: string };
+  photoUrl: string;
 }[] = [
   {
     code: "STU-0001",
@@ -152,6 +161,7 @@ const STUDENTS: {
     programCode: "PRIMARY",
     sectionCode: "G3",
     guardian: { firstName: "Bishnu", lastName: "Sharma", phone: "9801234561", relationship: "Father" },
+    photoUrl: "https://drive.google.com/uc?id=1u6XSNYoeAcr5fjoRHaXQ8YH8GLJIyLex&export=download",
   },
   {
     code: "STU-0002",
@@ -162,6 +172,7 @@ const STUDENTS: {
     programCode: "SECONDARY",
     sectionCode: "G8",
     guardian: { firstName: "Kamala", lastName: "Gurung", phone: "9801234562", relationship: "Mother" },
+    photoUrl: "https://drive.google.com/uc?id=1A_2ZxNRFA9cGl0S3kRROnd5LbN2WFJLY&export=download",
   },
   {
     code: "STU-0003",
@@ -172,6 +183,7 @@ const STUDENTS: {
     programCode: "BSCCSIT",
     sectionCode: "SEM1",
     guardian: { firstName: "Suresh", lastName: "Thapa", phone: "9801234563", relationship: "Father" },
+    photoUrl: "https://drive.google.com/uc?id=1pU0-0zX2cyNr9TuwwrJhWnUM2x_nAy3r&export=download",
   },
 ];
 
@@ -512,11 +524,21 @@ async function upsertStudent(
   lastName: string,
   dateOfBirth: string,
   gender?: string,
+  photoUrl?: string,
 ) {
   const existing = await prisma.student.findFirst({ where: { organizationId, studentCode } });
-  if (existing) return existing;
+  if (existing) {
+    // Backfill-only patch (never overwrites a photo an admin may have
+    // since set through the real UI) — added when the photoUrl field
+    // itself was added, so a re-run against an already-seeded org
+    // picks up the demo avatar without disturbing anything else.
+    if (photoUrl && !existing.photoUrl) {
+      return prisma.student.update({ where: { id: existing.id }, data: { photoUrl } });
+    }
+    return existing;
+  }
   return prisma.student.create({
-    data: { organizationId, studentCode, firstName, lastName, dateOfBirth: new Date(dateOfBirth), gender },
+    data: { organizationId, studentCode, firstName, lastName, dateOfBirth: new Date(dateOfBirth), gender, photoUrl },
   });
 }
 
