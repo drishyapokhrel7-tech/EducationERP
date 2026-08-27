@@ -651,6 +651,8 @@ model Employee {
   phone             String?
   dateOfJoining     DateTime
   status            EmployeeStatus @default(ACTIVE)
+  // Same generic-storage-URL field and reasoning as Student.photoUrl.
+  photoUrl          String?
   // The employee's *current* compensation template (Phase 7 slice
   // 7b-2) — a raise just repoints this FK; past Payroll rows already
   // snapshotted their items and are never retroactively affected.
@@ -775,6 +777,16 @@ model Student {
   // admission forms vary by institution/jurisdiction.
   gender         String?
   status         StudentStatus @default(ACTIVE)
+  // A storage URL (whatever STORAGE_DRIVER is configured — local disk,
+  // S3, or Google Drive, LMS discovery slice 8), set via the same
+  // generic upload endpoint every other file-attaching field in this
+  // project already uses — not a dedicated photo pipeline. Distinct
+  // from FaceEnrollment's own photo (Phase 6a/6c): that one is
+  // consent-gated, kept only for uncertain biometric matches, and
+  // governed by BiometricPolicy's retention window; this is a plain,
+  // always-visible identification photo on the student record, same
+  // as any other administrative field.
+  photoUrl       String?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   deletedAt      DateTime?

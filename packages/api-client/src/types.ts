@@ -200,6 +200,7 @@ export interface Employee {
   status: EmployeeStatus;
   // Set once a salary structure is assigned (Phase 7 slice 7b-2).
   salaryStructureId?: string | null;
+  photoUrl: string | null;
   staffType?: StaffType;
   designation?: Designation;
   department?: Department | null;
@@ -215,6 +216,7 @@ export interface CreateEmployeeInput {
   email: string;
   phone?: string;
   dateOfJoining: string;
+  photoUrl?: string;
 }
 
 export interface EmploymentHistory {
@@ -349,6 +351,7 @@ export interface Student {
   dateOfBirth: string;
   gender: string | null;
   status: StudentStatus;
+  photoUrl: string | null;
   guardians: StudentGuardian[];
 }
 
@@ -358,6 +361,7 @@ export interface CreateStudentInput {
   lastName: string;
   dateOfBirth: string;
   gender?: string;
+  photoUrl?: string;
 }
 
 export interface CreateStudentLoginInput {

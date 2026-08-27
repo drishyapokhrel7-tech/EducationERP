@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { EntityCard } from "@/components/dashboard/entity-card";
+import { PhotoInput } from "@/components/photo-input";
 import { api } from "@/lib/api";
 
 export default function StaffPage() {
@@ -47,6 +48,7 @@ export default function StaffPage() {
     phone: "",
     dateOfJoining: "",
   });
+  const [employeePhotoUrl, setEmployeePhotoUrl] = useState<string | null>(null);
 
   async function submit(action: () => Promise<unknown>, onSuccess: () => void) {
     try {
@@ -167,10 +169,15 @@ export default function StaffPage() {
           lastName: string;
           employeeCode: string;
           userId: string | null;
+          photoUrl: string | null;
           designation?: { name: string };
         }) => (
           <div>
-            <span>
+            <span className="flex items-center gap-2">
+              {e.photoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element -- external/storage-backend URL
+                <img src={e.photoUrl} alt="" className="bg-muted size-6 rounded-full border object-cover" />
+              ) : null}
               {e.firstName} {e.lastName}{" "}
               <span className="text-muted-foreground">
                 {e.employeeCode}
@@ -220,6 +227,7 @@ export default function StaffPage() {
                   ...employeeForm,
                   departmentId: employeeForm.departmentId || undefined,
                   phone: employeeForm.phone || undefined,
+                  photoUrl: employeePhotoUrl ?? undefined,
                 }),
               () => {
                 setEmployeeForm({
@@ -233,6 +241,7 @@ export default function StaffPage() {
                   phone: "",
                   dateOfJoining: "",
                 });
+                setEmployeePhotoUrl(null);
                 employees.mutate();
               },
             );
@@ -317,6 +326,10 @@ export default function StaffPage() {
               value={employeeForm.dateOfJoining}
               onChange={(e) => setEmployeeForm((f) => ({ ...f, dateOfJoining: e.target.value }))}
             />
+          </div>
+          <div className="space-y-2">
+            <Label>Photo (optional)</Label>
+            <PhotoInput value={employeePhotoUrl} onChange={setEmployeePhotoUrl} />
           </div>
           <Button type="submit" disabled={!employeeForm.staffTypeId || !employeeForm.designationId}>
             Add

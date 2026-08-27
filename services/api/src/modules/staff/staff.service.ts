@@ -77,6 +77,7 @@ export class StaffService {
           email: dto.email,
           phone: dto.phone,
           dateOfJoining: new Date(dto.dateOfJoining),
+          photoUrl: dto.photoUrl,
         },
       });
     });

@@ -19,4 +19,13 @@ export class CreateStudentDto {
   @IsOptional()
   @IsString()
   gender?: string;
+
+  // A storage URL already returned by the generic upload endpoint
+  // (`POST .../uploads`, LMS discovery slice 8) — the form uploads the
+  // file (or a captured camera frame) first, then submits the
+  // resulting url here, same two-step flow as every other
+  // file-attaching field in this project.
+  @IsOptional()
+  @IsString()
+  photoUrl?: string;
 }

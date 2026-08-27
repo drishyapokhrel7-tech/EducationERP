@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { EntityCard } from "@/components/dashboard/entity-card";
+import { PhotoInput } from "@/components/photo-input";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
 import type { ImportResult } from "@education-erp/api-client";
@@ -29,6 +30,7 @@ export default function StudentsPage() {
     dateOfBirth: "",
     gender: "",
   });
+  const [studentPhotoUrl, setStudentPhotoUrl] = useState<string | null>(null);
   const [guardianForm, setGuardianForm] = useState({
     firstName: "",
     lastName: "",
@@ -182,10 +184,15 @@ export default function StudentsPage() {
           lastName: string;
           studentCode: string;
           status: string;
+          photoUrl: string | null;
           guardians: { relationship: string; guardian: { firstName: string; lastName: string } }[];
         }) => (
           <div>
             <span className="flex items-center gap-2">
+              {s.photoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element -- external/storage-backend URL
+                <img src={s.photoUrl} alt="" className="bg-muted size-6 rounded-full border object-cover" />
+              ) : null}
               {s.firstName} {s.lastName}{" "}
               <span className="text-muted-foreground">{s.studentCode}</span>
               <Badge variant={statusVariant(s.status)}>{s.status}</Badge>
@@ -235,9 +242,15 @@ export default function StudentsPage() {
           onSubmit={(e: FormEvent) => {
             e.preventDefault();
             submit(
-              () => api.createStudent({ ...studentForm, gender: studentForm.gender || undefined }),
+              () =>
+                api.createStudent({
+                  ...studentForm,
+                  gender: studentForm.gender || undefined,
+                  photoUrl: studentPhotoUrl ?? undefined,
+                }),
               () => {
                 setStudentForm({ studentCode: "", firstName: "", lastName: "", dateOfBirth: "", gender: "" });
+                setStudentPhotoUrl(null);
                 students.mutate();
               },
             );
@@ -284,6 +297,10 @@ export default function StudentsPage() {
               value={studentForm.gender}
               onChange={(e) => setStudentForm((f) => ({ ...f, gender: e.target.value }))}
             />
+          </div>
+          <div className="space-y-2">
+            <Label>Photo (optional)</Label>
+            <PhotoInput value={studentPhotoUrl} onChange={setStudentPhotoUrl} />
           </div>
           <Button type="submit">Add</Button>
         </form>

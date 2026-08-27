@@ -34,6 +34,7 @@ export class StudentsService {
           lastName: dto.lastName,
           dateOfBirth: new Date(dto.dateOfBirth),
           gender: dto.gender,
+          photoUrl: dto.photoUrl,
         },
       }),
     );

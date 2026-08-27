@@ -467,3 +467,46 @@ carried forward, not part of Phase 2: real document uploads (blocked on
 the object-storage decision) and Phase 3 (Teaching, Learning, Timetable &
 Attendance — courses, class schedules, rooms, periods, teaching
 assignments), which is a separate phase, not a Phase 2 remainder.
+
+## Addendum (2026-08-27) — student/staff entry-form photo field
+
+User asked why the staff/student entry forms had no picture module
+with a camera/upload option. Investigated directly: neither `Student`
+nor `Employee` had ever had a photo field — deliberately deferred at
+slice 2d ("`student_photos`... no pressing need yet, easy to add as
+columns or tables later without a redesign"), and the only existing
+camera-capture UI in the project is Phase 6a/6c's `FaceEnrollment`
+flow, which is a different thing entirely: consent-gated, kept only
+for uncertain biometric matches, governed by `BiometricPolicy`'s
+retention window — not a plain, always-visible identification photo.
+
+Added `photoUrl String?` to both `Student` and `Employee` (one small
+migration, `20260827160715_add_student_employee_photo_url`), set only
+at creation — neither model has a general edit/update endpoint to add
+it to, so this follows the same scope boundary the rest of each
+model's create form already has. Reused, not reinvented: the generic
+upload endpoint (`FileUploadButton`, LMS discovery slice 8) for a
+plain file, and a newly generalized `CameraCapture` component
+(`components/camera-capture.tsx`, the same `getUserMedia`-preview-
+plus-capture mechanics as `components/library/face-capture.tsx`, but
+without that component's library/base64-specific framing) for a live
+snapshot — both converge on the same `photoUrl` string via a new
+shared `PhotoInput` component used by both the Students and Staff
+pages' create forms, with a small circular thumbnail added to each
+list row.
+
+Verified: `pnpm -r typecheck`/`lint`/`build` clean (same pre-existing
+`sso/page.tsx` lint failure as every other slice this session). The
+Browser pane can't drive a real OS file picker or a real webcam, so
+verification split accordingly: the "Use camera" toggle was exercised
+for real and degraded correctly to `CameraCapture`'s own friendly
+error message when the pane's blocked camera access surfaced (not a
+bug — the intended fallback path); the file-upload → create-record →
+list-thumbnail path was verified end to end via direct authenticated
+API calls (upload a real PNG through the live Google Drive storage
+backend, create a student and an employee with the resulting url,
+confirm both records store it, then reload the real page and confirm
+the thumbnail renders — for both Students and Staff). No delete
+endpoint exists for either model (confirmed via a `404`), so the two
+test records are left in place per this session's standing "don't
+clean up test/demo data" instruction.

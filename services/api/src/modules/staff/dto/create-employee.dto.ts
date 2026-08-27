@@ -32,4 +32,10 @@ export class CreateEmployeeDto {
 
   @IsDateString()
   dateOfJoining!: string;
+
+  // Same generic-storage-URL two-step upload flow as
+  // CreateStudentDto.photoUrl — see that field's comment.
+  @IsOptional()
+  @IsString()
+  photoUrl?: string;
 }
