@@ -146,6 +146,12 @@ model Organization {
   studentDocuments                   StudentDocument[]
   staffDocuments                     StaffDocument[]
   certificates                       Certificate[]
+  alumniProfiles                     AlumniProfile[]
+  alumniEducation                    AlumniEducation[]
+  alumniCompanies                    AlumniCompany[]
+  alumniCareerHistory                AlumniCareerHistory[]
+  alumniSkills                       AlumniSkill[]
+  alumniCertifications               AlumniCertification[]
 
   @@map("organizations")
 }
@@ -783,6 +789,7 @@ model Student {
   discussionPosts             DiscussionPost[]
   documents                   StudentDocument[]
   certificates                Certificate[]
+  alumniProfile               AlumniProfile?
 
   @@unique([organizationId, studentCode])
   @@index([organizationId])
@@ -3674,4 +3681,153 @@ model Certificate {
   @@index([organizationId])
   @@index([studentId])
   @@map("certificates")
+}
+
+// ── Alumni & Career, part 1 (Phase 8 slice 8a) ──────────────────────────
+// Plan's ERD (docx §20) for this domain is genuinely large — fourteen
+// tables: alumni_profiles, alumni_education, alumni_career_history,
+// alumni_companies, alumni_skills, alumni_certifications,
+// alumni_surveys, alumni_survey_responses, alumni_mentorship,
+// career_opportunities, career_applications, alumni_achievements,
+// career_services, graduate_outcomes. Split the same way every other
+// large Phase 2-7 domain was: this slice (8a) ships the core identity
+// layer — the profile itself plus post-graduation education/career/
+// company/skill/certification records — everything else (surveys,
+// mentorship, achievements = 8b; career_opportunities/applications/
+// services/graduate_outcomes = 8c) needs its own go-ahead.
+//
+// An alumnus is a graduated Student (StudentStatus.GRADUATED already
+// exists, set via the existing PATCH students/:id/status), converted
+// into an AlumniProfile by an explicit admin action — not an automatic
+// side effect of the status change, same "deliberate action, not an
+// implicit trigger" precedent as computeGrade/generateReportCard.
+// Self-service reuses the alumnus's EXISTING student-portal login
+// (Student.userId) rather than inventing a parallel alumni auth
+// system — an alumnus who already has a portal account keeps using
+// it to manage their own alumni profile once one exists for them.
+
+model AlumniProfile {
+  id               String    @id @default(uuid())
+  organizationId   String
+  studentId        String    @unique
+  graduationYear   Int
+  currentOccupation String?
+  currentEmployer  String?
+  currentLocation  String?
+  bio              String?
+  linkedinUrl      String?
+  isPubliclyVisible Boolean  @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  organization  Organization         @relation(fields: [organizationId], references: [id])
+  student       Student              @relation(fields: [studentId], references: [id])
+  education     AlumniEducation[]
+  careerHistory AlumniCareerHistory[]
+  skills        AlumniSkill[]
+  certifications AlumniCertification[]
+
+  @@index([organizationId])
+  @@map("alumni_profiles")
+}
+
+model AlumniEducation {
+  id              String   @id @default(uuid())
+  organizationId  String
+  alumniProfileId String
+  institutionName String
+  degree          String
+  fieldOfStudy    String?
+  startYear       Int?
+  endYear         Int?
+  notes           String?
+  createdAt       DateTime @default(now())
+
+  organization  Organization  @relation(fields: [organizationId], references: [id])
+  alumniProfile AlumniProfile @relation(fields: [alumniProfileId], references: [id])
+
+  @@index([organizationId])
+  @@index([alumniProfileId])
+  @@map("alumni_education")
+}
+
+// Simple org-scoped catalog, same "admin-configurable, not
+// hardcoded" reasoning as HostelLookup — but unlike HostelLookup this
+// one exists mainly so aggregate reporting ("how many alumni work at
+// Company X") has something stable to group by, not primarily to
+// standardize free-text entry. Career history entries always link to
+// one via companyId; the web UI's picker can create a new one inline,
+// same pattern as HostelLookup's own "+ Add new" flow.
+model AlumniCompany {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  industry       String?
+  website        String?
+  createdAt      DateTime @default(now())
+
+  organization  Organization          @relation(fields: [organizationId], references: [id])
+  careerHistory AlumniCareerHistory[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("alumni_companies")
+}
+
+model AlumniCareerHistory {
+  id              String    @id @default(uuid())
+  organizationId  String
+  alumniProfileId String
+  companyId       String
+  jobTitle        String
+  startDate       DateTime
+  endDate         DateTime?
+  description     String?
+  createdAt       DateTime  @default(now())
+
+  organization  Organization  @relation(fields: [organizationId], references: [id])
+  alumniProfile AlumniProfile @relation(fields: [alumniProfileId], references: [id])
+  company       AlumniCompany @relation(fields: [companyId], references: [id])
+
+  @@index([organizationId])
+  @@index([alumniProfileId])
+  @@map("alumni_career_history")
+}
+
+// Deliberately flat free text, not a catalog like AlumniCompany —
+// skills are far more varied and personal than employer names, and
+// there's no concrete reporting need (yet) that depends on exact-name
+// grouping the way company aggregation does.
+model AlumniSkill {
+  id              String   @id @default(uuid())
+  organizationId  String
+  alumniProfileId String
+  skillName       String
+  createdAt       DateTime @default(now())
+
+  organization  Organization  @relation(fields: [organizationId], references: [id])
+  alumniProfile AlumniProfile @relation(fields: [alumniProfileId], references: [id])
+
+  @@index([organizationId])
+  @@index([alumniProfileId])
+  @@map("alumni_skills")
+}
+
+model AlumniCertification {
+  id                 String    @id @default(uuid())
+  organizationId     String
+  alumniProfileId    String
+  name               String
+  issuingOrganization String?
+  issuedDate         DateTime?
+  expiryDate         DateTime?
+  credentialUrl      String?
+  createdAt          DateTime  @default(now())
+
+  organization  Organization  @relation(fields: [organizationId], references: [id])
+  alumniProfile AlumniProfile @relation(fields: [alumniProfileId], references: [id])
+
+  @@index([organizationId])
+  @@index([alumniProfileId])
+  @@map("alumni_certifications")
 }

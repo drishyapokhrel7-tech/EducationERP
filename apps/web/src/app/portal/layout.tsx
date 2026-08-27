@@ -20,6 +20,7 @@ const NAV = [
   { href: "/portal/exams", label: "My Exams" },
   { href: "/portal/invoices", label: "My Invoices" },
   { href: "/portal/library", label: "Library" },
+  { href: "/portal/alumni", label: "Alumni" },
 ];
 
 export default function PortalLayout({ children }: { children: ReactNode }) {

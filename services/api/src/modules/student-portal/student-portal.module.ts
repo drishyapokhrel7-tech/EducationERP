@@ -7,9 +7,18 @@ import { AssignmentsModule } from "../assignments/assignments.module";
 import { KnowledgeChecksModule } from "../knowledge-checks/knowledge-checks.module";
 import { DiscussionsModule } from "../discussions/discussions.module";
 import { DocumentsModule } from "../documents/documents.module";
+import { AlumniModule } from "../alumni/alumni.module";
 
 @Module({
-  imports: [DashboardsModule, FinanceModule, AssignmentsModule, KnowledgeChecksModule, DiscussionsModule, DocumentsModule],
+  imports: [
+    DashboardsModule,
+    FinanceModule,
+    AssignmentsModule,
+    KnowledgeChecksModule,
+    DiscussionsModule,
+    DocumentsModule,
+    AlumniModule,
+  ],
   providers: [StudentPortalService],
   controllers: [StudentPortalController],
 })

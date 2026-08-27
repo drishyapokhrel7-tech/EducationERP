@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Put, UseGuards } from "@nestjs/common";
 import { StudentPortalService } from "./student-portal.service";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
@@ -9,6 +9,11 @@ import { SubmitAssignmentDto } from "./dto/submit-assignment.dto";
 import { SaveQuizAnswerDto } from "../knowledge-checks/dto/save-quiz-answer.dto";
 import { CreateDiscussionPostDto } from "../teacher-portal/dto/create-discussion-post.dto";
 import { UploadOwnDocumentDto } from "../documents/dto/upload-own-document.dto";
+import { UpdateAlumniProfileDto } from "../alumni/dto/update-alumni-profile.dto";
+import { CreateEducationDto } from "../alumni/dto/create-education.dto";
+import { CreateCareerHistoryDto } from "../alumni/dto/create-career-history.dto";
+import { CreateSkillDto } from "../alumni/dto/create-skill.dto";
+import { CreateCertificationDto } from "../alumni/dto/create-certification.dto";
 
 // Deliberately JwtAuthGuard only — no PermissionsGuard/@RequirePermissions.
 // The existing resource:action permission model answers "can this role
@@ -147,5 +152,40 @@ export class StudentPortalController {
   @Get("certificates")
   listOwnCertificates(@CurrentUser() user: JwtPayload) {
     return this.studentPortal.listOwnCertificates(user.organizationId, user.sub);
+  }
+
+  @Get("alumni-profile")
+  getOwnAlumniProfile(@CurrentUser() user: JwtPayload) {
+    return this.studentPortal.getOwnAlumniProfile(user.organizationId, user.sub);
+  }
+
+  @Patch("alumni-profile")
+  updateOwnAlumniProfile(@CurrentUser() user: JwtPayload, @Body() dto: UpdateAlumniProfileDto) {
+    return this.studentPortal.updateOwnAlumniProfile(user.organizationId, user.sub, dto);
+  }
+
+  @Post("alumni-profile/education")
+  addOwnAlumniEducation(@CurrentUser() user: JwtPayload, @Body() dto: CreateEducationDto) {
+    return this.studentPortal.addOwnAlumniEducation(user.organizationId, user.sub, dto);
+  }
+
+  @Post("alumni-profile/career-history")
+  addOwnAlumniCareerHistory(@CurrentUser() user: JwtPayload, @Body() dto: CreateCareerHistoryDto) {
+    return this.studentPortal.addOwnAlumniCareerHistory(user.organizationId, user.sub, dto);
+  }
+
+  @Post("alumni-profile/skills")
+  addOwnAlumniSkill(@CurrentUser() user: JwtPayload, @Body() dto: CreateSkillDto) {
+    return this.studentPortal.addOwnAlumniSkill(user.organizationId, user.sub, dto);
+  }
+
+  @Post("alumni-profile/certifications")
+  addOwnAlumniCertification(@CurrentUser() user: JwtPayload, @Body() dto: CreateCertificationDto) {
+    return this.studentPortal.addOwnAlumniCertification(user.organizationId, user.sub, dto);
+  }
+
+  @Get("alumni-companies")
+  listAlumniCompanies(@CurrentUser() user: JwtPayload) {
+    return this.studentPortal.listAlumniCompanies(user.organizationId);
   }
 }

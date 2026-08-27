@@ -36,6 +36,7 @@ import { HostelModule } from "./modules/hostel/hostel.module";
 import { InventoryModule } from "./modules/inventory/inventory.module";
 import { CommunicationModule } from "./modules/communication/communication.module";
 import { DocumentsModule } from "./modules/documents/documents.module";
+import { AlumniModule } from "./modules/alumni/alumni.module";
 import { QueueModule } from "./queue/queue.module";
 import { HealthController } from "./common/health.controller";
 
@@ -86,6 +87,7 @@ const queueModuleImports = process.env.REDIS_URL ? [QueueModule] : [];
     InventoryModule,
     CommunicationModule,
     DocumentsModule,
+    AlumniModule,
     ...queueModuleImports,
   ],
   controllers: [HealthController],

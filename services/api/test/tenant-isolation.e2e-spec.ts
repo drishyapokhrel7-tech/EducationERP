@@ -306,6 +306,19 @@ describe("Tenant isolation (e2e)", () => {
         // scopes it correctly regardless.
         "studentDocument",
         "certificate",
+        // Alumni & Career, part 1 (Phase 8 slice 8a) —
+        // alumniCareerHistory references alumniProfile + alumniCompany
+        // (both RESTRICT), so it leads both; alumniEducation/
+        // alumniSkill/alumniCertification reference alumniProfile
+        // only; alumniProfile itself references student (RESTRICT),
+        // so the whole chain finishes before studentEnrollment/
+        // student below.
+        "alumniCareerHistory",
+        "alumniEducation",
+        "alumniSkill",
+        "alumniCertification",
+        "alumniProfile",
+        "alumniCompany",
         "studentEnrollment",
         "studentGuardian",
         "student",
@@ -9126,6 +9139,202 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(tokenB))
         .expect(200);
       expect(verificationFromOrgB.body.status).toBe("REVOKED");
+    }, 90000);
+  });
+
+  describe("Alumni & Career, part 1 (Phase 8 slice 8a)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    it("creates an alumni profile only for a graduated student, manages education/career/skills/certifications, supports self-service via the existing portal login, and stays tenant-scoped", async () => {
+      const suffix = `ALM${run}`;
+
+      const activeStudent = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({ studentCode: `ALM-ACTIVE-${suffix}`, firstName: "Active", lastName: suffix, dateOfBirth: "2000-01-01" })
+        .expect(201);
+
+      // A profile can't be created for a student who hasn't graduated.
+      await request(app.getHttpServer())
+        .post("/organizations/me/alumni-profiles")
+        .set(...auth(tokenA))
+        .send({ studentId: activeStudent.body.id, graduationYear: 2024 })
+        .expect(400);
+
+      const student = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({ studentCode: `ALM-STU-${suffix}`, firstName: "Grad", lastName: suffix, dateOfBirth: "2000-01-01" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .put(`/organizations/me/students/${student.body.id}/status`)
+        .set(...auth(tokenA))
+        .send({ status: "GRADUATED", reason: "Completed program", effectiveDate: "2024-06-01" })
+        .expect(200);
+
+      const profile = await request(app.getHttpServer())
+        .post("/organizations/me/alumni-profiles")
+        .set(...auth(tokenA))
+        .send({ studentId: student.body.id, graduationYear: 2024 })
+        .expect(201);
+      expect(profile.body.student.firstName).toBe("Grad");
+
+      // A student can't get a second alumni profile.
+      await request(app.getHttpServer())
+        .post("/organizations/me/alumni-profiles")
+        .set(...auth(tokenA))
+        .send({ studentId: student.body.id, graduationYear: 2024 })
+        .expect(409);
+
+      const listed = await request(app.getHttpServer())
+        .get("/organizations/me/alumni-profiles")
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(listed.body.some((p: { id: string }) => p.id === profile.body.id)).toBe(true);
+
+      const updated = await request(app.getHttpServer())
+        .patch(`/organizations/me/alumni-profiles/${profile.body.id}`)
+        .set(...auth(tokenA))
+        .send({ currentOccupation: "Software Engineer", currentEmployer: "Acme Corp", isPubliclyVisible: true })
+        .expect(200);
+      expect(updated.body.currentOccupation).toBe("Software Engineer");
+      expect(updated.body.isPubliclyVisible).toBe(true);
+
+      // ── Companies — upsert-by-name, same as HostelLookup.
+      const company = await request(app.getHttpServer())
+        .post("/organizations/me/alumni-companies")
+        .set(...auth(tokenA))
+        .send({ name: `Acme Corp ${suffix}`, industry: "Software" })
+        .expect(201);
+      const companyAgain = await request(app.getHttpServer())
+        .post("/organizations/me/alumni-companies")
+        .set(...auth(tokenA))
+        .send({ name: `Acme Corp ${suffix}` })
+        .expect(201);
+      expect(companyAgain.body.id).toBe(company.body.id);
+
+      // ── Education, career history, skills, certifications.
+      const education = await request(app.getHttpServer())
+        .post(`/organizations/me/alumni-profiles/${profile.body.id}/education`)
+        .set(...auth(tokenA))
+        .send({ institutionName: `State University ${suffix}`, degree: "Master's", startYear: 2024, endYear: 2026 })
+        .expect(201);
+
+      const career = await request(app.getHttpServer())
+        .post(`/organizations/me/alumni-profiles/${profile.body.id}/career-history`)
+        .set(...auth(tokenA))
+        .send({ companyId: company.body.id, jobTitle: "Junior Engineer", startDate: "2024-07-01" })
+        .expect(201);
+      expect(career.body.company.id).toBe(company.body.id);
+
+      const careerUpdated = await request(app.getHttpServer())
+        .patch(`/organizations/me/alumni-career-history/${career.body.id}`)
+        .set(...auth(tokenA))
+        .send({ endDate: "2025-12-31" })
+        .expect(200);
+      expect(careerUpdated.body.endDate).not.toBeNull();
+
+      const skill = await request(app.getHttpServer())
+        .post(`/organizations/me/alumni-profiles/${profile.body.id}/skills`)
+        .set(...auth(tokenA))
+        .send({ skillName: "TypeScript" })
+        .expect(201);
+
+      const certification = await request(app.getHttpServer())
+        .post(`/organizations/me/alumni-profiles/${profile.body.id}/certifications`)
+        .set(...auth(tokenA))
+        .send({ name: "AWS Certified Developer", issuingOrganization: "Amazon" })
+        .expect(201);
+
+      const detail = await request(app.getHttpServer())
+        .get(`/organizations/me/alumni-profiles/${profile.body.id}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(detail.body.education).toHaveLength(1);
+      expect(detail.body.careerHistory).toHaveLength(1);
+      expect(detail.body.skills).toHaveLength(1);
+      expect(detail.body.certifications).toHaveLength(1);
+
+      // Removing sub-records.
+      await request(app.getHttpServer()).delete(`/organizations/me/alumni-skills/${skill.body.id}`).set(...auth(tokenA)).expect(200);
+      const afterRemove = await request(app.getHttpServer())
+        .get(`/organizations/me/alumni-profiles/${profile.body.id}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(afterRemove.body.skills).toHaveLength(0);
+
+      // ── Self-service: the alumnus reuses their existing student
+      // portal login.
+      const login = await request(app.getHttpServer())
+        .post(`/organizations/me/students/${student.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "AlumniPortalPass123" })
+        .expect(201);
+      const session = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: login.body.username, password: "AlumniPortalPass123" })
+        .expect(201);
+
+      const ownProfile = await request(app.getHttpServer())
+        .get("/organizations/me/portal/alumni-profile")
+        .set(...auth(session.body.accessToken))
+        .expect(200);
+      expect(ownProfile.body.id).toBe(profile.body.id);
+      expect(ownProfile.body.education).toHaveLength(1);
+
+      const ownProfileUpdated = await request(app.getHttpServer())
+        .patch("/organizations/me/portal/alumni-profile")
+        .set(...auth(session.body.accessToken))
+        .send({ bio: "Building things." })
+        .expect(200);
+      expect(ownProfileUpdated.body.bio).toBe("Building things.");
+
+      await request(app.getHttpServer())
+        .post("/organizations/me/portal/alumni-profile/skills")
+        .set(...auth(session.body.accessToken))
+        .send({ skillName: "React" })
+        .expect(201);
+      const ownProfileAfterSkill = await request(app.getHttpServer())
+        .get("/organizations/me/portal/alumni-profile")
+        .set(...auth(session.body.accessToken))
+        .expect(200);
+      expect(ownProfileAfterSkill.body.skills).toHaveLength(1);
+      expect(ownProfileAfterSkill.body.skills[0].skillName).toBe("React");
+
+      // A student with no alumni profile gets a clean 404 through the
+      // same self-service endpoint.
+      const noProfileLogin = await request(app.getHttpServer())
+        .post(`/organizations/me/students/${activeStudent.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "NoProfilePass123" })
+        .expect(201);
+      const noProfileSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: noProfileLogin.body.username, password: "NoProfilePass123" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .get("/organizations/me/portal/alumni-profile")
+        .set(...auth(noProfileSession.body.accessToken))
+        .expect(404);
+
+      // ── Cross-tenant isolation.
+      await request(app.getHttpServer())
+        .post("/organizations/me/alumni-profiles")
+        .set(...auth(tokenB))
+        .send({ studentId: student.body.id, graduationYear: 2024 })
+        .expect(404);
+      const orgBProfiles = await request(app.getHttpServer())
+        .get("/organizations/me/alumni-profiles")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(orgBProfiles.body.some((p: { id: string }) => p.id === profile.body.id)).toBe(false);
+      const orgBCompanies = await request(app.getHttpServer())
+        .get("/organizations/me/alumni-companies")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(orgBCompanies.body.some((c: { id: string }) => c.id === company.body.id)).toBe(false);
+      expect(education.body.id).toBeTruthy();
+      expect(certification.body.id).toBeTruthy();
     }, 90000);
   });
 });

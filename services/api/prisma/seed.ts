@@ -167,6 +167,10 @@ const RESOURCES = [
   // student_document/staff_document/certificate in too, same folding
   // precedent as every other Phase 7 resource above.
   "document",
+  // Phase 8 slice 8a (Alumni & Career, part 1) — alumni folds
+  // profile/education/career_history/company/skill/certification in
+  // too, same folding precedent as every Phase 7 resource above.
+  "alumni",
 ];
 const ACTIONS = Object.values(PermissionAction);
 

@@ -26,6 +26,7 @@ import {
   PackageSearch,
   MessageSquare,
   FileBadge,
+  Award,
   ListChecks,
   LogOut,
   Network,
@@ -119,6 +120,10 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/dashboard/biometric-policy", label: "Biometric", icon: Fingerprint },
       { href: "/dashboard/cameras", label: "Cameras", icon: Camera },
     ],
+  },
+  {
+    label: "Alumni & Career",
+    items: [{ href: "/dashboard/alumni", label: "Alumni", icon: Award }],
   },
 ];
 

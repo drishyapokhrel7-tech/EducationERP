@@ -177,6 +177,20 @@ import type {
   RevokeCertificateInput,
   CertificateRecord,
   PublicCertificateVerification,
+  CreateAlumniProfileInput,
+  UpdateAlumniProfileInput,
+  AlumniProfileRecord,
+  CreateAlumniCompanyInput,
+  AlumniCompanyRecord,
+  CreateAlumniEducationInput,
+  AlumniEducationRecord,
+  CreateAlumniCareerHistoryInput,
+  UpdateAlumniCareerHistoryInput,
+  AlumniCareerHistoryRecord,
+  CreateAlumniSkillInput,
+  AlumniSkillRecord,
+  CreateAlumniCertificationInput,
+  AlumniCertificationRecord,
   TeacherDashboard,
   StudentDashboard,
   ParentDashboard,
@@ -1391,6 +1405,77 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
     // logged in; request() only ever *adds* an Authorization header
     // when a token is available, never requires one.
     verifyCertificate: (code: string) => request<PublicCertificateVerification>(`/verify/certificates/${code}`),
+
+    // Alumni & Career, part 1 (Phase 8 slice 8a) — admin-facing.
+    // Self-service (an alumnus's own profile) is under the portal
+    // methods above.
+    createAlumniProfile: (input: CreateAlumniProfileInput) =>
+      request<AlumniProfileRecord>("/organizations/me/alumni-profiles", { method: "POST", body: JSON.stringify(input) }),
+    listAlumniProfiles: () => request<AlumniProfileRecord[]>("/organizations/me/alumni-profiles"),
+    getAlumniProfile: (id: string) => request<AlumniProfileRecord>(`/organizations/me/alumni-profiles/${id}`),
+    updateAlumniProfile: (id: string, input: UpdateAlumniProfileInput) =>
+      request<AlumniProfileRecord>(`/organizations/me/alumni-profiles/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    createAlumniCompany: (input: CreateAlumniCompanyInput) =>
+      request<AlumniCompanyRecord>("/organizations/me/alumni-companies", { method: "POST", body: JSON.stringify(input) }),
+    listAlumniCompanies: () => request<AlumniCompanyRecord[]>("/organizations/me/alumni-companies"),
+    addAlumniEducation: (profileId: string, input: CreateAlumniEducationInput) =>
+      request<AlumniEducationRecord>(`/organizations/me/alumni-profiles/${profileId}/education`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    removeAlumniEducation: (id: string) =>
+      request<AlumniEducationRecord>(`/organizations/me/alumni-education/${id}`, { method: "DELETE" }),
+    addAlumniCareerHistory: (profileId: string, input: CreateAlumniCareerHistoryInput) =>
+      request<AlumniCareerHistoryRecord>(`/organizations/me/alumni-profiles/${profileId}/career-history`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    updateAlumniCareerHistory: (id: string, input: UpdateAlumniCareerHistoryInput) =>
+      request<AlumniCareerHistoryRecord>(`/organizations/me/alumni-career-history/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      }),
+    removeAlumniCareerHistory: (id: string) =>
+      request<AlumniCareerHistoryRecord>(`/organizations/me/alumni-career-history/${id}`, { method: "DELETE" }),
+    addAlumniSkill: (profileId: string, input: CreateAlumniSkillInput) =>
+      request<AlumniSkillRecord>(`/organizations/me/alumni-profiles/${profileId}/skills`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    removeAlumniSkill: (id: string) => request<AlumniSkillRecord>(`/organizations/me/alumni-skills/${id}`, { method: "DELETE" }),
+    addAlumniCertification: (profileId: string, input: CreateAlumniCertificationInput) =>
+      request<AlumniCertificationRecord>(`/organizations/me/alumni-profiles/${profileId}/certifications`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    removeAlumniCertification: (id: string) =>
+      request<AlumniCertificationRecord>(`/organizations/me/alumni-certifications/${id}`, { method: "DELETE" }),
+
+    // Alumni self-service
+    getOwnAlumniProfile: () => request<AlumniProfileRecord>("/organizations/me/portal/alumni-profile"),
+    updateOwnAlumniProfile: (input: UpdateAlumniProfileInput) =>
+      request<AlumniProfileRecord>("/organizations/me/portal/alumni-profile", { method: "PATCH", body: JSON.stringify(input) }),
+    addOwnAlumniEducation: (input: CreateAlumniEducationInput) =>
+      request<AlumniEducationRecord>("/organizations/me/portal/alumni-profile/education", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    addOwnAlumniCareerHistory: (input: CreateAlumniCareerHistoryInput) =>
+      request<AlumniCareerHistoryRecord>("/organizations/me/portal/alumni-profile/career-history", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    addOwnAlumniSkill: (input: CreateAlumniSkillInput) =>
+      request<AlumniSkillRecord>("/organizations/me/portal/alumni-profile/skills", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    addOwnAlumniCertification: (input: CreateAlumniCertificationInput) =>
+      request<AlumniCertificationRecord>("/organizations/me/portal/alumni-profile/certifications", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    listOwnAlumniCompanies: () => request<AlumniCompanyRecord[]>("/organizations/me/portal/alumni-companies"),
 
     // Notifications (LMS discovery slice 9) — one shared endpoint set,
     // not split per portal; a notification is for whoever is logged in.

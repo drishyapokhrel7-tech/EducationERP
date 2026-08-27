@@ -2931,3 +2931,137 @@ export interface PublicCertificateVerification {
   status: CertificateStatus;
   revokedAt: string | null;
 }
+
+// ── Alumni & Career, part 1 (Phase 8 slice 8a) ──────────────────────
+export interface CreateAlumniProfileInput {
+  studentId: string;
+  graduationYear: number;
+  currentOccupation?: string;
+  currentEmployer?: string;
+  currentLocation?: string;
+  bio?: string;
+  linkedinUrl?: string;
+}
+
+export interface UpdateAlumniProfileInput {
+  currentOccupation?: string;
+  currentEmployer?: string;
+  currentLocation?: string;
+  bio?: string;
+  linkedinUrl?: string;
+  isPubliclyVisible?: boolean;
+}
+
+export interface AlumniCompanyRecord {
+  id: string;
+  organizationId: string;
+  name: string;
+  industry: string | null;
+  website: string | null;
+  createdAt: string;
+}
+
+export interface CreateAlumniCompanyInput {
+  name: string;
+  industry?: string;
+  website?: string;
+}
+
+export interface AlumniEducationRecord {
+  id: string;
+  organizationId: string;
+  alumniProfileId: string;
+  institutionName: string;
+  degree: string;
+  fieldOfStudy: string | null;
+  startYear: number | null;
+  endYear: number | null;
+  notes: string | null;
+  createdAt: string;
+}
+
+export interface CreateAlumniEducationInput {
+  institutionName: string;
+  degree: string;
+  fieldOfStudy?: string;
+  startYear?: number;
+  endYear?: number;
+  notes?: string;
+}
+
+export interface AlumniCareerHistoryRecord {
+  id: string;
+  organizationId: string;
+  alumniProfileId: string;
+  companyId: string;
+  jobTitle: string;
+  startDate: string;
+  endDate: string | null;
+  description: string | null;
+  createdAt: string;
+  company: AlumniCompanyRecord;
+}
+
+export interface CreateAlumniCareerHistoryInput {
+  companyId: string;
+  jobTitle: string;
+  startDate: string;
+  endDate?: string;
+  description?: string;
+}
+
+export interface UpdateAlumniCareerHistoryInput {
+  endDate: string;
+}
+
+export interface AlumniSkillRecord {
+  id: string;
+  organizationId: string;
+  alumniProfileId: string;
+  skillName: string;
+  createdAt: string;
+}
+
+export interface CreateAlumniSkillInput {
+  skillName: string;
+}
+
+export interface AlumniCertificationRecord {
+  id: string;
+  organizationId: string;
+  alumniProfileId: string;
+  name: string;
+  issuingOrganization: string | null;
+  issuedDate: string | null;
+  expiryDate: string | null;
+  credentialUrl: string | null;
+  createdAt: string;
+}
+
+export interface CreateAlumniCertificationInput {
+  name: string;
+  issuingOrganization?: string;
+  issuedDate?: string;
+  expiryDate?: string;
+  credentialUrl?: string;
+}
+
+export interface AlumniProfileRecord {
+  id: string;
+  organizationId: string;
+  studentId: string;
+  graduationYear: number;
+  currentOccupation: string | null;
+  currentEmployer: string | null;
+  currentLocation: string | null;
+  bio: string | null;
+  linkedinUrl: string | null;
+  isPubliclyVisible: boolean;
+  createdAt: string;
+  updatedAt: string;
+  student: Student;
+  education: AlumniEducationRecord[];
+  careerHistory: AlumniCareerHistoryRecord[];
+  skills: AlumniSkillRecord[];
+  certifications: AlumniCertificationRecord[];
+}

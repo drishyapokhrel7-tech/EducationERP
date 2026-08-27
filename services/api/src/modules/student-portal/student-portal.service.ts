@@ -9,6 +9,12 @@ import { SaveQuizAnswerDto } from "../knowledge-checks/dto/save-quiz-answer.dto"
 import { DiscussionsService } from "../discussions/discussions.service";
 import { CreateDiscussionPostDto } from "../teacher-portal/dto/create-discussion-post.dto";
 import { DocumentsService } from "../documents/documents.service";
+import { AlumniService } from "../alumni/alumni.service";
+import { UpdateAlumniProfileDto } from "../alumni/dto/update-alumni-profile.dto";
+import { CreateEducationDto } from "../alumni/dto/create-education.dto";
+import { CreateCareerHistoryDto } from "../alumni/dto/create-career-history.dto";
+import { CreateSkillDto } from "../alumni/dto/create-skill.dto";
+import { CreateCertificationDto } from "../alumni/dto/create-certification.dto";
 
 /**
  * Self-service, not admin-facing — studentId is derived exclusively from
@@ -29,6 +35,7 @@ export class StudentPortalService {
     private readonly knowledgeChecks: KnowledgeChecksService,
     private readonly discussions: DiscussionsService,
     private readonly documents: DocumentsService,
+    private readonly alumni: AlumniService,
   ) {}
 
   async getDashboard(organizationId: string, userId: string) {
@@ -51,6 +58,49 @@ export class StudentPortalService {
   async listOwnCertificates(organizationId: string, userId: string) {
     const student = await this.getOwnStudent(organizationId, userId);
     return this.documents.listOwnCertificates(organizationId, student.id);
+  }
+
+  // ── Alumni self-service (Phase 8 slice 8a) — reuses this same
+  // portal login; 404s cleanly if no alumni profile exists yet
+  // (e.g. the student hasn't graduated, or the registrar hasn't
+  // created one for them).
+  async getOwnAlumniProfile(organizationId: string, userId: string) {
+    const student = await this.getOwnStudent(organizationId, userId);
+    return this.alumni.getOwnProfile(organizationId, student.id);
+  }
+
+  async updateOwnAlumniProfile(organizationId: string, userId: string, dto: UpdateAlumniProfileDto) {
+    const student = await this.getOwnStudent(organizationId, userId);
+    return this.alumni.updateOwnProfile(organizationId, student.id, dto);
+  }
+
+  async addOwnAlumniEducation(organizationId: string, userId: string, dto: CreateEducationDto) {
+    const student = await this.getOwnStudent(organizationId, userId);
+    return this.alumni.addOwnEducation(organizationId, student.id, dto);
+  }
+
+  async addOwnAlumniCareerHistory(organizationId: string, userId: string, dto: CreateCareerHistoryDto) {
+    const student = await this.getOwnStudent(organizationId, userId);
+    return this.alumni.addOwnCareerHistory(organizationId, student.id, dto);
+  }
+
+  async addOwnAlumniSkill(organizationId: string, userId: string, dto: CreateSkillDto) {
+    const student = await this.getOwnStudent(organizationId, userId);
+    return this.alumni.addOwnSkill(organizationId, student.id, dto);
+  }
+
+  async addOwnAlumniCertification(organizationId: string, userId: string, dto: CreateCertificationDto) {
+    const student = await this.getOwnStudent(organizationId, userId);
+    return this.alumni.addOwnCertification(organizationId, student.id, dto);
+  }
+
+  // Read-only company catalog, not tied to "own" anything — the career-
+  // history form needs it to populate its company picker. Any logged-in
+  // portal user may read it (same trust level as e.g. listCourses); the
+  // admin-facing `alumni-companies` endpoint stays permission-gated since
+  // it's reached from the admin dashboard, not this portal.
+  async listAlumniCompanies(organizationId: string) {
+    return this.alumni.listCompanies(organizationId);
   }
 
   // ── Finance self-service (slice 7a-2) ────────────────────────────────
