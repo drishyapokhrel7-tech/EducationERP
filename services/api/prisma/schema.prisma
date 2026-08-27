@@ -130,6 +130,14 @@ model Organization {
   hostelComplaints                HostelComplaint[]
   hostelMaintenanceRequests        HostelMaintenanceRequest[]
   hostelLookups                    HostelLookup[]
+  inventoryCategories               InventoryCategory[]
+  suppliers                         Supplier[]
+  inventoryItems                    InventoryItem[]
+  purchaseOrders                    PurchaseOrder[]
+  purchaseOrderItems                PurchaseOrderItem[]
+  stockMovements                    StockMovement[]
+  assets                            Asset[]
+  assetAssignments                  AssetAssignment[]
 
   @@map("organizations")
 }
@@ -642,6 +650,7 @@ model Employee {
   driverProfile           Driver?
   routesAsDriver          Route[]              @relation("routesAsDriver")
   discussionPosts         DiscussionPost[]
+  assetAssignments        AssetAssignment[]
 
   @@unique([organizationId, employeeCode])
   @@unique([organizationId, email])
@@ -3195,4 +3204,200 @@ model HostelLookup {
   @@unique([organizationId, kind, name])
   @@index([organizationId])
   @@map("hostel_lookups")
+}
+
+// ── Inventory (Phase 7 slice 7f) ───────────────────────────────────────
+// Plan's ERD (docx §14/§20): inventory_categories, items, suppliers,
+// purchase_orders, stock_movements, assets, asset_assignments — seven
+// tables, no purchase_order_items or asset_assignments-history table
+// named explicitly, but a PO needs line items the same way every other
+// "structure + items" pair in this project does (FeeStructure/
+// FeeStructureItem, SalaryStructure/SalaryStructureItem), so
+// PurchaseOrderItem is added on that precedent, not scope creep.
+//
+// InventoryItem.currentStock is deliberately NOT a stored column —
+// same "computed, not stored" precedent as HostelBed's occupancy and
+// syllabus_progress: it's the signed sum of that item's
+// StockMovement rows (IN positive, OUT/ADJUSTMENT-down negative),
+// computed at read time via a groupBy, so the ledger (StockMovement)
+// stays the single source of truth and can never drift out of sync
+// with a cached total. StockMovement rows are also the plan's own
+// "stock audit" trail — an immutable, append-only ledger, not a
+// separate stock_audit table.
+//
+// AssetAssignment keeps real history (assignedAt/returnedAt, a new
+// row per assignment), unlike HostelAllocation/
+// StudentTransportAssignment's "current pointer, repoint on
+// reassignment" precedent — a physical asset's custody trail (who
+// had the laptop and when) is exactly the kind of accountability
+// record this project already keeps for HostelVisitor's
+// checkInAt/checkOutAt open/closed-record shape, so that's the
+// pattern reused here instead.
+
+model InventoryCategory {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  code           String
+  createdAt      DateTime @default(now())
+
+  organization Organization    @relation(fields: [organizationId], references: [id])
+  items        InventoryItem[]
+  assets       Asset[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+  @@map("inventory_categories")
+}
+
+model Supplier {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  contactName    String?
+  phone          String?
+  email          String?
+  address        String?
+  createdAt      DateTime @default(now())
+
+  organization    Organization     @relation(fields: [organizationId], references: [id])
+  purchaseOrders  PurchaseOrder[]
+
+  @@index([organizationId])
+  @@map("suppliers")
+}
+
+model InventoryItem {
+  id             String   @id @default(uuid())
+  organizationId String
+  categoryId     String
+  name           String
+  sku            String
+  unit           String
+  barcode        String?
+  reorderLevel   Int?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization       Organization         @relation(fields: [organizationId], references: [id])
+  category           InventoryCategory    @relation(fields: [categoryId], references: [id])
+  stockMovements      StockMovement[]
+  purchaseOrderItems  PurchaseOrderItem[]
+
+  @@unique([organizationId, sku])
+  @@index([organizationId])
+  @@map("inventory_items")
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  ORDERED
+  RECEIVED
+  CANCELLED
+}
+
+model PurchaseOrder {
+  id             String              @id @default(uuid())
+  organizationId String
+  supplierId     String
+  status         PurchaseOrderStatus @default(DRAFT)
+  orderDate      DateTime            @default(now())
+  notes          String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  organization    Organization        @relation(fields: [organizationId], references: [id])
+  supplier        Supplier            @relation(fields: [supplierId], references: [id])
+  items           PurchaseOrderItem[]
+  stockMovements  StockMovement[]
+
+  @@index([organizationId])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id                String   @id @default(uuid())
+  organizationId    String
+  purchaseOrderId   String
+  itemId            String
+  quantityOrdered   Int
+  quantityReceived  Int      @default(0)
+  unitPrice         Decimal  @db.Decimal(12, 2)
+
+  organization  Organization  @relation(fields: [organizationId], references: [id])
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  item          InventoryItem @relation(fields: [itemId], references: [id])
+
+  @@index([organizationId])
+  @@map("purchase_order_items")
+}
+
+enum StockMovementType {
+  IN
+  OUT
+  ADJUSTMENT
+}
+
+model StockMovement {
+  id              String            @id @default(uuid())
+  organizationId  String
+  itemId          String
+  type            StockMovementType
+  quantity        Int
+  reason          String?
+  purchaseOrderId String?
+  movementDate    DateTime          @default(now())
+
+  organization  Organization   @relation(fields: [organizationId], references: [id])
+  item          InventoryItem  @relation(fields: [itemId], references: [id])
+  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
+
+  @@index([organizationId])
+  @@index([itemId])
+  @@map("stock_movements")
+}
+
+enum AssetStatus {
+  AVAILABLE
+  MAINTENANCE
+  RETIRED
+}
+
+model Asset {
+  id             String      @id @default(uuid())
+  organizationId String
+  categoryId     String?
+  assetTag       String
+  name           String
+  purchaseDate   DateTime?
+  purchaseCost   Decimal?    @db.Decimal(12, 2)
+  status         AssetStatus @default(AVAILABLE)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id])
+  category     InventoryCategory? @relation(fields: [categoryId], references: [id])
+  assignments  AssetAssignment[]
+
+  @@unique([organizationId, assetTag])
+  @@index([organizationId])
+  @@map("assets")
+}
+
+model AssetAssignment {
+  id                    String    @id @default(uuid())
+  organizationId        String
+  assetId               String
+  assignedToEmployeeId  String
+  assignedAt            DateTime  @default(now())
+  returnedAt            DateTime?
+  notes                 String?
+
+  organization       Organization @relation(fields: [organizationId], references: [id])
+  asset              Asset        @relation(fields: [assetId], references: [id])
+  assignedToEmployee Employee     @relation(fields: [assignedToEmployeeId], references: [id])
+
+  @@index([organizationId])
+  @@index([assetId])
+  @@map("asset_assignments")
 }

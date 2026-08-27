@@ -1161,3 +1161,152 @@ room" form's room type, the visitor log-in form's relation, and the
 Slice 7e done. Per "complete all," proceeding directly to 7f
 (Inventory) next with no further check-in, then 7g (Communication),
 then 7h (Documents & Certificates).
+
+## Slice 7f — Inventory
+
+Continuing "complete all." The plan's ERD list for this domain (docx
+§14) is `inventory_categories, items, suppliers, purchase_orders,
+stock_movements, assets, asset_assignments` — seven tables.
+`PurchaseOrderItem` is added on top of that list, same as every other
+"structure + items" pair in this project (FeeStructure/
+FeeStructureItem, SalaryStructure/SalaryStructureItem) — a purchase
+order needs line items to mean anything.
+
+## What shipped
+
+**Schema** — `InventoryCategory`/`Supplier` are simple org-scoped
+catalogs (same shape as `StaffType`/`FeeCategory`). `InventoryItem`
+belongs to a category, carries an optional `barcode` and
+`reorderLevel`. **`InventoryItem.currentStock` is deliberately not a
+stored column** — it's the signed sum of that item's `StockMovement`
+rows, computed via a `groupBy` at read time, same "computed, not
+stored" precedent as `HostelBed` occupancy and `syllabus_progress` —
+the ledger stays the single source of truth and can never drift out
+of sync with a cached total. `StockMovement` rows are also the plan's
+own "stock audit" trail — an immutable, append-only ledger, not a
+separate table.
+
+`PurchaseOrder` walks an explicit `DRAFT → ORDERED → RECEIVED`
+lifecycle (same "generate then finalize" precedent as Payroll) with a
+parallel `CANCELLED` exit from `DRAFT`/`ORDERED` only — a fully
+`RECEIVED` order can't be cancelled, matching Payroll's "money
+already disbursed is a real-world fact, not undoable" precedent
+applied to goods already received. Receiving is its own explicit
+step, separate from ordering, and supports **partial receipt** — each
+line just adds to that item's `quantityReceived` and writes one
+`StockMovement(IN)` row; the order only flips to `RECEIVED` once
+every line is fully received.
+
+`AssetAssignment` **keeps real history** (`assignedAt`/`returnedAt`,
+a new row per assignment) — a deliberate departure from
+`HostelAllocation`/`StudentTransportAssignment`'s "current pointer,
+repoint on reassignment" precedent. A physical asset's custody trail
+(who had the laptop and when) is an accountability record, closer in
+shape to `HostelVisitor`'s open/closed check-in/check-out pattern
+than to a facility slot that's just reused. `Asset.status`
+(`AVAILABLE`/`MAINTENANCE`/`RETIRED`) has no `ASSIGNED` value — same
+reasoning as `HostelBedStatus` — whether an asset is currently
+assigned is read from `assignments: { where: { returnedAt: null } }`,
+not a stored flag.
+
+**API** — new `inventory` module: `inventory-categories`,
+`suppliers`, `inventory-items` (list includes the computed
+`currentStock`), `purchase-orders` (+ `:id/items`, `:id/place`,
+`:id/receive`, `:id/cancel`), `stock-movements` (POST is always a
+manual `ADJUSTMENT` — `IN` only ever comes from receiving a PO; `OUT`
+is declared in the enum for schema completeness but nothing in this
+slice creates one — no issue-to-department workflow was in scope),
+`assets` (+ PATCH for status), `asset-assignments` (+ `:id/return`).
+`assignAsset` rejects a non-`AVAILABLE` asset and an asset with an
+already-open assignment (both 409) — same style of pre-check as
+Hostel's bed-allocation guards. One new RBAC resource, `inventory`
+(folds everything above in — same folding precedent as
+`route`/`hostel`), Super Admin/Organization Admin only.
+
+**Web UI** — new `/dashboard/inventory` page, the established
+one-page-many-Cards structure: Categories, Suppliers, Items (with a
+destructive-variant badge when `currentStock <= reorderLevel`),
+Purchase Orders (create → "Manage" reveals a status-gated panel: add
+line items and place while `DRAFT`, receive per-line quantities while
+`ORDERED`, cancel unless `RECEIVED`), Stock Movements (recent list +
+a manual signed-adjustment form), Assets (create, assign/return,
+send-to-maintenance/mark-available status toggle).
+
+## Explicitly not in this slice
+
+- Real stock issuance to a department/class (`StockMovementType.OUT`
+  is declared but nothing creates one) — the plan's bare ERD list
+  doesn't specify this workflow, and it wasn't asked for; the manual
+  adjustment endpoint (any signed quantity) covers ad-hoc corrections
+  in the meantime.
+- Barcode/QR scanning — `InventoryItem.barcode` is a plain optional
+  string field (matching the plan's "barcode/QR" prose mention), not
+  a scanning UI or device integration.
+- Asset depreciation/valuation reporting — `purchaseCost` is stored
+  but nothing computes book value over time; that's Analytics &
+  Reports domain territory (not yet started), not this slice's job.
+- A dedicated Inventory/Procurement Manager RBAC permission profile —
+  Super Admin/Organization Admin only, matching every resource seeded
+  this session.
+
+## Verified
+
+- `pnpm -r typecheck`/`lint`/`build` clean across all six packages
+  (the same pre-existing, unrelated `sso/page.tsx` lint failure from
+  7e, still untouched, still flagged separately).
+- `services/api` e2e: one new comprehensive test (Inventory) — builds
+  a category/supplier/item, walks a PO through `DRAFT` (add line,
+  reject adding a line after placing) → `ORDERED` (reject receiving
+  before `ORDERED`) → partial receipt (stock reflects the partial
+  amount, order stays `ORDERED`) → reject over-receiving beyond what
+  was ordered → full receipt (`RECEIVED`, stock reflects the full
+  amount, reject receiving more, reject cancelling), a separate
+  `DRAFT` order cancelled cleanly, a manual signed stock adjustment
+  and a stock-movements list filtered by item, an asset created and
+  assigned (reject a second assignment while already assigned, reject
+  assigning a `MAINTENANCE` asset), returned, then reassigned to a
+  different employee, and cross-tenant isolation throughout (org B
+  can't create an item under org A's category, doesn't see org A's
+  suppliers/assets in its own lists). Passed clean standalone
+  (`-t "Inventory"`, 74/74 including 73 skipped, 33.3s for the one
+  new test) after one test-authoring fix (an empty `lines: []` array
+  failed the DTO's own `@ArrayMinSize(1)` validation with a 400
+  before ever reaching the business-rule check the test meant to
+  exercise — restructured to send a real line while the order was
+  still `DRAFT` instead).
+- Full browser pass, as the demo admin: created a real category
+  ("Stationery"), supplier ("Kathmandu Stationers"), and item ("A4
+  Notebook", reorder level 20) through the actual UI forms, confirmed
+  the low-stock badge showed red at 0 — created a purchase order,
+  added a line (100 @ 45), placed it, received it in two partial
+  batches (60 then 40), confirmed the order flipped to `RECEIVED` and
+  the item's computed stock read 100 — recorded a manual -5
+  adjustment ("Damaged in storage") and confirmed all three
+  movements (two `IN`, one `ADJUSTMENT`) listed correctly — created
+  an asset ("Dell Laptop"), assigned it to a real demo teacher
+  (Sunita Karki), and returned it. Every step confirmed against the
+  real network response, not the UI's own optimistic render. All demo
+  data left in place per this project's standing "don't clean up
+  test/demo data" instruction.
+- **A genuine tool-level rendering bug hit and correctly diagnosed
+  mid-pass, not a product bug**: after a `resize_window` + scroll
+  sequence, the Browser pane's `screenshot` action returned a
+  visually frozen frame (same content, same scroll position) across
+  several consecutive calls, while `window.scrollY` (read via
+  `javascript_tool`) and a fresh `read_page` both confirmed the
+  actual DOM had scrolled and rendered further content correctly.
+  Diagnosed as screenshot-only staleness, not a real layout or scroll
+  bug, by cross-checking through `read_page`/`javascript_tool`
+  instead of trusting the image — then drove the rest of this pass
+  through refs, `form_input`, and network-response verification
+  rather than screenshots. Also re-hit the standing "inline button
+  click silently no-ops" issue (a correctly enabled "Add" button)
+  during the earlier Hostel lookup work in this same session — same
+  established workaround (`javascript_tool` `.click()`), applied here
+  too for every submit action in this pass.
+
+## Next step (as of slice 7f)
+
+Slice 7f done. Per "complete all," proceeding directly to 7g
+(Communication) next with no further check-in, then 7h (Documents &
+Certificates).

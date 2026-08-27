@@ -213,6 +213,24 @@ describe("Tenant isolation (e2e)", () => {
         "route",
         "driver",
         "vehicle",
+        // Inventory (Phase 7 slice 7f) — assetAssignment references
+        // asset + employee (both RESTRICT), so it must precede both
+        // (employee is deleted right below). purchaseOrderItem
+        // references purchaseOrder + inventoryItem (RESTRICT), so it
+        // leads both; stockMovement references inventoryItem
+        // (RESTRICT, purchaseOrderId is ON DELETE SET NULL so no
+        // ordering requirement against purchaseOrder specifically).
+        // purchaseOrder references supplier (RESTRICT); inventoryItem
+        // references inventoryCategory (RESTRICT); asset's categoryId
+        // is ON DELETE SET NULL, grouped here for readability anyway.
+        "assetAssignment",
+        "purchaseOrderItem",
+        "stockMovement",
+        "purchaseOrder",
+        "asset",
+        "inventoryItem",
+        "supplier",
+        "inventoryCategory",
         "employee",
         "staffType",
         "designation",
@@ -8431,5 +8449,256 @@ describe("Tenant isolation (e2e)", () => {
         .expect(200);
       expect(orgBRoomTypes.body.some((l: { name: string }) => l.name === `Deluxe ${suffix}`)).toBe(false);
     }, 30000);
+  });
+
+  describe("Inventory (Phase 7 slice 7f)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    async function buildEmployee(token: string, suffix: string) {
+      const staffType = await request(app.getHttpServer())
+        .post("/organizations/me/staff-types")
+        .set(...auth(token))
+        .send({ name: `Inventory Staff ${suffix}`, code: `INVST${suffix}` })
+        .expect(201);
+      const designation = await request(app.getHttpServer())
+        .post("/organizations/me/designations")
+        .set(...auth(token))
+        .send({ name: `Inventory Clerk ${suffix}`, code: `INVCL${suffix}` })
+        .expect(201);
+      const employee = await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(token))
+        .send({
+          staffTypeId: staffType.body.id,
+          designationId: designation.body.id,
+          employeeCode: `INV-EMP-${suffix}`,
+          firstName: "Inventory",
+          lastName: suffix,
+          email: `inventory-${suffix}@staff-e2e.test`,
+          dateOfJoining: "2026-01-01",
+        })
+        .expect(201);
+      return employee.body.id as string;
+    }
+
+    it("tracks categories/suppliers/items/purchase orders/stock movements/assets end to end, and stays tenant-scoped", async () => {
+      const suffix = `INV${run}`;
+
+      const category = await request(app.getHttpServer())
+        .post("/organizations/me/inventory-categories")
+        .set(...auth(tokenA))
+        .send({ name: `Stationery ${suffix}`, code: `STAT${suffix}` })
+        .expect(201);
+      const supplier = await request(app.getHttpServer())
+        .post("/organizations/me/suppliers")
+        .set(...auth(tokenA))
+        .send({ name: `Supplier ${suffix}` })
+        .expect(201);
+      const item = await request(app.getHttpServer())
+        .post("/organizations/me/inventory-items")
+        .set(...auth(tokenA))
+        .send({ categoryId: category.body.id, name: `Notebook ${suffix}`, sku: `NB-${suffix}`, unit: "piece", reorderLevel: 10 })
+        .expect(201);
+
+      const itemsBeforeStock = await request(app.getHttpServer())
+        .get("/organizations/me/inventory-items")
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(itemsBeforeStock.body.find((i: { id: string }) => i.id === item.body.id).currentStock).toBe(0);
+
+      // ── Purchase order lifecycle: DRAFT → add lines → ORDERED →
+      // receive (partial, then full) → RECEIVED.
+      const po = await request(app.getHttpServer())
+        .post("/organizations/me/purchase-orders")
+        .set(...auth(tokenA))
+        .send({ supplierId: supplier.body.id })
+        .expect(201);
+      expect(po.body.status).toBe("DRAFT");
+
+      const poItem = await request(app.getHttpServer())
+        .post(`/organizations/me/purchase-orders/${po.body.id}/items`)
+        .set(...auth(tokenA))
+        .send({ itemId: item.body.id, quantityOrdered: 50, unitPrice: 25.5 })
+        .expect(201);
+
+      // Receiving before the order is even ORDERED is rejected.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/purchase-orders/${po.body.id}/receive`)
+        .set(...auth(tokenA))
+        .send({ lines: [{ purchaseOrderItemId: poItem.body.id, quantity: 1 }] })
+        .expect(409);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/purchase-orders/${po.body.id}/place`)
+        .set(...auth(tokenA))
+        .expect(201);
+
+      // Items can no longer be added once placed.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/purchase-orders/${po.body.id}/items`)
+        .set(...auth(tokenA))
+        .send({ itemId: item.body.id, quantityOrdered: 5, unitPrice: 25.5 })
+        .expect(409);
+
+      // Partial receipt — order stays ORDERED, stock reflects the
+      // partial quantity.
+      const partialReceive = await request(app.getHttpServer())
+        .post(`/organizations/me/purchase-orders/${po.body.id}/receive`)
+        .set(...auth(tokenA))
+        .send({ lines: [{ purchaseOrderItemId: poItem.body.id, quantity: 20 }] })
+        .expect(201);
+      expect(partialReceive.body.status).toBe("ORDERED");
+
+      const itemsAfterPartial = await request(app.getHttpServer())
+        .get("/organizations/me/inventory-items")
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(itemsAfterPartial.body.find((i: { id: string }) => i.id === item.body.id).currentStock).toBe(20);
+
+      // Over-receiving beyond what was ordered is rejected.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/purchase-orders/${po.body.id}/receive`)
+        .set(...auth(tokenA))
+        .send({ lines: [{ purchaseOrderItemId: poItem.body.id, quantity: 31 }] })
+        .expect(409);
+
+      // Receiving the remainder completes the order.
+      const fullReceive = await request(app.getHttpServer())
+        .post(`/organizations/me/purchase-orders/${po.body.id}/receive`)
+        .set(...auth(tokenA))
+        .send({ lines: [{ purchaseOrderItemId: poItem.body.id, quantity: 30 }] })
+        .expect(201);
+      expect(fullReceive.body.status).toBe("RECEIVED");
+
+      const itemsAfterFull = await request(app.getHttpServer())
+        .get("/organizations/me/inventory-items")
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(itemsAfterFull.body.find((i: { id: string }) => i.id === item.body.id).currentStock).toBe(50);
+
+      // A fully received order can't receive more or be cancelled.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/purchase-orders/${po.body.id}/receive`)
+        .set(...auth(tokenA))
+        .send({ lines: [{ purchaseOrderItemId: poItem.body.id, quantity: 1 }] })
+        .expect(409);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/purchase-orders/${po.body.id}/cancel`)
+        .set(...auth(tokenA))
+        .expect(409);
+
+      // A separate DRAFT order can be cancelled freely.
+      const secondPo = await request(app.getHttpServer())
+        .post("/organizations/me/purchase-orders")
+        .set(...auth(tokenA))
+        .send({ supplierId: supplier.body.id })
+        .expect(201);
+      const cancelled = await request(app.getHttpServer())
+        .post(`/organizations/me/purchase-orders/${secondPo.body.id}/cancel`)
+        .set(...auth(tokenA))
+        .expect(201);
+      expect(cancelled.body.status).toBe("CANCELLED");
+
+      // ── Manual stock adjustment (signed) — a damage write-off.
+      await request(app.getHttpServer())
+        .post("/organizations/me/stock-movements")
+        .set(...auth(tokenA))
+        .send({ itemId: item.body.id, quantity: -5, reason: "Damaged in storage" })
+        .expect(201);
+      const itemsAfterAdjustment = await request(app.getHttpServer())
+        .get("/organizations/me/inventory-items")
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(itemsAfterAdjustment.body.find((i: { id: string }) => i.id === item.body.id).currentStock).toBe(45);
+
+      const movements = await request(app.getHttpServer())
+        .get("/organizations/me/stock-movements")
+        .query({ itemId: item.body.id })
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(movements.body.every((m: { itemId: string }) => m.itemId === item.body.id)).toBe(true);
+      expect(movements.body.length).toBe(3); // two receipts + one adjustment
+
+      // ── Assets: create, assign, reject double-assign, return, reassign.
+      const employeeId = await buildEmployee(tokenA, suffix);
+      const employee2Id = await buildEmployee(tokenA, `${suffix}B`);
+      const asset = await request(app.getHttpServer())
+        .post("/organizations/me/assets")
+        .set(...auth(tokenA))
+        .send({ assetTag: `LAPTOP-${suffix}`, name: `Laptop ${suffix}`, categoryId: category.body.id })
+        .expect(201);
+
+      const assignment = await request(app.getHttpServer())
+        .post("/organizations/me/asset-assignments")
+        .set(...auth(tokenA))
+        .send({ assetId: asset.body.id, employeeId })
+        .expect(201);
+      expect(assignment.body.assignedToEmployee.id).toBe(employeeId);
+
+      // Already assigned — a second assignment is rejected.
+      await request(app.getHttpServer())
+        .post("/organizations/me/asset-assignments")
+        .set(...auth(tokenA))
+        .send({ assetId: asset.body.id, employeeId: employee2Id })
+        .expect(409);
+
+      // An asset under maintenance can't be assigned.
+      const asset2 = await request(app.getHttpServer())
+        .post("/organizations/me/assets")
+        .set(...auth(tokenA))
+        .send({ assetTag: `PROJ-${suffix}`, name: `Projector ${suffix}` })
+        .expect(201);
+      await request(app.getHttpServer())
+        .patch(`/organizations/me/assets/${asset2.body.id}`)
+        .set(...auth(tokenA))
+        .send({ status: "MAINTENANCE" })
+        .expect(200);
+      await request(app.getHttpServer())
+        .post("/organizations/me/asset-assignments")
+        .set(...auth(tokenA))
+        .send({ assetId: asset2.body.id, employeeId })
+        .expect(409);
+
+      // Return, then reassign to a different employee.
+      await request(app.getHttpServer())
+        .post(`/organizations/me/asset-assignments/${assignment.body.id}/return`)
+        .set(...auth(tokenA))
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/asset-assignments/${assignment.body.id}/return`)
+        .set(...auth(tokenA))
+        .expect(409);
+      const reassignment = await request(app.getHttpServer())
+        .post("/organizations/me/asset-assignments")
+        .set(...auth(tokenA))
+        .send({ assetId: asset.body.id, employeeId: employee2Id })
+        .expect(201);
+      expect(reassignment.body.assignedToEmployee.id).toBe(employee2Id);
+
+      const assetsList = await request(app.getHttpServer())
+        .get("/organizations/me/assets")
+        .set(...auth(tokenA))
+        .expect(200);
+      const listedAsset = assetsList.body.find((a: { id: string }) => a.id === asset.body.id);
+      expect(listedAsset.assignments).toHaveLength(1);
+      expect(listedAsset.assignments[0].assignedToEmployee.id).toBe(employee2Id);
+
+      // ── Cross-tenant isolation.
+      await request(app.getHttpServer())
+        .post("/organizations/me/inventory-items")
+        .set(...auth(tokenB))
+        .send({ categoryId: category.body.id, name: "Intruder Item", sku: `INTRUDE-${suffix}`, unit: "piece" })
+        .expect(404);
+      const orgBSuppliers = await request(app.getHttpServer())
+        .get("/organizations/me/suppliers")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(orgBSuppliers.body.some((s: { id: string }) => s.id === supplier.body.id)).toBe(false);
+      const orgBAssets = await request(app.getHttpServer())
+        .get("/organizations/me/assets")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(orgBAssets.body.some((a: { id: string }) => a.id === asset.body.id)).toBe(false);
+    }, 90000);
   });
 });

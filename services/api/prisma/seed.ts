@@ -152,6 +152,10 @@ const RESOURCES = [
   // hostel fees reuse Finance's existing fee_structure/invoice
   // permissions as-is.
   "hostel",
+  // Phase 7 slice 7f (Inventory) — inventory folds category/supplier/
+  // purchase_order(+items)/stock_movement/asset/asset_assignment in
+  // too, same folding precedent as route/hostel above.
+  "inventory",
 ];
 const ACTIONS = Object.values(PermissionAction);
 

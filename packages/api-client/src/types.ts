@@ -2585,3 +2585,166 @@ export interface HostelLookupRecord {
   name: string;
   createdAt: string;
 }
+
+// ── Inventory (Phase 7 slice 7f) ────────────────────────────────────
+export type PurchaseOrderStatus = "DRAFT" | "ORDERED" | "RECEIVED" | "CANCELLED";
+export type StockMovementType = "IN" | "OUT" | "ADJUSTMENT";
+export type AssetStatus = "AVAILABLE" | "MAINTENANCE" | "RETIRED";
+
+export interface CreateInventoryCategoryInput {
+  name: string;
+  code: string;
+}
+
+export interface InventoryCategoryRecord {
+  id: string;
+  organizationId: string;
+  name: string;
+  code: string;
+  createdAt: string;
+}
+
+export interface CreateSupplierInput {
+  name: string;
+  contactName?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+}
+
+export interface SupplierRecord {
+  id: string;
+  organizationId: string;
+  name: string;
+  contactName: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  createdAt: string;
+}
+
+export interface CreateInventoryItemInput {
+  categoryId: string;
+  name: string;
+  sku: string;
+  unit: string;
+  barcode?: string;
+  reorderLevel?: number;
+}
+
+export interface InventoryItemRecord {
+  id: string;
+  organizationId: string;
+  categoryId: string;
+  name: string;
+  sku: string;
+  unit: string;
+  barcode: string | null;
+  reorderLevel: number | null;
+  createdAt: string;
+  updatedAt: string;
+  category: InventoryCategoryRecord;
+  currentStock: number;
+}
+
+export interface CreatePurchaseOrderInput {
+  supplierId: string;
+  notes?: string;
+}
+
+export interface AddPurchaseOrderItemInput {
+  itemId: string;
+  quantityOrdered: number;
+  unitPrice: number;
+}
+
+export interface PurchaseOrderItemRecord {
+  id: string;
+  organizationId: string;
+  purchaseOrderId: string;
+  itemId: string;
+  quantityOrdered: number;
+  quantityReceived: number;
+  unitPrice: string;
+  item: InventoryItemRecord;
+}
+
+export interface PurchaseOrderRecord {
+  id: string;
+  organizationId: string;
+  supplierId: string;
+  status: PurchaseOrderStatus;
+  orderDate: string;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  supplier: SupplierRecord;
+  items: PurchaseOrderItemRecord[];
+}
+
+export interface ReceivePurchaseOrderInput {
+  lines: { purchaseOrderItemId: string; quantity: number }[];
+}
+
+export interface CreateStockAdjustmentInput {
+  itemId: string;
+  quantity: number;
+  reason?: string;
+}
+
+export interface StockMovementRecord {
+  id: string;
+  organizationId: string;
+  itemId: string;
+  type: StockMovementType;
+  quantity: number;
+  reason: string | null;
+  purchaseOrderId: string | null;
+  movementDate: string;
+  item: InventoryItemRecord;
+}
+
+export interface CreateAssetInput {
+  categoryId?: string;
+  assetTag: string;
+  name: string;
+  purchaseDate?: string;
+  purchaseCost?: number;
+}
+
+export interface UpdateAssetInput {
+  status: AssetStatus;
+}
+
+export interface AssetAssignmentRecord {
+  id: string;
+  organizationId: string;
+  assetId: string;
+  assignedToEmployeeId: string;
+  assignedAt: string;
+  returnedAt: string | null;
+  notes: string | null;
+  asset?: AssetRecord;
+  assignedToEmployee: Employee;
+}
+
+export interface AssetRecord {
+  id: string;
+  organizationId: string;
+  categoryId: string | null;
+  assetTag: string;
+  name: string;
+  purchaseDate: string | null;
+  purchaseCost: string | null;
+  status: AssetStatus;
+  createdAt: string;
+  updatedAt: string;
+  category: InventoryCategoryRecord | null;
+  assignments: AssetAssignmentRecord[];
+}
+
+export interface AssignAssetInput {
+  assetId: string;
+  employeeId: string;
+  notes?: string;
+}

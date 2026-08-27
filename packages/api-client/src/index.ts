@@ -145,6 +145,24 @@ import type {
   HostelLookupKind,
   CreateHostelLookupInput,
   HostelLookupRecord,
+  CreateInventoryCategoryInput,
+  InventoryCategoryRecord,
+  CreateSupplierInput,
+  SupplierRecord,
+  CreateInventoryItemInput,
+  InventoryItemRecord,
+  CreatePurchaseOrderInput,
+  PurchaseOrderRecord,
+  AddPurchaseOrderItemInput,
+  PurchaseOrderItemRecord,
+  ReceivePurchaseOrderInput,
+  CreateStockAdjustmentInput,
+  StockMovementRecord,
+  CreateAssetInput,
+  AssetRecord,
+  UpdateAssetInput,
+  AssignAssetInput,
+  AssetAssignmentRecord,
   TeacherDashboard,
   StudentDashboard,
   ParentDashboard,
@@ -1260,6 +1278,52 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       }),
     listHostelLookups: (kind?: HostelLookupKind) =>
       request<HostelLookupRecord[]>(`/organizations/me/hostel-lookups${kind ? `?kind=${kind}` : ""}`),
+
+    // Inventory (Phase 7 slice 7f)
+    createInventoryCategory: (input: CreateInventoryCategoryInput) =>
+      request<InventoryCategoryRecord>("/organizations/me/inventory-categories", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    listInventoryCategories: () => request<InventoryCategoryRecord[]>("/organizations/me/inventory-categories"),
+    createSupplier: (input: CreateSupplierInput) =>
+      request<SupplierRecord>("/organizations/me/suppliers", { method: "POST", body: JSON.stringify(input) }),
+    listSuppliers: () => request<SupplierRecord[]>("/organizations/me/suppliers"),
+    createInventoryItem: (input: CreateInventoryItemInput) =>
+      request<InventoryItemRecord>("/organizations/me/inventory-items", { method: "POST", body: JSON.stringify(input) }),
+    listInventoryItems: () => request<InventoryItemRecord[]>("/organizations/me/inventory-items"),
+    createPurchaseOrder: (input: CreatePurchaseOrderInput) =>
+      request<PurchaseOrderRecord>("/organizations/me/purchase-orders", { method: "POST", body: JSON.stringify(input) }),
+    listPurchaseOrders: () => request<PurchaseOrderRecord[]>("/organizations/me/purchase-orders"),
+    addPurchaseOrderItem: (purchaseOrderId: string, input: AddPurchaseOrderItemInput) =>
+      request<PurchaseOrderItemRecord>(`/organizations/me/purchase-orders/${purchaseOrderId}/items`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    placePurchaseOrder: (purchaseOrderId: string) =>
+      request<PurchaseOrderRecord>(`/organizations/me/purchase-orders/${purchaseOrderId}/place`, { method: "POST" }),
+    receivePurchaseOrder: (purchaseOrderId: string, input: ReceivePurchaseOrderInput) =>
+      request<PurchaseOrderRecord>(`/organizations/me/purchase-orders/${purchaseOrderId}/receive`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    cancelPurchaseOrder: (purchaseOrderId: string) =>
+      request<PurchaseOrderRecord>(`/organizations/me/purchase-orders/${purchaseOrderId}/cancel`, { method: "POST" }),
+    createStockAdjustment: (input: CreateStockAdjustmentInput) =>
+      request<StockMovementRecord>("/organizations/me/stock-movements", { method: "POST", body: JSON.stringify(input) }),
+    listStockMovements: (itemId?: string) =>
+      request<StockMovementRecord[]>(`/organizations/me/stock-movements${itemId ? `?itemId=${itemId}` : ""}`),
+    createAsset: (input: CreateAssetInput) =>
+      request<AssetRecord>("/organizations/me/assets", { method: "POST", body: JSON.stringify(input) }),
+    listAssets: () => request<AssetRecord[]>("/organizations/me/assets"),
+    updateAsset: (assetId: string, input: UpdateAssetInput) =>
+      request<AssetRecord>(`/organizations/me/assets/${assetId}`, { method: "PATCH", body: JSON.stringify(input) }),
+    assignAsset: (input: AssignAssetInput) =>
+      request<AssetAssignmentRecord>("/organizations/me/asset-assignments", { method: "POST", body: JSON.stringify(input) }),
+    returnAsset: (assignmentId: string) =>
+      request<AssetAssignmentRecord>(`/organizations/me/asset-assignments/${assignmentId}/return`, { method: "POST" }),
+    listAssetAssignments: (assetId?: string) =>
+      request<AssetAssignmentRecord[]>(`/organizations/me/asset-assignments${assetId ? `?assetId=${assetId}` : ""}`),
 
     // Notifications (LMS discovery slice 9) — one shared endpoint set,
     // not split per portal; a notification is for whoever is logged in.
