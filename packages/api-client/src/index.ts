@@ -167,6 +167,16 @@ import type {
   MessageTemplateRecord,
   CreateMessageInput,
   MessageRecord,
+  CreateStudentDocumentInput,
+  UploadOwnDocumentInput,
+  ReviewDocumentInput,
+  StudentDocumentRecord,
+  CreateStaffDocumentInput,
+  StaffDocumentRecord,
+  CreateCertificateInput,
+  RevokeCertificateInput,
+  CertificateRecord,
+  PublicCertificateVerification,
   TeacherDashboard,
   StudentDashboard,
   ParentDashboard,
@@ -1211,6 +1221,12 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         body: JSON.stringify(input),
       }),
 
+    // Documents & Certificates self-service (Phase 7h)
+    listOwnDocuments: () => request<StudentDocumentRecord[]>("/organizations/me/portal/documents"),
+    uploadOwnDocument: (input: UploadOwnDocumentInput) =>
+      request<StudentDocumentRecord>("/organizations/me/portal/documents", { method: "POST", body: JSON.stringify(input) }),
+    listOwnCertificates: () => request<CertificateRecord[]>("/organizations/me/portal/certificates"),
+
     // Gradebook (LMS discovery slice 7) — the only new endpoint; the
     // rest of the grid is built client-side from listTeacherAssignments/
     // listTeacherQuizzes' existing submissions/attempts data.
@@ -1339,6 +1355,42 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       request<MessageRecord>("/organizations/me/messages", { method: "POST", body: JSON.stringify(input) }),
     listMessages: () => request<MessageRecord[]>("/organizations/me/messages"),
     sendMessage: (messageId: string) => request<MessageRecord>(`/organizations/me/messages/${messageId}/send`, { method: "POST" }),
+
+    // Documents & Certificates (Phase 7h) — admin-facing. Self-service
+    // (a student's own documents/certificates) is under the portal
+    // methods above.
+    createStudentDocument: (input: CreateStudentDocumentInput) =>
+      request<StudentDocumentRecord>("/organizations/me/student-documents", { method: "POST", body: JSON.stringify(input) }),
+    listStudentDocuments: (studentId?: string) =>
+      request<StudentDocumentRecord[]>(`/organizations/me/student-documents${studentId ? `?studentId=${studentId}` : ""}`),
+    reviewStudentDocument: (documentId: string, input: ReviewDocumentInput) =>
+      request<StudentDocumentRecord>(`/organizations/me/student-documents/${documentId}/review`, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      }),
+    createStaffDocument: (input: CreateStaffDocumentInput) =>
+      request<StaffDocumentRecord>("/organizations/me/staff-documents", { method: "POST", body: JSON.stringify(input) }),
+    listStaffDocuments: (employeeId?: string) =>
+      request<StaffDocumentRecord[]>(`/organizations/me/staff-documents${employeeId ? `?employeeId=${employeeId}` : ""}`),
+    reviewStaffDocument: (documentId: string, input: ReviewDocumentInput) =>
+      request<StaffDocumentRecord>(`/organizations/me/staff-documents/${documentId}/review`, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      }),
+    createCertificate: (input: CreateCertificateInput) =>
+      request<CertificateRecord>("/organizations/me/certificates", { method: "POST", body: JSON.stringify(input) }),
+    listCertificates: (studentId?: string) =>
+      request<CertificateRecord[]>(`/organizations/me/certificates${studentId ? `?studentId=${studentId}` : ""}`),
+    revokeCertificate: (certificateId: string, input: RevokeCertificateInput) =>
+      request<CertificateRecord>(`/organizations/me/certificates/${certificateId}/revoke`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    // Public verification — the backend route has no auth guard at
+    // all, so this works whether or not the caller happens to be
+    // logged in; request() only ever *adds* an Authorization header
+    // when a token is available, never requires one.
+    verifyCertificate: (code: string) => request<PublicCertificateVerification>(`/verify/certificates/${code}`),
 
     // Notifications (LMS discovery slice 9) — one shared endpoint set,
     // not split per portal; a notification is for whoever is logged in.

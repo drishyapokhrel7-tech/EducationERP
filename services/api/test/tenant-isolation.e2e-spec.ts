@@ -242,6 +242,9 @@ describe("Tenant isolation (e2e)", () => {
         "emailLog",
         "message",
         "messageTemplate",
+        // Documents & Certificates (Phase 7h) — staffDocument
+        // references employee (RESTRICT), so it must precede it.
+        "staffDocument",
         "employee",
         "staffType",
         "designation",
@@ -296,6 +299,13 @@ describe("Tenant isolation (e2e)", () => {
         // hostelLookup only FKs to organization — no ordering
         // requirement against anything else in this list.
         "hostelLookup",
+        // Documents & Certificates (Phase 7h) — studentDocument and
+        // certificate both reference student (RESTRICT), so both
+        // must precede it. certificate has no RLS (see schema.prisma)
+        // but this deleteMany's explicit where:{organizationId}
+        // scopes it correctly regardless.
+        "studentDocument",
+        "certificate",
         "studentEnrollment",
         "studentGuardian",
         "student",
@@ -8894,6 +8904,228 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(tokenB))
         .expect(200);
       expect(orgBMessages.body.some((m: { id: string }) => m.id === fromTemplate.body.id)).toBe(false);
+    }, 90000);
+  });
+
+  describe("Documents & Certificates (Phase 7h)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    async function buildEmployee(token: string, suffix: string) {
+      const staffType = await request(app.getHttpServer())
+        .post("/organizations/me/staff-types")
+        .set(...auth(token))
+        .send({ name: `Docs Staff ${suffix}`, code: `DOCST${suffix}` })
+        .expect(201);
+      const designation = await request(app.getHttpServer())
+        .post("/organizations/me/designations")
+        .set(...auth(token))
+        .send({ name: `Docs Clerk ${suffix}`, code: `DOCCL${suffix}` })
+        .expect(201);
+      const employee = await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(token))
+        .send({
+          staffTypeId: staffType.body.id,
+          designationId: designation.body.id,
+          employeeCode: `DOC-EMP-${suffix}`,
+          firstName: "Docs",
+          lastName: suffix,
+          email: `docs-${suffix}@staff-e2e.test`,
+          dateOfJoining: "2026-01-01",
+        })
+        .expect(201);
+      return employee.body.id as string;
+    }
+
+    it("uploads/reviews student and staff documents, issues/verifies/revokes certificates via the public no-auth endpoint, supports student self-service, and stays tenant-scoped", async () => {
+      const suffix = `DOC${run}`;
+
+      const student = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({ studentCode: `DOC-STU-${suffix}`, firstName: "Rita", lastName: suffix, dateOfBirth: "2015-01-01" })
+        .expect(201);
+      const employeeId = await buildEmployee(tokenA, suffix);
+
+      // ── Student documents: upload → review (VERIFIED / REJECTED).
+      const studentDoc = await request(app.getHttpServer())
+        .post("/organizations/me/student-documents")
+        .set(...auth(tokenA))
+        .send({ studentId: student.body.id, documentType: "Birth Certificate", fileUrl: "https://example.com/birth-cert.pdf" })
+        .expect(201);
+      expect(studentDoc.body.status).toBe("PENDING");
+
+      const verifiedDoc = await request(app.getHttpServer())
+        .patch(`/organizations/me/student-documents/${studentDoc.body.id}/review`)
+        .set(...auth(tokenA))
+        .send({ status: "VERIFIED", reviewNotes: "Looks good" })
+        .expect(200);
+      expect(verifiedDoc.body.status).toBe("VERIFIED");
+      expect(verifiedDoc.body.reviewedAt).not.toBeNull();
+      expect(verifiedDoc.body.reviewedByUserId).toBeTruthy();
+
+      const rejectableDoc = await request(app.getHttpServer())
+        .post("/organizations/me/student-documents")
+        .set(...auth(tokenA))
+        .send({ studentId: student.body.id, documentType: "Photo", fileUrl: "https://example.com/photo.jpg" })
+        .expect(201);
+      const rejectedDoc = await request(app.getHttpServer())
+        .patch(`/organizations/me/student-documents/${rejectableDoc.body.id}/review`)
+        .set(...auth(tokenA))
+        .send({ status: "REJECTED", reviewNotes: "Blurry" })
+        .expect(200);
+      expect(rejectedDoc.body.status).toBe("REJECTED");
+
+      const studentDocs = await request(app.getHttpServer())
+        .get("/organizations/me/student-documents")
+        .query({ studentId: student.body.id })
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(studentDocs.body).toHaveLength(2);
+
+      // ── Staff documents: same shape, briefer.
+      const staffDoc = await request(app.getHttpServer())
+        .post("/organizations/me/staff-documents")
+        .set(...auth(tokenA))
+        .send({ employeeId, documentType: "Citizenship", fileUrl: "https://example.com/citizenship.pdf" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .patch(`/organizations/me/staff-documents/${staffDoc.body.id}/review`)
+        .set(...auth(tokenA))
+        .send({ status: "VERIFIED" })
+        .expect(200);
+
+      // ── Certificates: issue → publicly verify (no auth at all) →
+      // revoke → re-verify shows REVOKED.
+      const certificate = await request(app.getHttpServer())
+        .post("/organizations/me/certificates")
+        .set(...auth(tokenA))
+        .send({ studentId: student.body.id, type: "Transfer Certificate", fileUrl: "https://example.com/tc.pdf" })
+        .expect(201);
+      expect(certificate.body.status).toBe("ISSUED");
+      expect(certificate.body.verificationCode).toMatch(/^[A-Z0-9]{10}$/);
+
+      const verification = await request(app.getHttpServer())
+        .get(`/verify/certificates/${certificate.body.verificationCode}`)
+        .expect(200);
+      expect(verification.body).toEqual({
+        studentName: `Rita ${suffix}`,
+        type: "Transfer Certificate",
+        issuedAt: certificate.body.issuedAt,
+        status: "ISSUED",
+        revokedAt: null,
+      });
+      // The public verification response never leaks internal ids,
+      // the file itself, or who issued it.
+      expect(verification.body).not.toHaveProperty("id");
+      expect(verification.body).not.toHaveProperty("organizationId");
+      expect(verification.body).not.toHaveProperty("fileUrl");
+      expect(verification.body).not.toHaveProperty("issuedByUserId");
+
+      await request(app.getHttpServer()).get("/verify/certificates/NOTAREALCODE").expect(404);
+
+      await request(app.getHttpServer())
+        .post(`/organizations/me/certificates/${certificate.body.id}/revoke`)
+        .set(...auth(tokenA))
+        .send({ reason: "Issued in error" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/certificates/${certificate.body.id}/revoke`)
+        .set(...auth(tokenA))
+        .send({})
+        .expect(409);
+
+      const verificationAfterRevoke = await request(app.getHttpServer())
+        .get(`/verify/certificates/${certificate.body.verificationCode}`)
+        .expect(200);
+      expect(verificationAfterRevoke.body.status).toBe("REVOKED");
+      expect(verificationAfterRevoke.body.revokedAt).not.toBeNull();
+
+      // ── Student self-service: own documents/certificates, IDOR-safe.
+      const login = await request(app.getHttpServer())
+        .post(`/organizations/me/students/${student.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "DocsPortalPass123" })
+        .expect(201);
+      const session = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: login.body.username, password: "DocsPortalPass123" })
+        .expect(201);
+
+      const ownDocsBefore = await request(app.getHttpServer())
+        .get("/organizations/me/portal/documents")
+        .set(...auth(session.body.accessToken))
+        .expect(200);
+      expect(ownDocsBefore.body).toHaveLength(2); // the two admin-uploaded ones from above
+
+      const ownUpload = await request(app.getHttpServer())
+        .post("/organizations/me/portal/documents")
+        .set(...auth(session.body.accessToken))
+        .send({ documentType: "Passport Photo", fileUrl: "https://example.com/passport.jpg" })
+        .expect(201);
+      expect(ownUpload.body.studentId).toBe(student.body.id);
+      expect(ownUpload.body.status).toBe("PENDING");
+
+      const ownDocsAfter = await request(app.getHttpServer())
+        .get("/organizations/me/portal/documents")
+        .set(...auth(session.body.accessToken))
+        .expect(200);
+      expect(ownDocsAfter.body).toHaveLength(3);
+
+      const ownCertificates = await request(app.getHttpServer())
+        .get("/organizations/me/portal/certificates")
+        .set(...auth(session.body.accessToken))
+        .expect(200);
+      expect(ownCertificates.body).toHaveLength(1);
+      expect(ownCertificates.body[0].id).toBe(certificate.body.id);
+
+      // A second student's own portal never sees the first student's
+      // documents (IDOR guard, by construction — studentId always
+      // comes from the caller's own linked Student row).
+      const student2 = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({ studentCode: `DOC-STU2-${suffix}`, firstName: "Second", lastName: suffix, dateOfBirth: "2015-01-01" })
+        .expect(201);
+      const login2 = await request(app.getHttpServer())
+        .post(`/organizations/me/students/${student2.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "DocsPortalPass456" })
+        .expect(201);
+      const session2 = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: login2.body.username, password: "DocsPortalPass456" })
+        .expect(201);
+      const student2Docs = await request(app.getHttpServer())
+        .get("/organizations/me/portal/documents")
+        .set(...auth(session2.body.accessToken))
+        .expect(200);
+      expect(student2Docs.body).toHaveLength(0);
+
+      // ── Cross-tenant isolation.
+      await request(app.getHttpServer())
+        .post("/organizations/me/student-documents")
+        .set(...auth(tokenB))
+        .send({ studentId: student.body.id, documentType: "Intruder Doc", fileUrl: "https://example.com/x.pdf" })
+        .expect(404);
+      const orgBCertificates = await request(app.getHttpServer())
+        .get("/organizations/me/certificates")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(orgBCertificates.body.some((c: { id: string }) => c.id === certificate.body.id)).toBe(false);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/certificates/${certificate.body.id}/revoke`)
+        .set(...auth(tokenB))
+        .send({})
+        .expect(404);
+      // The public verify endpoint, by contrast, works the same
+      // regardless of which org's token (or no token) is presented —
+      // that's the entire point of it having no tenant context.
+      const verificationFromOrgB = await request(app.getHttpServer())
+        .get(`/verify/certificates/${certificate.body.verificationCode}`)
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(verificationFromOrgB.body.status).toBe("REVOKED");
     }, 90000);
   });
 });

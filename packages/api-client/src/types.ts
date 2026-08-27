@@ -2844,3 +2844,90 @@ export interface MessageRecord {
   smsLogs: SmsLogRecord[];
   pushLogs: PushNotificationLogRecord[];
 }
+
+// ── Documents & Certificates (Phase 7h) ─────────────────────────────
+export type DocumentReviewStatus = "PENDING" | "VERIFIED" | "REJECTED";
+export type CertificateStatus = "ISSUED" | "REVOKED";
+
+export interface CreateStudentDocumentInput {
+  studentId: string;
+  documentType: string;
+  fileUrl: string;
+}
+
+export interface UploadOwnDocumentInput {
+  documentType: string;
+  fileUrl: string;
+}
+
+export interface ReviewDocumentInput {
+  status: "VERIFIED" | "REJECTED";
+  reviewNotes?: string;
+}
+
+export interface StudentDocumentRecord {
+  id: string;
+  organizationId: string;
+  studentId: string;
+  documentType: string;
+  fileUrl: string;
+  status: DocumentReviewStatus;
+  reviewedByUserId: string | null;
+  reviewedAt: string | null;
+  reviewNotes: string | null;
+  uploadedAt: string;
+  student?: Student;
+}
+
+export interface CreateStaffDocumentInput {
+  employeeId: string;
+  documentType: string;
+  fileUrl: string;
+}
+
+export interface StaffDocumentRecord {
+  id: string;
+  organizationId: string;
+  employeeId: string;
+  documentType: string;
+  fileUrl: string;
+  status: DocumentReviewStatus;
+  reviewedByUserId: string | null;
+  reviewedAt: string | null;
+  reviewNotes: string | null;
+  uploadedAt: string;
+  employee?: Employee;
+}
+
+export interface CreateCertificateInput {
+  studentId: string;
+  type: string;
+  fileUrl: string;
+}
+
+export interface RevokeCertificateInput {
+  reason?: string;
+}
+
+export interface CertificateRecord {
+  id: string;
+  organizationId: string;
+  studentId: string;
+  type: string;
+  issuedAt: string;
+  issuedByUserId: string;
+  fileUrl: string;
+  verificationCode: string;
+  status: CertificateStatus;
+  revokedAt: string | null;
+  revokedReason: string | null;
+  student?: Student;
+}
+
+export interface PublicCertificateVerification {
+  studentName: string;
+  type: string;
+  issuedAt: string;
+  status: CertificateStatus;
+  revokedAt: string | null;
+}

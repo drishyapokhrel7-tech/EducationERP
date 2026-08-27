@@ -163,6 +163,10 @@ const RESOURCES = [
   // (teacher-portal / JWT-only self-service) and don't need this
   // resource.
   "communication",
+  // Phase 7h (Documents & Certificates) — document folds
+  // student_document/staff_document/certificate in too, same folding
+  // precedent as every other Phase 7 resource above.
+  "document",
 ];
 const ACTIONS = Object.values(PermissionAction);
 

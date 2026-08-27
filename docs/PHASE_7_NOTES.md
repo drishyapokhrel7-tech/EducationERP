@@ -1470,3 +1470,188 @@ services already use for exactly this reason.
 Slice 7g done. Per "complete all," proceeding directly to 7h
 (Documents & Certificates) next — the final domain in this batch, no
 further check-in needed until it's done.
+
+## Slice 7h — Documents & Certificates
+
+Continuing "complete all" — the last of the four domains it
+authorized. Unlike every other Phase 7 domain, the plan never gives
+this one a detailed ERD table list of its own (checked directly
+against the docx): its prose description (§14) is "Institution/
+student documents, certificates, transcripts, verification and
+controlled access," and the plan's own ERD pass (§20) only names
+`student_documents` under Student's list and `staff_documents` under
+Staff's. Built on that literal naming rather than inventing a generic
+cross-domain "Document" abstraction the plan doesn't specify.
+
+**This slice was blocked mid-session on a real, unplanned detour**:
+building it needed a working file-storage backend for real uploads,
+and the user's chosen backend (Google Drive) needed a live OAuth
+setup pass — a Google Cloud Console project, the Drive API enabled,
+an OAuth consent screen with the user's own account added as a test
+user, and a one-time authorization-code exchange for a refresh
+token — done together with the user in real time, not something
+buildable unattended. A real Google account password was offered
+mid-setup and declined (a hard rule, not situational); OAuth Client
+ID/Secret were used instead, which are app credentials, not a login.
+
+## What shipped
+
+**Storage** — a third `StorageDriver` implementation,
+`GoogleDriveStorageDriver`, alongside the existing local-disk and S3
+drivers (LMS discovery slice 8), selected via `STORAGE_DRIVER=
+google-drive`. Uses the narrow `drive.file` OAuth scope (the app can
+only see/manage files it creates, nothing else already in the
+account's Drive), sets each uploaded file to "anyone with the link
+can view" right after upload so the returned url is a plain,
+directly-usable link exactly like the other two drivers' urls already
+are — no consumer of a stored url (`ClassMaterial.url`,
+`AssignmentSubmission.content`, the new `Document`/`Certificate`
+models) needed to change at all. `scripts/google-drive-get-refresh-
+token.js` is the one-time setup script that exchanges an authorization
+code for the refresh token that goes in `.env`; it never runs as part
+of the app itself. **A real bug caught before it ever ran**: the
+driver's first draft chained `new google.auth.OAuth2(...).
+setCredentials(...)` directly into the `auth` field — `setCredentials`
+mutates and returns `void`, so that expression silently evaluated to
+`undefined`. Fixed by making it two statements.
+
+**Schema** — `StudentDocument`/`StaffDocument`: upload + an admin
+review workflow (`PENDING → VERIFIED`/`REJECTED`, with reviewer/notes/
+timestamp), both normal RLS-protected tenant-scoped tables.
+`Certificate`: an institution-issued record (`ISSUED`/`REVOKED`, a
+random 10-character `verificationCode`) — **deliberately NOT under
+RLS**, same reasoning already documented for `User`/`Role`/`Session`
+since Phase 1 ("auth's login-by-email needs to work before a tenant
+context exists"). The public certificate-verification endpoint has
+the identical shape: a third party checking a printed certificate has
+no account and no tenant context at all, which an RLS policy keyed on
+`app.current_organization_id` cannot serve — no GUC set means no rows
+visible, full stop. Every authenticated `DocumentsService` query
+against `certificates` explicitly filters/checks `organizationId` in
+application code instead, the same discipline `AuthService` already
+applies to `User`.
+
+**A second real bug, caught by the e2e test, not assumed away**:
+`createCertificate`'s own parent-guard lookup of the target `Student`
+queried the Prisma client directly (matching the "certificates has no
+RLS" pattern) — but `Student` **does** have RLS, so that direct query
+ran with no tenant GUC set and silently saw zero rows, 404ing on a
+perfectly real student. The general rule this slice actually needed:
+"no RLS" applies to `Certificate`'s own columns only; any query that
+joins to `Student` (RLS-protected) still needs `withTenant`, even
+from inside `DocumentsService`. Fixed everywhere: `createCertificate`'s
+guard and `listCertificates`' join now run inside `withTenant`;
+`verifyCertificate` is genuinely two-step (find the certificate with
+no tenant context first, since that's the whole point of it having no
+RLS — then use *its own* `organizationId` column, now known, to look
+up the student's name inside `withTenant`).
+
+**API** — new `documents` module: `student-documents` (+ GET,
+`:id/review`), `staff-documents` (+ GET, `:id/review`), `certificates`
+(+ GET, `:id/revoke`). One new RBAC resource, `document` (folds all
+three in), Super Admin/Organization Admin only. A separate, guardless
+`CertificateVerificationController` on `GET /verify/certificates/
+:code` — outside `organizations/me` entirely, no `@UseGuards` at all
+(this project's guards are per-controller, never global, so omitting
+them here is genuinely public, not an oversight). Its response is a
+narrow, hand-picked shape (student name, type, issue date, status,
+revocation date) — never the certificate's own id, `organizationId`,
+`fileUrl`, or `issuedByUserId`; a stranger with the code can confirm
+authenticity, nothing more.
+
+**Self-service** — three new endpoints added directly to the existing
+`StudentPortalController`/`Service` (`GET`/`POST portal/documents`,
+`GET portal/certificates`), reusing the established `getOwnStudent`
+self-service pattern (4e) — `studentId` is always derived from the
+caller's own linked `Student` row, never a request param, IDOR-safe
+by construction, not merely checked for.
+
+**Web UI** — new `/dashboard/documents` page (admin): upload student/
+staff documents (file picker → the existing generic uploads endpoint
+→ `fileUrl`), review actions, issue/revoke certificates. New public
+`/verify` page (top-level, outside `/dashboard` and `/portal`,
+alongside `/login`/`/register`) — a bare verification-code form, no
+login anywhere on the page, works for a visitor with zero relationship
+to the app.
+
+## Explicitly not in this slice
+
+- A generic cross-domain "Document" abstraction, or an
+  "institution-level documents" library — nothing in the plan's ERD
+  names either; `student_documents`/`staff_documents` cover exactly
+  what's literally specified, and "institution... documents" from the
+  prose is read as covered by `Certificate` (an institution-issued
+  record) rather than inventing a third table.
+- Certificate content generation (PDF templating, digital signatures)
+  — the admin uploads an already-produced file; this slice adds the
+  issue/verify/revoke workflow and storage around it, not a document-
+  generation engine.
+- A real second storage provider swap-in beyond Google Drive (S3 was
+  already there from LMS slice 8) — three drivers now exist behind the
+  same `StorageDriver` interface, adding a fourth is a clean, separate
+  future step if ever needed.
+
+## Verified
+
+- `pnpm -r typecheck`/`lint`/`build` clean across all six packages
+  (the same pre-existing, unrelated `sso/page.tsx` lint failure from
+  7e/7f/7g, still untouched, still flagged separately).
+- **Storage verified for real, standalone, before building anything
+  else on top of it**: logged in via a raw script against the running
+  dev API, uploaded a real file through the existing generic uploads
+  endpoint with `STORAGE_DRIVER=google-drive`, got back a real Google
+  Drive file id and a `drive.google.com` url, and confirmed via a
+  direct `curl -sL` that the url resolves (through Drive's own
+  redirect chain) to `200 OK` with the exact original file content —
+  publicly, no authentication, confirming the "anyone with the link"
+  permission step actually took effect and not just that the upload
+  itself succeeded.
+- `services/api` e2e: one new comprehensive test (Documents &
+  Certificates) — uploads and reviews a student document to `VERIFIED`
+  and a second to `REJECTED`, uploads and verifies a staff document,
+  issues a certificate and confirms its `verificationCode` format,
+  reads it back through the real public `/verify/certificates/:code`
+  endpoint and asserts the exact minimal response shape (and that none
+  of `id`/`organizationId`/`fileUrl`/`issuedByUserId` leak), confirms
+  a garbage code 404s, revokes it (rejects a second revoke, 409),
+  re-verifies publicly and confirms `REVOKED`+`revokedAt`, builds a
+  student portal login and confirms self-service list/upload/own-
+  certificates all work and are correctly scoped (a second student's
+  own portal sees zero of the first student's documents — IDOR guard),
+  and cross-tenant isolation throughout, including confirming the
+  public verify endpoint itself works identically regardless of which
+  org's token (or none at all) is presented, since that's the entire
+  point of it having no tenant context. Passed clean standalone
+  (`-t "Documents & Certificates"`, 76/76 including 75 skipped, 19.9s
+  for the one new test) after fixing the RLS-join bug documented
+  above — caught by this test, not assumed correct.
+- Full browser pass, as the demo admin: uploaded a real citizenship
+  document for a demo student through the actual UI (synthetic file
+  injection, the documented workaround for this environment's
+  Browser pane not supporting a real OS file picker) and verified it;
+  issued a real "Transfer Certificate" to a demo student, confirmed
+  the resulting `fileUrl` was a genuine `drive.google.com` link;
+  visited the public `/verify` page as a fully separate, unauthenticated
+  flow and confirmed it correctly showed "ISSUED" for that exact
+  certificate; revoked the certificate from the admin panel and
+  re-checked `/verify`, which correctly flipped to "REVOKED" with a
+  revocation date. All demo data left in place per this project's
+  standing "don't clean up test/demo data" instruction.
+- **A transient Neon `P2028` hit mid-pass on the certificate-issue
+  form, diagnosed correctly before retrying blindly**: checked for
+  stray duplicate dev-server processes first (none found), timed a
+  direct raw query outside the harness (~1.9s — slow but not broken),
+  and noted the exact same code path had already passed cleanly in
+  the e2e run minutes earlier — all three points together ruled out a
+  real code regression before simply retrying, which then succeeded
+  on the third attempt.
+
+## Next step (as of slice 7h)
+
+Slice 7h done — **this closes out all four domains "complete all"
+authorized** (7e Hostel, 7f Inventory, 7g Communication, 7h Documents
+& Certificates). Per this project's standing per-slice check-in rule,
+the next Phase 7+ domain (Analytics & Reports, Alumni & Career, or
+whatever's next per the plan) needs its own explicit go-ahead — "complete
+all" was scoped to these four named domains only, not an indefinite
+override.

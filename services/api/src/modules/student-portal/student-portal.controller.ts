@@ -8,6 +8,7 @@ import { ConfirmEsewaPaymentDto } from "../finance/dto/confirm-esewa-payment.dto
 import { SubmitAssignmentDto } from "./dto/submit-assignment.dto";
 import { SaveQuizAnswerDto } from "../knowledge-checks/dto/save-quiz-answer.dto";
 import { CreateDiscussionPostDto } from "../teacher-portal/dto/create-discussion-post.dto";
+import { UploadOwnDocumentDto } from "../documents/dto/upload-own-document.dto";
 
 // Deliberately JwtAuthGuard only — no PermissionsGuard/@RequirePermissions.
 // The existing resource:action permission model answers "can this role
@@ -131,5 +132,20 @@ export class StudentPortalController {
     @Body() dto: CreateDiscussionPostDto,
   ) {
     return this.studentPortal.createDiscussionPost(user.organizationId, user.sub, topicId, dto);
+  }
+
+  @Get("documents")
+  listOwnDocuments(@CurrentUser() user: JwtPayload) {
+    return this.studentPortal.listOwnDocuments(user.organizationId, user.sub);
+  }
+
+  @Post("documents")
+  uploadOwnDocument(@CurrentUser() user: JwtPayload, @Body() dto: UploadOwnDocumentDto) {
+    return this.studentPortal.uploadOwnDocument(user.organizationId, user.sub, dto);
+  }
+
+  @Get("certificates")
+  listOwnCertificates(@CurrentUser() user: JwtPayload) {
+    return this.studentPortal.listOwnCertificates(user.organizationId, user.sub);
   }
 }

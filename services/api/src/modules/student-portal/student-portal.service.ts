@@ -8,6 +8,7 @@ import { KnowledgeChecksService } from "../knowledge-checks/knowledge-checks.ser
 import { SaveQuizAnswerDto } from "../knowledge-checks/dto/save-quiz-answer.dto";
 import { DiscussionsService } from "../discussions/discussions.service";
 import { CreateDiscussionPostDto } from "../teacher-portal/dto/create-discussion-post.dto";
+import { DocumentsService } from "../documents/documents.service";
 
 /**
  * Self-service, not admin-facing — studentId is derived exclusively from
@@ -27,11 +28,29 @@ export class StudentPortalService {
     private readonly assignments: AssignmentsService,
     private readonly knowledgeChecks: KnowledgeChecksService,
     private readonly discussions: DiscussionsService,
+    private readonly documents: DocumentsService,
   ) {}
 
   async getDashboard(organizationId: string, userId: string) {
     const student = await this.getOwnStudent(organizationId, userId);
     return this.dashboards.studentDashboard(organizationId, student.id);
+  }
+
+  // ── Documents & Certificates self-service (Phase 7h) ─────────────────
+
+  async listOwnDocuments(organizationId: string, userId: string) {
+    const student = await this.getOwnStudent(organizationId, userId);
+    return this.documents.listOwnDocuments(organizationId, student.id);
+  }
+
+  async uploadOwnDocument(organizationId: string, userId: string, dto: { documentType: string; fileUrl: string }) {
+    const student = await this.getOwnStudent(organizationId, userId);
+    return this.documents.uploadOwnDocument(organizationId, student.id, dto);
+  }
+
+  async listOwnCertificates(organizationId: string, userId: string) {
+    const student = await this.getOwnStudent(organizationId, userId);
+    return this.documents.listOwnCertificates(organizationId, student.id);
   }
 
   // ── Finance self-service (slice 7a-2) ────────────────────────────────

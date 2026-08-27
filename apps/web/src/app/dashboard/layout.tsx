@@ -25,6 +25,7 @@ import {
   Library,
   PackageSearch,
   MessageSquare,
+  FileBadge,
   ListChecks,
   LogOut,
   Network,
@@ -109,6 +110,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/dashboard/library", label: "Library", icon: Library },
       { href: "/dashboard/inventory", label: "Inventory", icon: PackageSearch },
       { href: "/dashboard/communication", label: "Communication", icon: MessageSquare },
+      { href: "/dashboard/documents", label: "Documents", icon: FileBadge },
     ],
   },
   {
