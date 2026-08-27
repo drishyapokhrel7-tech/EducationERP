@@ -9,13 +9,21 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { EntityCard } from "@/components/dashboard/entity-card";
 import { PhotoInput } from "@/components/photo-input";
+import { EditionUsageBadge } from "@/components/edition-usage-badge";
+import { EditionUpgradeBanner } from "@/components/edition-upgrade-banner";
 import { api } from "@/lib/api";
+import { useHighlightFromSearch } from "@/lib/use-highlight-from-search";
+import { isEditionLimitError } from "@/lib/edition-limit-error";
+import { ApiError, type Edition } from "@education-erp/api-client";
 
 export default function StaffPage() {
   const staffTypes = useSWR("staff-types", () => api.listStaffTypes());
   const designations = useSWR("designations", () => api.listDesignations());
   const departments = useSWR("departments", () => api.listDepartments());
   const employees = useSWR("employees", () => api.listEmployees());
+  const editionStatus = useSWR("edition-status", () => api.getEditionStatus());
+  const [editionLimitEdition, setEditionLimitEdition] = useState<Edition | null>(null);
+  useHighlightFromSearch(Boolean(employees.data));
 
   // Keyed by employeeId, same per-row pattern as the students page's
   // create-login form.
@@ -55,7 +63,12 @@ export default function StaffPage() {
       await action();
       onSuccess();
       toast.success("Created");
-    } catch {
+      editionStatus.mutate();
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 403 && isEditionLimitError(err.body)) {
+        setEditionLimitEdition(err.body.edition);
+        return;
+      }
       toast.error("Failed to create — check that required fields are filled in");
     }
   }
@@ -161,6 +174,7 @@ export default function StaffPage() {
 
       <EntityCard
         title="Employees"
+        titleExtra={<EditionUsageBadge status={editionStatus.data} />}
         emptyLabel="No employees yet."
         items={employees.data}
         renderItem={(e: {
@@ -172,7 +186,7 @@ export default function StaffPage() {
           photoUrl: string | null;
           designation?: { name: string };
         }) => (
-          <div>
+          <div id={`employee-${e.id}`} className="rounded-md transition-shadow">
             <span className="flex items-center gap-2">
               {e.photoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element -- external/storage-backend URL
@@ -242,6 +256,7 @@ export default function StaffPage() {
                   dateOfJoining: "",
                 });
                 setEmployeePhotoUrl(null);
+                setEditionLimitEdition(null);
                 employees.mutate();
               },
             );
@@ -335,6 +350,7 @@ export default function StaffPage() {
             Add
           </Button>
         </form>
+        {editionLimitEdition ? <EditionUpgradeBanner edition={editionLimitEdition} /> : null}
       </EntityCard>
     </div>
   );

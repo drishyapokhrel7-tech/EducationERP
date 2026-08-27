@@ -17,12 +17,23 @@ export interface SafeUser {
   updatedAt: string;
 }
 
+export type Edition = "FREE" | "PROFESSIONAL" | "ULTRA";
+
 export interface Organization {
   id: string;
   name: string;
   slug: string;
+  edition: Edition;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface EditionStatus {
+  edition: Edition;
+  studentCount: number;
+  employeeCount: number;
+  limit: number | null;
+  atLimit: boolean;
 }
 
 export interface Campus {
@@ -48,6 +59,8 @@ export interface LoginInput {
   // students) use a username, not every login is email-shaped.
   identifier: string;
   password: string;
+  captchaId: string;
+  captchaAnswer: string;
 }
 
 export interface CreateCampusInput {
@@ -3345,3 +3358,73 @@ export interface AlumniOutcomesAnalytics {
 }
 
 export type AnalyticsExportFormat = "csv" | "xlsx" | "pdf";
+
+// Global search (Phase 8, part 1 — people only: students, staff,
+// guardians). Each category is independently omitted server-side if
+// the caller lacks that resource's view permission, never a 403.
+export interface StudentSearchResult {
+  id: string;
+  studentCode: string;
+  firstName: string;
+  lastName: string;
+  photoUrl: string | null;
+}
+
+export interface EmployeeSearchResult {
+  id: string;
+  employeeCode: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  photoUrl: string | null;
+}
+
+export interface GuardianSearchResult {
+  id: string;
+  firstName: string;
+  lastName: string;
+  phone: string;
+}
+
+export interface SearchResult {
+  students: StudentSearchResult[];
+  employees: EmployeeSearchResult[];
+  guardians: GuardianSearchResult[];
+}
+
+// Self-hosted human-verification challenge — see CaptchaService.
+export interface CaptchaChallenge {
+  captchaId: string;
+  svg: string;
+}
+
+// Structured error body a create-record call throws when the caller's
+// org has hit its licensing edition's record cap — distinct from a
+// generic error so the UI can render an upgrade banner instead of a
+// toast. Thrown as a 403; check `error === "EDITION_LIMIT_EXCEEDED"`
+// on the caught error's body.
+export interface EditionLimitExceededError {
+  error: "EDITION_LIMIT_EXCEEDED";
+  edition: Edition;
+  limit: number;
+}
+
+// Platform admin console (licensing editions) — a genuinely separate
+// cross-org identity from every tenant-scoped type above; never mix
+// its session with the tenant one.
+export interface PlatformAdminUser {
+  id: string;
+  email: string;
+  name: string;
+}
+
+export interface PlatformOrganizationSummary {
+  id: string;
+  name: string;
+  slug: string;
+  edition: Edition;
+  studentCount: number;
+  employeeCount: number;
+  limit: number | null;
+  atLimit: boolean;
+}

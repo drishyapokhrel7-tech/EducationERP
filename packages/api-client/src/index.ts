@@ -221,6 +221,12 @@ import type {
   ContinuousLearningAnalytics,
   AlumniOutcomesAnalytics,
   AnalyticsExportFormat,
+  SearchResult,
+  CaptchaChallenge,
+  EditionStatus,
+  Edition,
+  PlatformAdminUser,
+  PlatformOrganizationSummary,
   TeacherDashboard,
   StudentDashboard,
   ParentDashboard,
@@ -416,6 +422,10 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         body: JSON.stringify(input),
       }),
 
+    // No auth needed — happens before login. Reused by both the
+    // tenant login form and the platform-admin login form.
+    getCaptcha: () => request<CaptchaChallenge>("/auth/captcha"),
+
     refresh: (refreshToken: string) =>
       request<AuthTokens>("/auth/refresh", {
         method: "POST",
@@ -426,6 +436,8 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       request<void>("/auth/logout", { method: "POST", body: JSON.stringify({ refreshToken }) }),
 
     getOwnOrganization: () => request<Organization>("/organizations/me"),
+
+    getEditionStatus: () => request<EditionStatus>("/organizations/me/edition-status"),
 
     listCampuses: () => request<Campus[]>("/organizations/me/campuses"),
 
@@ -1663,6 +1675,28 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       requestBlob(`/organizations/me/analytics/continuous-learning/export?format=${format}`),
     exportAlumniOutcomesAnalytics: (format: AnalyticsExportFormat) =>
       requestBlob(`/organizations/me/analytics/alumni-outcomes/export?format=${format}`),
+
+    // Global search (Phase 8, part 1 — people only)
+    globalSearch: (q: string) => request<SearchResult>(`/organizations/me/search?q=${encodeURIComponent(q)}`),
+
+    // Platform admin console (licensing editions) — a genuinely
+    // separate cross-org identity from every method above. Callers
+    // construct a second createApiClient instance whose
+    // getAccessToken reads the platform session's own storage key,
+    // never the tenant one — see apps/web's platform/login page.
+    platformLogin: (input: { email: string; password: string; captchaId: string; captchaAnswer: string }) =>
+      request<{ admin: PlatformAdminUser; accessToken: string; expiresIn: number }>("/platform/auth/login", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+
+    platformListOrganizations: () => request<PlatformOrganizationSummary[]>("/platform/organizations"),
+
+    platformUpdateOrganizationEdition: (organizationId: string, edition: Edition) =>
+      request<PlatformOrganizationSummary>(`/platform/organizations/${organizationId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ edition }),
+      }),
   };
 }
 

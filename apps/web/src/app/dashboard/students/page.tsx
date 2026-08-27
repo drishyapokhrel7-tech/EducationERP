@@ -12,9 +12,13 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { EntityCard } from "@/components/dashboard/entity-card";
 import { PhotoInput } from "@/components/photo-input";
+import { EditionUsageBadge } from "@/components/edition-usage-badge";
+import { EditionUpgradeBanner } from "@/components/edition-upgrade-banner";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
-import type { ImportResult } from "@education-erp/api-client";
+import { useHighlightFromSearch } from "@/lib/use-highlight-from-search";
+import { isEditionLimitError } from "@/lib/edition-limit-error";
+import { ApiError, type Edition, type ImportResult } from "@education-erp/api-client";
 
 export default function StudentsPage() {
   const students = useSWR("students", () => api.listStudents());
@@ -22,6 +26,9 @@ export default function StudentsPage() {
   const programs = useSWR("programs", () => api.listPrograms());
   const sections = useSWR("sections", () => api.listSections());
   const terms = useSWR("terms", () => api.listTerms());
+  const editionStatus = useSWR("edition-status", () => api.getEditionStatus());
+  const [editionLimitEdition, setEditionLimitEdition] = useState<Edition | null>(null);
+  useHighlightFromSearch(Boolean(students.data && guardians.data));
 
   const [studentForm, setStudentForm] = useState({
     studentCode: "",
@@ -114,7 +121,12 @@ export default function StudentsPage() {
       await action();
       onSuccess();
       toast.success("Saved");
-    } catch {
+      editionStatus.mutate();
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 403 && isEditionLimitError(err.body)) {
+        setEditionLimitEdition(err.body.edition);
+        return;
+      }
       toast.error("Failed — check that required fields are filled in");
     }
   }
@@ -175,6 +187,7 @@ export default function StudentsPage() {
 
       <EntityCard
         title="Students"
+        titleExtra={<EditionUsageBadge status={editionStatus.data} />}
         emptyLabel="No students yet."
         items={students.data}
         renderItem={(s: {
@@ -187,7 +200,7 @@ export default function StudentsPage() {
           photoUrl: string | null;
           guardians: { relationship: string; guardian: { firstName: string; lastName: string } }[];
         }) => (
-          <div>
+          <div id={`student-${s.id}`} className="rounded-md transition-shadow">
             <span className="flex items-center gap-2">
               {s.photoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element -- external/storage-backend URL
@@ -251,6 +264,7 @@ export default function StudentsPage() {
               () => {
                 setStudentForm({ studentCode: "", firstName: "", lastName: "", dateOfBirth: "", gender: "" });
                 setStudentPhotoUrl(null);
+                setEditionLimitEdition(null);
                 students.mutate();
               },
             );
@@ -304,14 +318,15 @@ export default function StudentsPage() {
           </div>
           <Button type="submit">Add</Button>
         </form>
+        {editionLimitEdition ? <EditionUpgradeBanner edition={editionLimitEdition} /> : null}
       </EntityCard>
 
       <EntityCard
         title="Guardians"
         emptyLabel="No guardians yet."
         items={guardians.data}
-        renderItem={(g: { firstName: string; lastName: string; phone: string }) => (
-          <span>
+        renderItem={(g: { id: string; firstName: string; lastName: string; phone: string }) => (
+          <span id={`guardian-${g.id}`}>
             {g.firstName} {g.lastName} <span className="text-muted-foreground">{g.phone}</span>
           </span>
         )}

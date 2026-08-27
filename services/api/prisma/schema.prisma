@@ -12,10 +12,23 @@ datasource db {
 // Term → Section, matching plan §4's stated hierarchy exactly. Phase 1
 // modeled only the top two tiers; Phase 2 completes the rest.
 
+// Licensing tier, set only by a PlatformAdmin (see that model below) —
+// no self-service upgrade path exists yet, matching what was actually
+// asked for (an operator-managed tier, not a billing/checkout flow).
+// FREE/PROFESSIONAL's caps live in edition-limits.ts, not here — the
+// two concrete numbers given don't need a full per-org-configurable
+// schema.
+enum Edition {
+  FREE
+  PROFESSIONAL
+  ULTRA
+}
+
 model Organization {
   id        String    @id @default(uuid())
   name      String
   slug      String    @unique
+  edition   Edition   @default(FREE)
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
@@ -4134,4 +4147,44 @@ model GraduateOutcome {
 
   @@index([organizationId])
   @@map("graduate_outcomes")
+}
+
+// ── Platform administration (licensing editions) ────────────────────────
+// A genuinely global, cross-org identity — deliberately NOT a `User`
+// row, which requires organizationId on every record (every existing
+// login is tenant-bound by design). Follows the same "no
+// organizationId, no RLS policy" shape `Permission` already
+// establishes for a table that's intentionally not tenant data. Its
+// one capability is viewing every org's usage and setting its
+// Edition — never reading tenant data itself, which stays exactly as
+// isolated as it's always been.
+model PlatformAdmin {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("platform_admins")
+}
+
+// A self-hosted (svg-captcha, in-process, no external service —
+// matches this project's standing "no third-party API as a hard
+// dependency" precedent already applied to AI and maps) human-
+// verification challenge, gating both /auth/login and
+// /platform/auth/login. Persisted in Postgres rather than in-process
+// memory specifically because this project has a serverless
+// deployment path (services/api/api/index.ts) where in-memory state
+// wouldn't survive between invocations. `answer` is argon2-hashed —
+// not a secret asset, but no reason to store it in the clear either.
+// `consumedAt` makes a solved challenge single-use.
+model Captcha {
+  id         String    @id @default(uuid())
+  answer     String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@map("captchas")
 }

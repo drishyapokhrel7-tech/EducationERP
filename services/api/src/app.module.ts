@@ -38,6 +38,9 @@ import { CommunicationModule } from "./modules/communication/communication.modul
 import { DocumentsModule } from "./modules/documents/documents.module";
 import { AlumniModule } from "./modules/alumni/alumni.module";
 import { AnalyticsModule } from "./modules/analytics/analytics.module";
+import { SearchModule } from "./modules/search/search.module";
+import { PlatformAuthModule } from "./modules/platform-auth/platform-auth.module";
+import { PlatformOrganizationsModule } from "./modules/platform-organizations/platform-organizations.module";
 import { QueueModule } from "./queue/queue.module";
 import { HealthController } from "./common/health.controller";
 
@@ -90,6 +93,9 @@ const queueModuleImports = process.env.REDIS_URL ? [QueueModule] : [];
     DocumentsModule,
     AlumniModule,
     AnalyticsModule,
+    SearchModule,
+    PlatformAuthModule,
+    PlatformOrganizationsModule,
     ...queueModuleImports,
   ],
   controllers: [HealthController],

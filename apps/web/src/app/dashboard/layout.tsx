@@ -41,6 +41,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { NotificationBell } from "@/components/notification-bell";
+import { GlobalSearchBox } from "@/components/global-search-box";
 import { useAuth } from "@/lib/auth-context";
 
 interface NavItem {
@@ -235,17 +236,20 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         </nav>
       </aside>
       <div className="flex flex-1 flex-col">
-        <header className="flex items-center justify-end gap-3 border-b p-4">
-          <Avatar className="size-8">
-            <AvatarFallback className="bg-primary/10 text-primary">{initials}</AvatarFallback>
-          </Avatar>
-          <span className="text-sm font-medium">
-            {user.firstName} {user.lastName}
-          </span>
-          <NotificationBell />
-          <Button variant="ghost" size="icon" onClick={() => logout().then(() => router.push("/login"))}>
-            <LogOut className="size-4" />
-          </Button>
+        <header className="flex items-center justify-between gap-3 border-b p-4">
+          <GlobalSearchBox />
+          <div className="flex items-center gap-3">
+            <Avatar className="size-8">
+              <AvatarFallback className="bg-primary/10 text-primary">{initials}</AvatarFallback>
+            </Avatar>
+            <span className="text-sm font-medium">
+              {user.firstName} {user.lastName}
+            </span>
+            <NotificationBell />
+            <Button variant="ghost" size="icon" onClick={() => logout().then(() => router.push("/login"))}>
+              <LogOut className="size-4" />
+            </Button>
+          </div>
         </header>
         <main className="flex-1 p-6">{children}</main>
       </div>

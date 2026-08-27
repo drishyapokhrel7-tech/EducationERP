@@ -1,6 +1,7 @@
 import type {
   CameraEventResult,
   CameraRecord,
+  CaptchaChallenge,
   CreateCameraInput,
   FaceMatchEvent,
   FaceMatchEventRecord,
@@ -19,6 +20,7 @@ export type { CapturedFrame };
 // renderer without pulling contextBridge code into its bundle.
 export interface CctvClientApi {
   tryResume: () => Promise<boolean>;
+  getCaptcha: () => Promise<CaptchaChallenge>;
   login: (input: LoginInput) => Promise<SafeUser>;
   logout: () => Promise<void>;
   listCameras: () => Promise<CameraRecord[]>;

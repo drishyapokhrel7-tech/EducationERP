@@ -10,6 +10,7 @@ import type { CctvClientApi } from "./types";
 // premature shared package.
 const cctvClient: CctvClientApi = {
   tryResume: () => ipcRenderer.invoke("auth:tryResume"),
+  getCaptcha: () => ipcRenderer.invoke("auth:captcha"),
   login: (input) => ipcRenderer.invoke("auth:login", input),
   logout: () => ipcRenderer.invoke("auth:logout"),
   listCameras: () => ipcRenderer.invoke("cameras:list"),

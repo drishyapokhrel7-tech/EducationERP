@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateCampusDto } from "./dto/create-campus.dto";
+import { editionStatus } from "./edition-limits";
 
 @Injectable()
 export class OrganizationsService {
@@ -28,5 +29,13 @@ export class OrganizationsService {
     return this.prisma.withTenant(organizationId, (tx) =>
       tx.campus.create({ data: { organizationId, name: dto.name, code: dto.code } }),
     );
+  }
+
+  // Powers the "N of 50 used" badge on Students/Staff and is reused
+  // as-is by the platform admin console's org list (see
+  // platform-organizations.service.ts) — one counting implementation,
+  // not two.
+  getEditionStatus(organizationId: string) {
+    return this.prisma.withTenant(organizationId, (tx) => editionStatus(tx, organizationId));
   }
 }

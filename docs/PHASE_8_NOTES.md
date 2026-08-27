@@ -905,3 +905,113 @@ form rather than carrying unused flexibility.
 Notifications is closed as "already covered, one real UI-mounting gap
 found and fixed." Continuing serially per "serially start": next up is
 global search.
+
+## Global search, part 1 — people (students, staff, guardians)
+
+User said "continue with the Phase 8 'serially start' sequence — global
+search is next." The plan's own text for this bullet is just the two
+words "global search" — no ERD, no field spec, same as notifications
+had nothing beyond its name. Went through `EnterPlanMode` given the
+real design forks involved (see below), scoped from first principles
+the same way every other under-specified Phase 8 bullet has been.
+
+Investigated directly before designing: the JWT payload already
+carries the caller's full permission set (`JwtPayload.permissions`,
+populated at login) — `PermissionsGuard` itself just checks membership
+in this set, meaning a search endpoint can filter results per category
+based on the caller's own grants with zero extra DB round trips. No
+entity has a dedicated per-record detail route — `/dashboard/students`
+and `/dashboard/staff` are each one page with an inline card list, not
+`/dashboard/students/[id]` — so a search result can't deep-link to a
+detail page that doesn't exist. No search/filter precedent existed
+anywhere in the web app, and no Postgres full-text search or trigram
+index is used anywhere in the schema. Library (the one domain with a
+real catalog search) lives entirely outside this database, bridged via
+SSO — out of reach for a same-request query.
+
+### Design
+
+**Scope: people only** — Student, Employee, Guardian. These are the
+"who is this person" lookups a global search bar earns its keep on;
+every other entity type already has its own filterable list inside its
+own module. Every other entity is explicitly deferred to a stated part
+2, same split precedent as every other multi-part Phase 8 bullet.
+
+**No Postgres full-text search or trigram indexing this slice** —
+plain case-insensitive `contains` filters, capped at 8 results per
+category, is more than fast enough at this project's real data
+volumes, the same "appropriateness is a measured-load decision" call
+already made for Analytics 8d's materialized-views question.
+
+**New `search` module** (`services/api/src/modules/search/`), one
+route: `GET organizations/me/search?q=<term>`. Deliberately
+`@UseGuards(JwtAuthGuard)` only, no `@RequirePermissions` — a global
+search bar shouldn't 403 outright for a caller who lacks one category's
+view permission, it should just quietly omit that category.
+`SearchService` reads `user.permissions` directly and only queries a
+category the caller actually holds `<resource>:view` for, reusing each
+entity's own already-seeded permission — no new RBAC resource needed.
+A query under 2 characters short-circuits to an empty result.
+
+**"Jump to and highlight" instead of a real detail route**: a new
+`GlobalSearchBox` component (mounted in the admin header, next to the
+avatar/bell/logout group added for the notifications gap-check) links
+each result to its list page with a `?highlight=<elementId>` query
+param. Both pages give their row `<div>`s a matching `id` and a new
+shared `useHighlightFromSearch` hook (reads `window.location.search`
+in an effect, not `useSearchParams()`, to avoid a Suspense-boundary
+requirement on a statically-rendered page) scrolls to and briefly
+highlights the matching row once the page's data has loaded.
+
+### Real bug found and fixed
+
+`GlobalSearchBox` originally navigated via `next/navigation`'s
+`router.push` — a soft client-side navigation. Searching again while
+already on the destination page (e.g. `/dashboard/students`) never
+remounts the page, so `useHighlightFromSearch`'s effect (gated on a
+`ready` flag that's already `true`) never re-fires, and the highlight
+silently does nothing. Fixed by switching to a full navigation
+(`window.location.href`) — always remounts from scratch and also
+guarantees fresh data, at the cost of the instant SPA-style transition,
+a reasonable trade for a "jump to a specific record" utility. Caught
+via a direct DOM debug trace (not the Browser pane's own click, which
+hit this project's already-documented click-reliability flakiness
+during verification) showing the effect never re-firing on a same-page
+re-search.
+
+### Explicitly not in this slice
+
+- Invoices, exams, inventory, transport, LMS content, or any other
+  entity type — part 2, needs its own go-ahead.
+- Postgres full-text search / trigram indexing.
+- A real per-record detail-page system.
+- `/portal` or `/teacher` search — admin `/dashboard` only.
+- A command-palette-style modal/keyboard shortcut (Cmd+K) — a plain,
+  always-visible header search box covers the need without the added
+  complexity of a global keydown listener/focus trap.
+
+## Verified
+
+- `pnpm -r typecheck`/`lint`/`build` clean across all six packages.
+- A standalone diagnostic script exercised all three category queries
+  directly against Prisma before touching jest.
+- Extended `tenant-isolation.e2e-spec.ts`: partial case-insensitive
+  matches by name and by code/email/phone, a query under 2 characters
+  returns empty, a role with only `student:view` gets students
+  populated and the other two categories empty (never a 403) even
+  though matching data genuinely exists for all three, cross-tenant
+  isolation. Passed clean (~15.5s).
+- Full browser pass, as the demo admin: typed a partial name into the
+  header search box, confirmed the grouped dropdown (Students/Staff/
+  Guardians) showed the right result with photo thumbnails, clicked
+  through and confirmed the target page scrolled to and highlighted
+  the exact row — including the "already on the destination page"
+  case, confirmed correct only after the `router.push` → full-
+  navigation fix above.
+
+## Next step (as of global search, part 1)
+
+Global search (people) is done. Per this project's standing per-slice
+check-in rule, this authorized this slice specifically — part 2 (any
+other entity type) or any of Phase 8's other bullets need their own
+fresh go-ahead.

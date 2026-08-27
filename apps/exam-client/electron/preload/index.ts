@@ -9,6 +9,7 @@ import type { ExamClientApi, SyncStatusEvent } from "./types";
 // why that abstraction is deferred until a second Electron client
 // exists.
 const examClient: ExamClientApi = {
+  getCaptcha: () => ipcRenderer.invoke("auth:captcha"),
   login: (input) => ipcRenderer.invoke("auth:login", input),
   logout: () => ipcRenderer.invoke("auth:logout"),
   listExams: () => ipcRenderer.invoke("exams:list"),

@@ -6,6 +6,7 @@ import type {
   SaveAnswerInput,
   AnswerRecord,
   ExamAttemptRecord,
+  CaptchaChallenge,
 } from "@education-erp/api-client";
 import type { SyncStatus } from "../main/retryQueue";
 
@@ -24,6 +25,10 @@ export interface SyncStatusEvent {
 // from it directly without pulling in preload/index.ts's contextBridge
 // call into the renderer bundle.
 export interface ExamClientApi {
+  // No auth needed — fetched before login, same self-hosted CAPTCHA
+  // every other login surface (the main web app, the platform admin
+  // console) uses.
+  getCaptcha: () => Promise<CaptchaChallenge>;
   login: (input: LoginInput) => Promise<SafeUser>;
   logout: () => Promise<void>;
   listExams: () => Promise<MyExamAttempt[]>;

@@ -8,6 +8,7 @@ import { CreateEmploymentHistoryDto } from "./dto/create-employment-history.dto"
 import { CreateQualificationDto } from "./dto/create-qualification.dto";
 import { UpsertTeacherProfileDto } from "./dto/upsert-teacher-profile.dto";
 import { CreateEmployeeLoginDto } from "./dto/create-employee-login.dto";
+import { assertUnderEditionLimit } from "../organizations/edition-limits";
 
 /**
  * Same load-bearing pattern as org-structure.service.ts: every create*
@@ -64,6 +65,7 @@ export class StaffService {
       if (!staffType) throw new NotFoundException("Staff type not found");
       if (!designation) throw new NotFoundException("Designation not found");
       if (dto.departmentId && !department) throw new NotFoundException("Department not found");
+      await assertUnderEditionLimit(tx, organizationId);
 
       return tx.employee.create({
         data: {

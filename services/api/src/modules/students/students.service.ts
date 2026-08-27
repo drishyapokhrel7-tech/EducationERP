@@ -9,6 +9,7 @@ import { CreateEnrollmentDto } from "./dto/create-enrollment.dto";
 import { UpdateStudentStatusDto } from "./dto/update-student-status.dto";
 import { CreateStudentLoginDto } from "./dto/create-student-login.dto";
 import { ImportResult, ImportRowError } from "./dto/import-result.dto";
+import { assertUnderEditionLimit, editionLimit } from "../organizations/edition-limits";
 
 /** Same load-bearing parent-guard pattern as every prior slice's service. */
 @Injectable()
@@ -25,8 +26,9 @@ export class StudentsService {
   }
 
   createStudent(organizationId: string, dto: CreateStudentDto) {
-    return this.prisma.withTenant(organizationId, (tx) =>
-      tx.student.create({
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await assertUnderEditionLimit(tx, organizationId);
+      return tx.student.create({
         data: {
           organizationId,
           studentCode: dto.studentCode,
@@ -36,8 +38,8 @@ export class StudentsService {
           gender: dto.gender,
           photoUrl: dto.photoUrl,
         },
-      }),
-    );
+      });
+    });
   }
 
   listGuardians(organizationId: string) {
@@ -234,6 +236,24 @@ export class StudentsService {
       const existingCodes = new Set(existingRows.map((s) => s.studentCode));
       const seenCodes = new Set<string>();
 
+      // Same licensing cap as the single-record createStudent path —
+      // a CSV import is just another way to add student records, so
+      // it needs the same gate, not a bypass. Checked once up front
+      // (edition + current combined count) and tracked as a running
+      // total per successful row, rather than a fresh query per row,
+      // for the same "one transaction, no N round trips" reasoning
+      // already documented above for existingCodes.
+      const organization = await tx.organization.findUnique({ where: { id: organizationId } });
+      const limit = organization ? editionLimit(organization.edition) : null;
+      let combinedCount = 0;
+      if (limit !== null) {
+        const [activeStudentCount, activeEmployeeCount] = await Promise.all([
+          tx.student.count({ where: { organizationId, deletedAt: null } }),
+          tx.employee.count({ where: { organizationId, deletedAt: null } }),
+        ]);
+        combinedCount = activeStudentCount + activeEmployeeCount;
+      }
+
       for (let i = 0; i < records.length; i++) {
         const rowNumber = i + 2; // header occupies row 1
         const row = records[i];
@@ -263,11 +283,19 @@ export class StudentsService {
           errors.push({ row: rowNumber, message: `studentCode "${studentCode}" already exists` });
           continue;
         }
+        if (limit !== null && combinedCount >= limit) {
+          errors.push({
+            row: rowNumber,
+            message: `${organization?.edition} edition's ${limit}-record limit reached — upgrade to import more`,
+          });
+          continue;
+        }
 
         await tx.student.create({
           data: { organizationId, studentCode, firstName, lastName, dateOfBirth, gender },
         });
         seenCodes.add(studentCode);
+        combinedCount++;
         created++;
       }
     });

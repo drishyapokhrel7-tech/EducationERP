@@ -17,6 +17,8 @@ export function registerIpcHandlers(win: BrowserWindow): void {
     win.webContents.send("sync:status", { kind, status, questionId });
   }
 
+  ipcMain.handle("auth:captcha", async () => apiClient.getCaptcha());
+
   ipcMain.handle("auth:login", async (_event, input: LoginInput) => {
     const result = await apiClient.login(input);
     setAccessToken(result.accessToken);

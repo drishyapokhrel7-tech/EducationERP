@@ -11,6 +11,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { RegisterOrganizationDto } from "./dto/register-organization.dto";
 import { LoginDto } from "./dto/login.dto";
 import { JwtPayload } from "../../common/auth/jwt-payload";
+import { CaptchaService } from "../captcha/captcha.service";
 
 const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
@@ -26,6 +27,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly captcha: CaptchaService,
   ) {}
 
   async registerOrganization(dto: RegisterOrganizationDto) {
@@ -87,6 +89,12 @@ export class AuthService {
   }
 
   async login(dto: LoginDto, meta: { ipAddress?: string; userAgent?: string }) {
+    // Before any credential lookup — a wrong/missing/expired/reused
+    // captcha never even attempts a password check. See
+    // CaptchaService.requireValid for the NODE_ENV=test /
+    // DISABLE_CAPTCHA bypasses this deliberately allows.
+    await this.captcha.requireValid(dto.captchaId, dto.captchaAnswer);
+
     const user = await this.prisma.user.findFirst({
       where: { OR: [{ email: dto.identifier }, { username: dto.identifier }] },
     });

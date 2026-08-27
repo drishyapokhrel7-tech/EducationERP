@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/auth-context";
 import { getAccessToken } from "@/lib/auth-storage";
 import { api } from "@/lib/api";
+import { CaptchaField } from "@/components/captcha-field";
 
 // Payload decode only, no signature check — this is purely a client-side
 // routing convenience (which landing page to show), never an
@@ -34,12 +35,14 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
+  const [captcha, setCaptcha] = useState({ captchaId: "", captchaAnswer: "" });
+  const [captchaRefresh, setCaptchaRefresh] = useState(0);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setSubmitting(true);
     try {
-      await login({ identifier, password });
+      await login({ identifier, password, ...captcha });
       const accessToken = getAccessToken();
       const roles = accessToken ? decodeJwtRoles(accessToken) : [];
       if (roles.includes("Student")) {
@@ -71,8 +74,14 @@ export default function LoginPage() {
       const message =
         err instanceof ApiError && err.status === 401
           ? "Invalid credentials"
-          : "Login failed";
+          : err instanceof ApiError && err.status === 400
+            ? "Incorrect captcha — please try again"
+            : "Login failed";
       toast.error(message);
+      // A captcha is single-use whether the attempt succeeded or not
+      // (see CaptchaService) — the one just submitted is already
+      // consumed, so a fresh one is needed for the next try.
+      setCaptchaRefresh((n) => n + 1);
     } finally {
       setSubmitting(false);
     }
@@ -108,6 +117,7 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
               />
             </div>
+            <CaptchaField value={captcha} onChange={setCaptcha} refreshSignal={captchaRefresh} />
             <Button type="submit" className="w-full" disabled={submitting}>
               {submitting ? "Signing in…" : "Sign in"}
             </Button>

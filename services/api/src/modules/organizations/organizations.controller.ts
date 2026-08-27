@@ -17,6 +17,14 @@ export class OrganizationsController {
     return this.organizationsService.getOwnOrganization(user.organizationId);
   }
 
+  // No @RequirePermissions — every authenticated user in the org can
+  // see the same "N of 50 used" fact the create-form's own error
+  // would eventually show them anyway; nothing sensitive here.
+  @Get("edition-status")
+  getEditionStatus(@CurrentUser() user: JwtPayload) {
+    return this.organizationsService.getEditionStatus(user.organizationId);
+  }
+
   @Get("campuses")
   @RequirePermissions("campus:view")
   listCampuses(@CurrentUser() user: JwtPayload) {

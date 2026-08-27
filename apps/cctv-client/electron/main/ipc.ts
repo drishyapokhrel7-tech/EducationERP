@@ -24,6 +24,8 @@ export function registerIpcHandlers(_win: BrowserWindow): void {
     return scheduler.refreshNow();
   });
 
+  ipcMain.handle("auth:captcha", async () => apiClient.getCaptcha());
+
   ipcMain.handle("auth:login", async (_event, input: LoginInput) => {
     const result = await apiClient.login(input);
     setAccessToken(result.accessToken);

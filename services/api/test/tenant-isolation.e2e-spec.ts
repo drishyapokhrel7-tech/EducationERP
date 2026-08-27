@@ -3,6 +3,7 @@ import { createHmac } from "crypto";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import * as request from "supertest";
+import * as argon2 from "argon2";
 import { AppModule } from "../src/app.module";
 import { PrismaService } from "../src/prisma/prisma.service";
 
@@ -10709,5 +10710,399 @@ describe("Tenant isolation (e2e)", () => {
         .expect(200);
       expect(alumniOutcomesB.body.totalAlumni - alumniOutcomesBeforeB.body.totalAlumni).toBe(0);
     }, 180000);
+  });
+
+  describe("Global search — people (Phase 8, part 1)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    it("finds students/employees/guardians by partial case-insensitive name and by code/email/phone, requires a real query, respects per-category permissions, and stays tenant-scoped", async () => {
+      const suffix = `srch${run}`;
+
+      const student = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({
+          studentCode: `SEARCH-STU-${suffix}`,
+          firstName: "Searchable",
+          lastName: `Student${suffix}`,
+          dateOfBirth: "2012-01-01",
+        })
+        .expect(201);
+
+      const staffType = await request(app.getHttpServer())
+        .post("/organizations/me/staff-types")
+        .set(...auth(tokenA))
+        .send({ name: `Search Staff Type ${suffix}`, code: `SST-${suffix}` })
+        .expect(201);
+      const designation = await request(app.getHttpServer())
+        .post("/organizations/me/designations")
+        .set(...auth(tokenA))
+        .send({ name: `Search Designation ${suffix}`, code: `SD-${suffix}` })
+        .expect(201);
+      const employee = await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(tokenA))
+        .send({
+          staffTypeId: staffType.body.id,
+          designationId: designation.body.id,
+          employeeCode: `SEARCH-EMP-${suffix}`,
+          firstName: "Searchable",
+          lastName: `Employee${suffix}`,
+          email: `searchable.employee.${suffix}@rls-e2e.test`,
+          dateOfJoining: "2024-01-01",
+        })
+        .expect(201);
+
+      const guardian = await request(app.getHttpServer())
+        .post("/organizations/me/guardians")
+        .set(...auth(tokenA))
+        .send({ firstName: "Searchable", lastName: `Guardian${suffix}`, phone: `98${suffix}` })
+        .expect(201);
+
+      // ── A query under 2 characters is a no-op, not a full scan ──
+      const tooShort = await request(app.getHttpServer())
+        .get("/organizations/me/search?q=s")
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(tooShort.body).toEqual({ students: [], employees: [], guardians: [] });
+      const noQuery = await request(app.getHttpServer())
+        .get("/organizations/me/search")
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(noQuery.body).toEqual({ students: [], employees: [], guardians: [] });
+
+      // ── Shared firstName across all three matches every category
+      // for a fully-permissioned caller (case varied to prove
+      // case-insensitivity) ──
+      const byFirstName = await request(app.getHttpServer())
+        .get("/organizations/me/search?q=SEARCHable")
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(byFirstName.body.students.some((s: { id: string }) => s.id === student.body.id)).toBe(true);
+      expect(byFirstName.body.employees.some((e: { id: string }) => e.id === employee.body.id)).toBe(true);
+      expect(byFirstName.body.guardians.some((g: { id: string }) => g.id === guardian.body.id)).toBe(true);
+
+      // ── Per-category lastName/code/email/phone matches are precise
+      // — a term unique to one category never leaks into another's
+      // results ──
+      const byStudentLastName = await request(app.getHttpServer())
+        .get(`/organizations/me/search?q=student${suffix}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(byStudentLastName.body.students.map((s: { id: string }) => s.id)).toEqual([student.body.id]);
+      expect(byStudentLastName.body.employees).toEqual([]);
+      expect(byStudentLastName.body.guardians).toEqual([]);
+
+      const byStudentCode = await request(app.getHttpServer())
+        .get(`/organizations/me/search?q=SEARCH-STU-${suffix}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(byStudentCode.body.students.map((s: { id: string }) => s.id)).toEqual([student.body.id]);
+
+      const byEmployeeEmail = await request(app.getHttpServer())
+        .get(`/organizations/me/search?q=searchable.employee.${suffix}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(byEmployeeEmail.body.employees.map((e: { id: string }) => e.id)).toEqual([employee.body.id]);
+      expect(byEmployeeEmail.body.students).toEqual([]);
+      expect(byEmployeeEmail.body.guardians).toEqual([]);
+
+      const byGuardianPhone = await request(app.getHttpServer())
+        .get(`/organizations/me/search?q=98${suffix}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(byGuardianPhone.body.guardians.map((g: { id: string }) => g.id)).toEqual([guardian.body.id]);
+      expect(byGuardianPhone.body.students).toEqual([]);
+      expect(byGuardianPhone.body.employees).toEqual([]);
+
+      // ── Per-category permission filtering: a caller with only
+      // student:view gets students populated and the other two
+      // categories empty — never a 403, and never silently leaking a
+      // category the caller can't see, even though matching data
+      // genuinely exists for all three (the shared-firstName query
+      // above already proved that) ──
+      const permissions = await request(app.getHttpServer())
+        .get("/organizations/me/permissions")
+        .set(...auth(tokenA))
+        .expect(200);
+      const studentView = permissions.body.find(
+        (p: { resource: string; action: string }) => p.resource === "student" && p.action === "VIEW",
+      );
+      expect(studentView).toBeDefined();
+      const restrictedRole = await request(app.getHttpServer())
+        .post("/organizations/me/roles")
+        .set(...auth(tokenA))
+        .send({ name: `Search Student Only ${suffix}`, permissionIds: [studentView.id] })
+        .expect(201);
+
+      // An employee login auto-assigns no role at all (unlike a
+      // student login's auto "Student" role) — the cleanest way to
+      // get a real second user starting from zero permissions.
+      const restrictedEmployee = await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(tokenA))
+        .send({
+          staffTypeId: staffType.body.id,
+          designationId: designation.body.id,
+          employeeCode: `SEARCH-RESTRICTED-${suffix}`,
+          firstName: "Restricted",
+          lastName: "Searcher",
+          email: `restricted.searcher.${suffix}@rls-e2e.test`,
+          dateOfJoining: "2024-01-01",
+        })
+        .expect(201);
+      const restrictedLogin = await request(app.getHttpServer())
+        .post(`/organizations/me/employees/${restrictedEmployee.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "SearchRestricted123!" })
+        .expect(201);
+      const usersList = await request(app.getHttpServer())
+        .get("/organizations/me/users")
+        .set(...auth(tokenA))
+        .expect(200);
+      const restrictedUser = usersList.body.find((u: { username: string }) => u.username === restrictedLogin.body.username);
+      expect(restrictedUser).toBeDefined();
+      await request(app.getHttpServer())
+        .post(`/organizations/me/users/${restrictedUser.id}/roles`)
+        .set(...auth(tokenA))
+        .send({ roleId: restrictedRole.body.id })
+        .expect(201);
+
+      const restrictedSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: restrictedLogin.body.username, password: "SearchRestricted123!" })
+        .expect(201);
+
+      const restrictedSearch = await request(app.getHttpServer())
+        .get("/organizations/me/search?q=SEARCHable")
+        .set(...auth(restrictedSession.body.accessToken))
+        .expect(200);
+      expect(restrictedSearch.body.students.some((s: { id: string }) => s.id === student.body.id)).toBe(true);
+      expect(restrictedSearch.body.employees).toEqual([]);
+      expect(restrictedSearch.body.guardians).toEqual([]);
+
+      // ── Cross-tenant isolation: org B's token never sees any of
+      // org A's freshly-created, uniquely-suffixed people ──
+      const crossTenant = await request(app.getHttpServer())
+        .get("/organizations/me/search?q=SEARCHable")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(crossTenant.body.students.some((s: { id: string }) => s.id === student.body.id)).toBe(false);
+      expect(crossTenant.body.employees.some((e: { id: string }) => e.id === employee.body.id)).toBe(false);
+      expect(crossTenant.body.guardians.some((g: { id: string }) => g.id === guardian.body.id)).toBe(false);
+    }, 120000);
+  });
+
+  describe("Licensing editions + platform admin console + login captcha", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    it("blocks new student/staff creation only once the edition's record cap is hit, unblocks on upgrade, and exposes edition-status", async () => {
+      // A fresh org, not orgA — orgA has accumulated well over 50
+      // records from every earlier describe block in this file by the
+      // time this one runs, so testing a precise 49/50/51 boundary
+      // needs a clean slate.
+      const suffix = `edition${run}`;
+      const reg = await request(app.getHttpServer())
+        .post("/auth/register-organization")
+        .send({
+          organizationName: `Edition Test ${suffix}`,
+          slug: `edition-test-${suffix}`,
+          adminEmail: `edition-admin-${suffix}@rls-e2e.test`,
+          adminFirstName: "Edition",
+          adminLastName: "Admin",
+          password: "EditionTest123!",
+        })
+        .expect(201);
+      const editionOrgId: string = reg.body.organization.id;
+      const editionToken: string = reg.body.accessToken;
+
+      expect(reg.body.organization.edition).toBe("FREE");
+
+      // 49 filler students, direct Prisma insert (inside withTenant —
+      // students is RLS-protected via FORCE ROW LEVEL SECURITY, so an
+      // insert without the session GUC set is rejected by Postgres
+      // itself, not silently scoped wrong) — the interesting behavior
+      // is only at the 49→50 and 50→51 boundary, exercised through the
+      // real API below; 49 sequential HTTP round trips to get there
+      // would only slow the test down, not exercise anything new.
+      await prisma.withTenant(editionOrgId, (tx) =>
+        tx.student.createMany({
+          data: Array.from({ length: 49 }, (_, i) => ({
+            organizationId: editionOrgId,
+            studentCode: `E-${i}`,
+            firstName: "Filler",
+            lastName: `S${i}`,
+            dateOfBirth: new Date("2010-01-01"),
+          })),
+        }),
+      );
+
+      const statusAt49 = await request(app.getHttpServer())
+        .get("/organizations/me/edition-status")
+        .set(...auth(editionToken))
+        .expect(200);
+      expect(statusAt49.body).toEqual({
+        edition: "FREE",
+        studentCount: 49,
+        employeeCount: 0,
+        limit: 50,
+        atLimit: false,
+      });
+
+      // The 50th (at the boundary) is allowed.
+      await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(editionToken))
+        .send({ studentCode: "E-49", firstName: "Boundary", lastName: "Fifty", dateOfBirth: "2010-01-01" })
+        .expect(201);
+
+      const statusAt50 = await request(app.getHttpServer())
+        .get("/organizations/me/edition-status")
+        .set(...auth(editionToken))
+        .expect(200);
+      expect(statusAt50.body.studentCount).toBe(50);
+      expect(statusAt50.body.atLimit).toBe(true);
+
+      // The 51st is rejected with the structured error body, not a
+      // generic 403.
+      const rejected = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(editionToken))
+        .send({ studentCode: "E-50", firstName: "Over", lastName: "Limit", dateOfBirth: "2010-01-01" })
+        .expect(403);
+      expect(rejected.body).toEqual({ error: "EDITION_LIMIT_EXCEEDED", edition: "FREE", limit: 50 });
+
+      // A staff create is blocked by the same combined cap too — not
+      // just students.
+      const staffType = await request(app.getHttpServer())
+        .post("/organizations/me/staff-types")
+        .set(...auth(editionToken))
+        .send({ name: "Teaching", code: "TEACH" })
+        .expect(201);
+      const designation = await request(app.getHttpServer())
+        .post("/organizations/me/designations")
+        .set(...auth(editionToken))
+        .send({ name: "Teacher", code: "TCHR" })
+        .expect(201);
+      const employeeRejected = await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(editionToken))
+        .send({
+          staffTypeId: staffType.body.id,
+          designationId: designation.body.id,
+          employeeCode: "EMP-OVER",
+          firstName: "Over",
+          lastName: "Limit",
+          email: `over-limit-${suffix}@rls-e2e.test`,
+          dateOfJoining: "2024-01-01",
+        })
+        .expect(403);
+      expect(employeeRejected.body.error).toBe("EDITION_LIMIT_EXCEEDED");
+
+      // Upgrading unblocks both, immediately — no other state change
+      // needed.
+      await prisma.organization.update({ where: { id: editionOrgId }, data: { edition: "PROFESSIONAL" } });
+
+      await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(editionToken))
+        .send({ studentCode: "E-51", firstName: "After", lastName: "Upgrade", dateOfBirth: "2010-01-01" })
+        .expect(201);
+      const employeeAfterUpgrade = await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(editionToken))
+        .send({
+          staffTypeId: staffType.body.id,
+          designationId: designation.body.id,
+          employeeCode: "EMP-AFTER",
+          firstName: "After",
+          lastName: "Upgrade",
+          email: `after-upgrade-${suffix}@rls-e2e.test`,
+          dateOfJoining: "2024-01-01",
+        })
+        .expect(201);
+      expect(employeeAfterUpgrade.body.employeeCode).toBe("EMP-AFTER");
+
+      const statusAfterUpgrade = await request(app.getHttpServer())
+        .get("/organizations/me/edition-status")
+        .set(...auth(editionToken))
+        .expect(200);
+      expect(statusAfterUpgrade.body).toEqual({
+        edition: "PROFESSIONAL",
+        studentCount: 51,
+        employeeCount: 1,
+        limit: 500,
+        atLimit: false,
+      });
+    }, 60000);
+
+    it("lets a platform admin (a genuinely separate identity, not a tenant User) log in, list every org, and change an org's edition — and neither guard accepts the other's token", async () => {
+      const suffix = `platform${run}`;
+      const passwordHash = await argon2.hash("PlatformTest123!");
+      const platformAdmin = await prisma.platformAdmin.create({
+        data: { email: `platform-e2e-${suffix}@rls-e2e.test`, passwordHash, name: "Platform E2E Test" },
+      });
+
+      // No captchaId/captchaAnswer sent — CaptchaService.requireValid
+      // bypasses under NODE_ENV=test (Jest's own default), the same
+      // way every login call in this entire file already does.
+      const platformLogin = await request(app.getHttpServer())
+        .post("/platform/auth/login")
+        .send({ email: platformAdmin.email, password: "PlatformTest123!" })
+        .expect(201);
+      expect(platformLogin.body.admin).toEqual({
+        id: platformAdmin.id,
+        email: platformAdmin.email,
+        name: "Platform E2E Test",
+      });
+      const platformToken: string = platformLogin.body.accessToken;
+
+      const orgList = await request(app.getHttpServer())
+        .get("/platform/organizations")
+        .set(...auth(platformToken))
+        .expect(200);
+      const orgAEntry = orgList.body.find((o: { id: string }) => o.id === orgAId);
+      expect(orgAEntry).toBeDefined();
+      expect(orgAEntry.edition).toBe("FREE");
+
+      const patched = await request(app.getHttpServer())
+        .patch(`/platform/organizations/${orgAId}`)
+        .set(...auth(platformToken))
+        .send({ edition: "ULTRA" })
+        .expect(200);
+      expect(patched.body.edition).toBe("ULTRA");
+      expect(patched.body.limit).toBeNull();
+
+      // Restore orgA to FREE — this test's own change, not something
+      // any later block in this file should inherit (orgA is deleted
+      // entirely in afterAll regardless, but there's no reason to
+      // leave it mutated for the remainder of this run).
+      await prisma.organization.update({ where: { id: orgAId }, data: { edition: "FREE" } });
+
+      // Cross-guard isolation: a tenant token is meaningless to
+      // PlatformAuthGuard (wrong strategy entirely — signed with a
+      // different secret, no `type: "platform"` claim), and a
+      // platform token is equally meaningless to the tenant
+      // JwtAuthGuard, in both directions.
+      await request(app.getHttpServer())
+        .get("/platform/organizations")
+        .set(...auth(tokenA))
+        .expect(401);
+      await request(app.getHttpServer())
+        .get("/organizations/me")
+        .set(...auth(platformToken))
+        .expect(401);
+
+      await prisma.platformAdmin.delete({ where: { id: platformAdmin.id } });
+      // 90s, not 30s: platform/organizations lists every org
+      // sequentially (see platform-organizations.service.ts's own
+      // comment — a real P2028 from concurrent withTenant calls ruled
+      // out Promise.all here), and this dev database has accumulated
+      // 50+ orgs across this session's e2e runs (none cleaned up, per
+      // the standing "don't clean up test/demo data" instruction) —
+      // the same "bump the timeout as accumulated data grows" pattern
+      // already used elsewhere in this file (e.g. the afterAll cleanup
+      // hook).
+    }, 90000);
   });
 });
