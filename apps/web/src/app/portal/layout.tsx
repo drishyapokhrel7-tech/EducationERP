@@ -12,6 +12,7 @@ const NAV = [
   { href: "/portal", label: "Dashboard" },
   { href: "/portal/courses", label: "Courses" },
   { href: "/portal/announcements", label: "Announcements" },
+  { href: "/portal/discussions", label: "Discussions" },
   { href: "/portal/assignments", label: "Assignments" },
   { href: "/portal/quizzes", label: "Quizzes" },
   { href: "/portal/exams", label: "My Exams" },

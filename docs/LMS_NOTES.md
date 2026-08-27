@@ -589,12 +589,110 @@ show.
   body text. **Per the same standing instruction as slices 1–4, this
   demo data (the announcement) was left in place, not cleaned up.**
 
+## Slice 6 — Discussions
+
+User said "go-ahead" — approval to start the next item in the proposed
+sequencing.
+
+### Design
+
+**Two small tables, both anchored the same way as everything else in
+this LMS work**: `DiscussionTopic` (`teachingAssignmentId`, `title`,
+`body`, `isPublished` — same draft/publish gate as `Announcement`) and
+`DiscussionPost` (`discussionTopicId`, `body`, plus `authorStudentId`/
+`authorEmployeeId`). Flat replies only, deliberately — nested/threaded
+replies weren't asked for, same "don't build unrequested flexibility"
+precedent as `Stop`-per-`Route` in Transport.
+
+**The author is exactly one of a Student or an Employee** — both the
+owning teacher and any enrolled student can reply to the same topic,
+so a post needs to record which kind of identity wrote it. Modeled as
+two typed nullable FKs rather than an untyped `personId`+`personType`
+pair, mirroring `FaceEnrollment.studentId`/`staffId` exactly (real FK
+integrity, XOR enforced at the service layer by construction — the
+service methods take a `{ studentId }` or `{ employeeId }` author
+object, never both).
+
+**One new controller-less module** (`discussions`, service only,
+exported — same shape as `AiGatewayModule`): unlike course modules/
+announcements (teacher-owned content, no existing service to reuse,
+so those went straight into `teacher-portal.service.ts`), a discussion
+topic's reply logic is *symmetric* — both portals need identical
+topic/post CRUD, just with a different linked author. Rather than
+duplicating "load topic with posts, ordered" and the create-post shape
+in both `teacher-portal` and `student-portal`, that shared logic lives
+in `DiscussionsService`, injected into both. Each portal still does
+its own ownership/enrollment check **before** calling in — exactly the
+same "reuse the existing service, add a self-service check in front"
+precedent as `AssignmentsService`/`KnowledgeChecksService`, just with
+a service built for this slice instead of one that already existed.
+
+- `teacher-portal` (new methods): `listDiscussionTopics`/
+  `createDiscussionTopic`/`updateDiscussionTopic` (including publish)/
+  `getDiscussionTopic`/`createDiscussionPost` — ownership-checked
+  against `topic.teachingAssignment.employeeId`, 404 on a different
+  teacher's course.
+- `student-portal` (new methods): `listDiscussionTopics` (a **flat,
+  cross-course feed** — same shape as `listAnnouncements`/
+  `listAssignments`/`listQuizzes`, not a per-course pick-a-course-first
+  list like the teacher-portal side, which is already organized around
+  an explicit course picker) / `getDiscussionTopic`/
+  `createDiscussionPost` — gated to a *published* topic on a course
+  the student is actively enrolled in.
+
+**Web**: `/teacher` gains a "My courses — discussions" card (course
+picker → topic list with a publish toggle → expand a topic to see its
+body, every reply with the author's name, and a reply form → a
+start-topic form). `/portal/discussions` (new nav link) is a flat feed
+across enrolled courses; `/portal/discussions/[topicId]` shows the
+topic body, every reply (teacher replies labeled "(Teacher)"), and a
+reply form — structurally the closest of any page yet to a real
+mini-forum thread, but still flat, no reply-to-reply nesting.
+
+### Verified
+
+- `pnpm -r typecheck`/`lint`/`build` clean across all six packages
+  (the same pre-existing, unrelated `apps/web/src/app/sso/page.tsx`
+  lint failure is still there, still out of scope).
+- `services/api` e2e: one new comprehensive test (`-t "Discussions"`)
+  — a different teacher can't start, read, update, or reply to a topic
+  on someone else's course (404, IDOR guard); a draft topic is
+  invisible to an enrolled student and can't be replied to (404);
+  publishing makes it visible; a student not enrolled in that course
+  never sees it and can't reply (404); an enrolled student's reply is
+  attributed to their own Student row; the owning teacher's reply is
+  attributed to their own Employee row; both the teacher's and the
+  student's own topic views show both replies in order with the
+  correct author populated; cross-tenant topic creation on org A's
+  course from org B is rejected (404). Passed clean (`43476 ms`) on
+  the first run — no bugs found in this slice's own application code.
+- Full browser pass in the Everest Academy demo org, which also
+  surfaced (and self-resolved) a real environmental hiccup: as the
+  real teacher (Sunita Karki), started "Favorite math trick?"
+  (Mathematics) as a draft, published it, and replied to it — the
+  first attempts at three different requests each hit a transient Neon
+  connection-pool error (`P2028: Unable to start a transaction in the
+  given time`), including on `listAssignments`/`listAnnouncements`/
+  `listQuizzes` (pre-existing, already-shipped endpoints) at the exact
+  same moment, which confirmed it was an ambient database blip, not a
+  bug in this slice's code — a plain retry succeeded immediately each
+  time, and a process check found no stray leftover server (the
+  project's own established diagnostic protocol for this error class).
+  As the real student (Aarav Sharma), confirmed `/portal/discussions`
+  lists the topic with the right course/instructor, opened it, and
+  confirmed both the teacher's reply (labeled "(Teacher)") and then
+  the student's own new reply render in the correct order with the
+  correct author names — confirmed via both the UI and the underlying
+  network responses. **Per the same standing instruction as slices
+  1–5, this demo data (the topic and both replies) was left in place,
+  not cleaned up.**
+
 ## Next step
 
 Teacher portal (slice 1), course modules (slice 2), self-service
-assignments (slice 3), the quiz engine (slice 4), and announcements
-(slice 5) are done. The rest of the proposed LMS sequencing —
-discussions, gradebook, file upload (blocked on the still-open storage
-decision), notifications — is **not started**; discussions (#6) is the
-natural next item, but each still needs its own explicit go-ahead, per
-this project's standing rule.
+assignments (slice 3), the quiz engine (slice 4), announcements
+(slice 5), and discussions (slice 6) are done. The rest of the
+proposed LMS sequencing — gradebook, file upload (blocked on the
+still-open storage decision), notifications — is **not started**;
+gradebook (#7) is the natural next item, but each still needs its own
+explicit go-ahead, per this project's standing rule.

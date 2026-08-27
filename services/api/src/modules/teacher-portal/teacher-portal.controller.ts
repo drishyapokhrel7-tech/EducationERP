@@ -17,6 +17,9 @@ import { CreateKnowledgeCheckDto } from "../knowledge-checks/dto/create-knowledg
 import { CreateQuestionDto } from "../knowledge-checks/dto/create-question.dto";
 import { CreateAnnouncementDto } from "./dto/create-announcement.dto";
 import { UpdateAnnouncementDto } from "./dto/update-announcement.dto";
+import { CreateDiscussionTopicDto } from "./dto/create-discussion-topic.dto";
+import { UpdateDiscussionTopicDto } from "./dto/update-discussion-topic.dto";
+import { CreateDiscussionPostDto } from "./dto/create-discussion-post.dto";
 
 // Deliberately JwtAuthGuard only — no PermissionsGuard/@RequirePermissions,
 // same reasoning as StudentPortalController/DriverPortalController:
@@ -192,5 +195,38 @@ export class TeacherPortalController {
     @Body() dto: UpdateAnnouncementDto,
   ) {
     return this.teacherPortal.updateAnnouncement(user.organizationId, user.sub, announcementId, dto);
+  }
+
+  @Get("discussion-topics")
+  listDiscussionTopics(@CurrentUser() user: JwtPayload, @Query("teachingAssignmentId") teachingAssignmentId: string) {
+    return this.teacherPortal.listDiscussionTopics(user.organizationId, user.sub, teachingAssignmentId);
+  }
+
+  @Post("discussion-topics")
+  createDiscussionTopic(@CurrentUser() user: JwtPayload, @Body() dto: CreateDiscussionTopicDto) {
+    return this.teacherPortal.createDiscussionTopic(user.organizationId, user.sub, dto);
+  }
+
+  @Get("discussion-topics/:topicId")
+  getDiscussionTopic(@CurrentUser() user: JwtPayload, @Param("topicId") topicId: string) {
+    return this.teacherPortal.getDiscussionTopic(user.organizationId, user.sub, topicId);
+  }
+
+  @Put("discussion-topics/:topicId")
+  updateDiscussionTopic(
+    @CurrentUser() user: JwtPayload,
+    @Param("topicId") topicId: string,
+    @Body() dto: UpdateDiscussionTopicDto,
+  ) {
+    return this.teacherPortal.updateDiscussionTopic(user.organizationId, user.sub, topicId, dto);
+  }
+
+  @Post("discussion-topics/:topicId/posts")
+  createDiscussionPost(
+    @CurrentUser() user: JwtPayload,
+    @Param("topicId") topicId: string,
+    @Body() dto: CreateDiscussionPostDto,
+  ) {
+    return this.teacherPortal.createDiscussionPost(user.organizationId, user.sub, topicId, dto);
   }
 }

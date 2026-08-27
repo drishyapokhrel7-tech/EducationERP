@@ -7,6 +7,7 @@ import { InitiateEsewaPaymentDto } from "../finance/dto/initiate-esewa-payment.d
 import { ConfirmEsewaPaymentDto } from "../finance/dto/confirm-esewa-payment.dto";
 import { SubmitAssignmentDto } from "./dto/submit-assignment.dto";
 import { SaveQuizAnswerDto } from "../knowledge-checks/dto/save-quiz-answer.dto";
+import { CreateDiscussionPostDto } from "../teacher-portal/dto/create-discussion-post.dto";
 
 // Deliberately JwtAuthGuard only — no PermissionsGuard/@RequirePermissions.
 // The existing resource:action permission model answers "can this role
@@ -111,5 +112,24 @@ export class StudentPortalController {
   @Post("quizzes/:checkId/submit")
   submitQuiz(@CurrentUser() user: JwtPayload, @Param("checkId") checkId: string) {
     return this.studentPortal.submitQuiz(user.organizationId, user.sub, checkId);
+  }
+
+  @Get("discussion-topics")
+  listDiscussionTopics(@CurrentUser() user: JwtPayload) {
+    return this.studentPortal.listDiscussionTopics(user.organizationId, user.sub);
+  }
+
+  @Get("discussion-topics/:topicId")
+  getDiscussionTopic(@CurrentUser() user: JwtPayload, @Param("topicId") topicId: string) {
+    return this.studentPortal.getDiscussionTopic(user.organizationId, user.sub, topicId);
+  }
+
+  @Post("discussion-topics/:topicId/posts")
+  createDiscussionPost(
+    @CurrentUser() user: JwtPayload,
+    @Param("topicId") topicId: string,
+    @Body() dto: CreateDiscussionPostDto,
+  ) {
+    return this.studentPortal.createDiscussionPost(user.organizationId, user.sub, topicId, dto);
   }
 }

@@ -118,7 +118,11 @@ describe("Tenant isolation (e2e)", () => {
         // teachingAssignment + syllabusNode; assignmentSubmission
         // references assignment; assignment references teachingAssignment;
         // announcement (LMS discovery slice 5) also references
-        // teachingAssignment (RESTRICT) directly — all seven lead the
+        // teachingAssignment (RESTRICT) directly. discussionPost
+        // references discussionTopic (RESTRICT, LMS discovery slice 6) —
+        // must precede it (its student/employee author FKs are SET NULL,
+        // no ordering requirement there); discussionTopic itself
+        // references teachingAssignment (RESTRICT) — all nine lead the
         // whole list since teachingAssignment and syllabusNode are both
         // required elsewhere to be deleted much later.
         "knowledgeCheckAnswer",
@@ -128,6 +132,8 @@ describe("Tenant isolation (e2e)", () => {
         "assignmentSubmission",
         "assignment",
         "announcement",
+        "discussionPost",
+        "discussionTopic",
         // classMaterial references classSession; classSession references
         // classSchedule/section/lessonPlan/syllabusNode — both lead the
         // whole list since classSession must precede lessonPlan, which
@@ -7141,6 +7147,283 @@ describe("Tenant isolation (e2e)", () => {
         .post("/organizations/me/teacher-portal/announcements")
         .set(...auth(tokenB))
         .send({ teachingAssignmentId: teachingAssignment.body.id, title: "Intruder Announcement", body: "..." })
+        .expect(404);
+    }, 90000);
+  });
+
+  describe("Discussions (LMS discovery slice 6)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    it("lets a teacher start/publish a discussion topic on their own course, and both the teacher and enrolled students can reply (IDOR + tenant guards)", async () => {
+      const suffix = `DI${run}`;
+
+      const campus = await request(app.getHttpServer())
+        .post("/organizations/me/campuses")
+        .set(...auth(tokenA))
+        .send({ name: `Discuss Campus ${suffix}`, code: `DICAMP${suffix}` })
+        .expect(201);
+      const faculty = await request(app.getHttpServer())
+        .post("/organizations/me/faculties")
+        .set(...auth(tokenA))
+        .send({ campusId: campus.body.id, name: `Discuss Faculty ${suffix}`, code: `DIFAC${suffix}` })
+        .expect(201);
+      const department = await request(app.getHttpServer())
+        .post("/organizations/me/departments")
+        .set(...auth(tokenA))
+        .send({ facultyId: faculty.body.id, name: `Discuss Dept ${suffix}`, code: `DIDEP${suffix}` })
+        .expect(201);
+      const program = await request(app.getHttpServer())
+        .post("/organizations/me/programs")
+        .set(...auth(tokenA))
+        .send({ departmentId: department.body.id, name: `Discuss Program ${suffix}`, code: `DIPROG${suffix}` })
+        .expect(201);
+      const year = await request(app.getHttpServer())
+        .post("/organizations/me/academic-years")
+        .set(...auth(tokenA))
+        .send({ name: `Discuss Year ${suffix}`, startDate: "2099-08-01", endDate: "2100-06-30" })
+        .expect(201);
+      const term = await request(app.getHttpServer())
+        .post("/organizations/me/terms")
+        .set(...auth(tokenA))
+        .send({
+          academicYearId: year.body.id,
+          name: `Discuss Term ${suffix}`,
+          code: `DIT${suffix}`,
+          sequence: 1,
+          startDate: "2099-08-01",
+          endDate: "2099-12-15",
+        })
+        .expect(201);
+      const section = await request(app.getHttpServer())
+        .post("/organizations/me/sections")
+        .set(...auth(tokenA))
+        .send({ programId: program.body.id, termId: term.body.id, name: `Discuss Section ${suffix}`, code: `DIS${suffix}` })
+        .expect(201);
+      const staffType = await request(app.getHttpServer())
+        .post("/organizations/me/staff-types")
+        .set(...auth(tokenA))
+        .send({ name: `Discuss Staff Type ${suffix}`, code: `DIST${suffix}` })
+        .expect(201);
+      const designation = await request(app.getHttpServer())
+        .post("/organizations/me/designations")
+        .set(...auth(tokenA))
+        .send({ name: `Discuss Designation ${suffix}`, code: `DIDS${suffix}` })
+        .expect(201);
+      const subject = await request(app.getHttpServer())
+        .post("/organizations/me/subjects")
+        .set(...auth(tokenA))
+        .send({ name: `Discuss Subject ${suffix}`, code: `DISUB${suffix}` })
+        .expect(201);
+
+      const teacher = await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(tokenA))
+        .send({
+          staffTypeId: staffType.body.id,
+          designationId: designation.body.id,
+          employeeCode: `DI-TCH-${suffix}`,
+          firstName: "Discuss",
+          lastName: "Teacher",
+          email: `di-teacher-${suffix}-${run}@rls-e2e.test`,
+          dateOfJoining: "2026-01-01",
+        })
+        .expect(201);
+      const otherTeacher = await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(tokenA))
+        .send({
+          staffTypeId: staffType.body.id,
+          designationId: designation.body.id,
+          employeeCode: `DI-TCH2-${suffix}`,
+          firstName: "Other",
+          lastName: "DiscussTeacher",
+          email: `di-teacher2-${suffix}-${run}@rls-e2e.test`,
+          dateOfJoining: "2026-01-01",
+        })
+        .expect(201);
+
+      const teachingAssignment = await request(app.getHttpServer())
+        .post("/organizations/me/teaching-assignments")
+        .set(...auth(tokenA))
+        .send({ employeeId: teacher.body.id, subjectId: subject.body.id, sectionId: section.body.id, termId: term.body.id })
+        .expect(201);
+
+      const teacherLogin = await request(app.getHttpServer())
+        .post(`/organizations/me/employees/${teacher.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "DiscussTeacherPass123" })
+        .expect(201);
+      const otherTeacherLogin = await request(app.getHttpServer())
+        .post(`/organizations/me/employees/${otherTeacher.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "OtherDiscussTeacherPass123" })
+        .expect(201);
+      const teacherSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: teacherLogin.body.username, password: "DiscussTeacherPass123" })
+        .expect(201);
+      const otherTeacherSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: otherTeacherLogin.body.username, password: "OtherDiscussTeacherPass123" })
+        .expect(201);
+      const teacherToken = teacherSession.body.accessToken as string;
+      const otherTeacherToken = otherTeacherSession.body.accessToken as string;
+
+      // A different teacher can't start a topic on someone else's course
+      // (404, IDOR guard).
+      await request(app.getHttpServer())
+        .post("/organizations/me/teacher-portal/discussion-topics")
+        .set(...auth(otherTeacherToken))
+        .send({ teachingAssignmentId: teachingAssignment.body.id, title: "Intruder Topic", body: "..." })
+        .expect(404);
+
+      const topic = await request(app.getHttpServer())
+        .post("/organizations/me/teacher-portal/discussion-topics")
+        .set(...auth(teacherToken))
+        .send({ teachingAssignmentId: teachingAssignment.body.id, title: "Favorite math trick?", body: "Share your best shortcut." })
+        .expect(201);
+      expect(topic.body.isPublished).toBe(false);
+
+      // A different teacher can't read, update, or reply to someone
+      // else's topic (404).
+      await request(app.getHttpServer())
+        .get(`/organizations/me/teacher-portal/discussion-topics/${topic.body.id}`)
+        .set(...auth(otherTeacherToken))
+        .expect(404);
+      await request(app.getHttpServer())
+        .put(`/organizations/me/teacher-portal/discussion-topics/${topic.body.id}`)
+        .set(...auth(otherTeacherToken))
+        .send({ isPublished: true })
+        .expect(404);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/teacher-portal/discussion-topics/${topic.body.id}/posts`)
+        .set(...auth(otherTeacherToken))
+        .send({ body: "Intruder reply" })
+        .expect(404);
+
+      // Build an enrolled student and an unrelated, unenrolled one.
+      const student = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({ studentCode: `DI-STU-${suffix}`, firstName: "Discuss", lastName: "Student", dateOfBirth: "2015-01-01" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/students/${student.body.id}/enrollments`)
+        .set(...auth(tokenA))
+        .send({ programId: program.body.id, sectionId: section.body.id, termId: term.body.id, enrollmentDate: "2099-08-01" })
+        .expect(201);
+      const studentLogin = await request(app.getHttpServer())
+        .post(`/organizations/me/students/${student.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "DiscussStudentPass123" })
+        .expect(201);
+      const studentSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: studentLogin.body.username, password: "DiscussStudentPass123" })
+        .expect(201);
+      const studentToken = studentSession.body.accessToken as string;
+
+      const otherStudent = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({ studentCode: `DI-STU2-${suffix}`, firstName: "Outside", lastName: "DiscussStudent", dateOfBirth: "2015-01-01" })
+        .expect(201);
+      const otherStudentLogin = await request(app.getHttpServer())
+        .post(`/organizations/me/students/${otherStudent.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "OtherDiscussStudentPass123" })
+        .expect(201);
+      const otherStudentSession = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: otherStudentLogin.body.username, password: "OtherDiscussStudentPass123" })
+        .expect(201);
+      const otherStudentToken = otherStudentSession.body.accessToken as string;
+
+      // Unpublished draft is invisible to the enrolled student, and
+      // can't be replied to (404).
+      const listBeforePublish = await request(app.getHttpServer())
+        .get("/organizations/me/portal/discussion-topics")
+        .set(...auth(studentToken))
+        .expect(200);
+      expect(listBeforePublish.body).toEqual([]);
+      await request(app.getHttpServer())
+        .get(`/organizations/me/portal/discussion-topics/${topic.body.id}`)
+        .set(...auth(studentToken))
+        .expect(404);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/portal/discussion-topics/${topic.body.id}/posts`)
+        .set(...auth(studentToken))
+        .send({ body: "Too early" })
+        .expect(404);
+
+      await request(app.getHttpServer())
+        .put(`/organizations/me/teacher-portal/discussion-topics/${topic.body.id}`)
+        .set(...auth(teacherToken))
+        .send({ isPublished: true })
+        .expect(200);
+
+      const listAfterPublish = await request(app.getHttpServer())
+        .get("/organizations/me/portal/discussion-topics")
+        .set(...auth(studentToken))
+        .expect(200);
+      expect(listAfterPublish.body).toHaveLength(1);
+      expect(listAfterPublish.body[0].title).toBe("Favorite math trick?");
+
+      // A student not enrolled in this course never sees it, published
+      // or not, and can't reply either (404).
+      const otherStudentList = await request(app.getHttpServer())
+        .get("/organizations/me/portal/discussion-topics")
+        .set(...auth(otherStudentToken))
+        .expect(200);
+      expect(otherStudentList.body).toEqual([]);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/portal/discussion-topics/${topic.body.id}/posts`)
+        .set(...auth(otherStudentToken))
+        .send({ body: "Intruder reply" })
+        .expect(404);
+
+      // The enrolled student replies — attributed to their own Student
+      // row, never a request param.
+      const studentPost = await request(app.getHttpServer())
+        .post(`/organizations/me/portal/discussion-topics/${topic.body.id}/posts`)
+        .set(...auth(studentToken))
+        .send({ body: "Doubling and halving!" })
+        .expect(201);
+      expect(studentPost.body.authorStudentId).toBe(student.body.id);
+      expect(studentPost.body.authorEmployeeId).toBeNull();
+
+      // The owning teacher replies too — attributed to their own
+      // Employee row.
+      const teacherPost = await request(app.getHttpServer())
+        .post(`/organizations/me/teacher-portal/discussion-topics/${topic.body.id}/posts`)
+        .set(...auth(teacherToken))
+        .send({ body: "Great tip! Anyone else?" })
+        .expect(201);
+      expect(teacherPost.body.authorEmployeeId).toBe(teacher.body.id);
+      expect(teacherPost.body.authorStudentId).toBeNull();
+
+      // Both the teacher's and the student's own views show both posts,
+      // in order, with the correct author identified.
+      const teacherView = await request(app.getHttpServer())
+        .get(`/organizations/me/teacher-portal/discussion-topics/${topic.body.id}`)
+        .set(...auth(teacherToken))
+        .expect(200);
+      expect(teacherView.body.posts).toHaveLength(2);
+      expect(teacherView.body.posts[0].authorStudent.id).toBe(student.body.id);
+      expect(teacherView.body.posts[1].authorEmployee.id).toBe(teacher.body.id);
+
+      const studentView = await request(app.getHttpServer())
+        .get(`/organizations/me/portal/discussion-topics/${topic.body.id}`)
+        .set(...auth(studentToken))
+        .expect(200);
+      expect(studentView.body.posts).toHaveLength(2);
+      expect(studentView.body.posts[1].authorEmployee.firstName).toBe("Discuss");
+
+      // Cross-tenant: org B can't start a topic on org A's course.
+      await request(app.getHttpServer())
+        .post("/organizations/me/teacher-portal/discussion-topics")
+        .set(...auth(tokenB))
+        .send({ teachingAssignmentId: teachingAssignment.body.id, title: "Intruder Topic", body: "..." })
         .expect(404);
     }, 90000);
   });

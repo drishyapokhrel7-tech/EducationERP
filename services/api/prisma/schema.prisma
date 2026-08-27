@@ -117,6 +117,8 @@ model Organization {
   courseModuleItems           CourseModuleItem[]
   courseModuleItemCompletions CourseModuleItemCompletion[]
   announcements               Announcement[]
+  discussionTopics             DiscussionTopic[]
+  discussionPosts              DiscussionPost[]
 
   @@map("organizations")
 }
@@ -627,6 +629,7 @@ model Employee {
   payrolls                Payroll[]
   driverProfile           Driver?
   routesAsDriver          Route[]              @relation("routesAsDriver")
+  discussionPosts         DiscussionPost[]
 
   @@unique([organizationId, employeeCode])
   @@unique([organizationId, email])
@@ -741,6 +744,7 @@ model Student {
   invoices                    Invoice[]
   scholarships                StudentScholarship[]
   courseModuleItemCompletions CourseModuleItemCompletion[]
+  discussionPosts             DiscussionPost[]
 
   @@unique([organizationId, studentCode])
   @@index([organizationId])
@@ -981,6 +985,7 @@ model TeachingAssignment {
   knowledgeChecks KnowledgeCheck[]
   courseModules   CourseModule[]
   announcements   Announcement[]
+  discussionTopics DiscussionTopic[]
 
   // One teacher per subject+section+term — re-assigning means changing
   // this row, not stacking a second one alongside it.
@@ -2853,4 +2858,52 @@ model Announcement {
 
   @@index([organizationId])
   @@map("announcements")
+}
+
+// Course-level discussions (LMS discovery slice 6) — a teacher-created
+// topic (same draft/publish gate as Announcement) that both the owning
+// teacher and any student enrolled in the course can reply to. Flat
+// replies only, deliberately — nested/threaded replies weren't asked
+// for, and this project's own "don't build unrequested flexibility"
+// precedent applies here exactly as it did to Stop-per-Route in
+// Transport.
+model DiscussionTopic {
+  id                   String   @id @default(uuid())
+  organizationId       String
+  teachingAssignmentId String
+  title                String
+  body                 String
+  isPublished          Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  organization       Organization       @relation(fields: [organizationId], references: [id])
+  teachingAssignment TeachingAssignment @relation(fields: [teachingAssignmentId], references: [id])
+  posts              DiscussionPost[]
+
+  @@index([organizationId])
+  @@map("discussion_topics")
+}
+
+model DiscussionPost {
+  id                String   @id @default(uuid())
+  organizationId    String
+  discussionTopicId String
+  // Exactly one of these two is set — same "typed nullable FKs instead
+  // of an untyped personId+personType pair" pattern as
+  // FaceEnrollment.studentId/staffId; the XOR is enforced at the
+  // service layer, not a DB constraint.
+  authorStudentId  String?
+  authorEmployeeId String?
+  body             String
+  createdAt        DateTime @default(now())
+
+  organization    Organization    @relation(fields: [organizationId], references: [id])
+  discussionTopic DiscussionTopic @relation(fields: [discussionTopicId], references: [id])
+  authorStudent   Student?        @relation(fields: [authorStudentId], references: [id])
+  authorEmployee  Employee?       @relation(fields: [authorEmployeeId], references: [id])
+
+  @@index([organizationId])
+  @@index([discussionTopicId])
+  @@map("discussion_posts")
 }

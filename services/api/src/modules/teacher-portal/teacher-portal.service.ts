@@ -18,6 +18,10 @@ import { CreateKnowledgeCheckDto } from "../knowledge-checks/dto/create-knowledg
 import { CreateQuestionDto } from "../knowledge-checks/dto/create-question.dto";
 import { CreateAnnouncementDto } from "./dto/create-announcement.dto";
 import { UpdateAnnouncementDto } from "./dto/update-announcement.dto";
+import { DiscussionsService } from "../discussions/discussions.service";
+import { CreateDiscussionTopicDto } from "./dto/create-discussion-topic.dto";
+import { UpdateDiscussionTopicDto } from "./dto/update-discussion-topic.dto";
+import { CreateDiscussionPostDto } from "./dto/create-discussion-post.dto";
 
 const SESSION_INCLUDE = {
   classSchedule: {
@@ -56,6 +60,7 @@ export class TeacherPortalService {
     private readonly dashboards: DashboardsService,
     private readonly assignments: AssignmentsService,
     private readonly knowledgeChecks: KnowledgeChecksService,
+    private readonly discussions: DiscussionsService,
   ) {}
 
   async getMe(organizationId: string, userId: string) {
@@ -457,6 +462,56 @@ export class TeacherPortalService {
       throw new NotFoundException("Announcement not found");
     }
     return announcement;
+  }
+
+  // ── Discussions (LMS discovery slice 6) ──────────────────────────────
+  // Reuses DiscussionsService's shared topic/post CRUD wholesale, same
+  // "reuse the existing service, add a self-service ownership check in
+  // front" precedent as assignments/quizzes — the topic-ownership check
+  // happens here, then DiscussionsService is called as an independent
+  // top-level call (never nested inside this method's own withTenant).
+
+  async listDiscussionTopics(organizationId: string, userId: string, teachingAssignmentId: string) {
+    const employee = await this.getOwnEmployee(organizationId, userId);
+    await this.prisma.withTenant(organizationId, (tx) => this.assertOwnsTeachingAssignment(tx, employee.id, teachingAssignmentId));
+    return this.discussions.listTopics(organizationId, teachingAssignmentId, false);
+  }
+
+  async createDiscussionTopic(organizationId: string, userId: string, dto: CreateDiscussionTopicDto) {
+    const employee = await this.getOwnEmployee(organizationId, userId);
+    await this.prisma.withTenant(organizationId, (tx) => this.assertOwnsTeachingAssignment(tx, employee.id, dto.teachingAssignmentId));
+    return this.discussions.createTopic(organizationId, dto);
+  }
+
+  async updateDiscussionTopic(organizationId: string, userId: string, topicId: string, dto: UpdateDiscussionTopicDto) {
+    const employee = await this.getOwnEmployee(organizationId, userId);
+    await this.assertOwnsTopic(organizationId, employee.id, topicId);
+    return this.discussions.updateTopic(organizationId, topicId, dto);
+  }
+
+  async getDiscussionTopic(organizationId: string, userId: string, topicId: string) {
+    const employee = await this.getOwnEmployee(organizationId, userId);
+    await this.assertOwnsTopic(organizationId, employee.id, topicId);
+    return this.discussions.getTopic(organizationId, topicId);
+  }
+
+  async createDiscussionPost(organizationId: string, userId: string, topicId: string, dto: CreateDiscussionPostDto) {
+    const employee = await this.getOwnEmployee(organizationId, userId);
+    await this.assertOwnsTopic(organizationId, employee.id, topicId);
+    return this.discussions.createPost(organizationId, topicId, { employeeId: employee.id }, dto);
+  }
+
+  private async assertOwnsTopic(organizationId: string, employeeId: string, topicId: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const topic = await tx.discussionTopic.findUnique({
+        where: { id: topicId },
+        include: { teachingAssignment: true },
+      });
+      if (!topic || topic.teachingAssignment.employeeId !== employeeId) {
+        throw new NotFoundException("Discussion topic not found");
+      }
+      return topic;
+    });
   }
 
   private async assertOwnsTeachingAssignment(tx: PrismaClient, employeeId: string, teachingAssignmentId: string) {

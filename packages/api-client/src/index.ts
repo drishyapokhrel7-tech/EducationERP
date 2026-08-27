@@ -111,6 +111,13 @@ import type {
   CreateAnnouncementInput,
   UpdateAnnouncementInput,
   StudentPortalAnnouncement,
+  DiscussionTopic,
+  DiscussionTopicWithPosts,
+  DiscussionPost,
+  CreateDiscussionTopicInput,
+  UpdateDiscussionTopicInput,
+  CreateDiscussionPostInput,
+  StudentPortalDiscussionTopic,
   TeacherDashboard,
   StudentDashboard,
   ParentDashboard,
@@ -1120,6 +1127,40 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
 
     // Announcements — student self-service side.
     listStudentAnnouncements: () => request<StudentPortalAnnouncement[]>("/organizations/me/portal/announcements"),
+
+    // Discussions — teacher self-service side (LMS discovery slice 6).
+    listTeacherDiscussionTopics: (teachingAssignmentId: string) =>
+      request<DiscussionTopic[]>(
+        `/organizations/me/teacher-portal/discussion-topics?teachingAssignmentId=${encodeURIComponent(teachingAssignmentId)}`,
+      ),
+    createTeacherDiscussionTopic: (input: CreateDiscussionTopicInput) =>
+      request<DiscussionTopic>("/organizations/me/teacher-portal/discussion-topics", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    getTeacherDiscussionTopic: (topicId: string) =>
+      request<DiscussionTopicWithPosts>(`/organizations/me/teacher-portal/discussion-topics/${topicId}`),
+    updateTeacherDiscussionTopic: (topicId: string, input: UpdateDiscussionTopicInput) =>
+      request<DiscussionTopic>(`/organizations/me/teacher-portal/discussion-topics/${topicId}`, {
+        method: "PUT",
+        body: JSON.stringify(input),
+      }),
+    createTeacherDiscussionPost: (topicId: string, input: CreateDiscussionPostInput) =>
+      request<DiscussionPost>(`/organizations/me/teacher-portal/discussion-topics/${topicId}/posts`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+
+    // Discussions — student self-service side.
+    listStudentDiscussionTopics: () =>
+      request<StudentPortalDiscussionTopic[]>("/organizations/me/portal/discussion-topics"),
+    getStudentDiscussionTopic: (topicId: string) =>
+      request<DiscussionTopicWithPosts>(`/organizations/me/portal/discussion-topics/${topicId}`),
+    createStudentDiscussionPost: (topicId: string, input: CreateDiscussionPostInput) =>
+      request<DiscussionPost>(`/organizations/me/portal/discussion-topics/${topicId}/posts`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
   };
 }
 

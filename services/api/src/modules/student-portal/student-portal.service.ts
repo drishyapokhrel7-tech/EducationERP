@@ -6,6 +6,8 @@ import { FinanceService } from "../finance/finance.service";
 import { AssignmentsService } from "../assignments/assignments.service";
 import { KnowledgeChecksService } from "../knowledge-checks/knowledge-checks.service";
 import { SaveQuizAnswerDto } from "../knowledge-checks/dto/save-quiz-answer.dto";
+import { DiscussionsService } from "../discussions/discussions.service";
+import { CreateDiscussionPostDto } from "../teacher-portal/dto/create-discussion-post.dto";
 
 /**
  * Self-service, not admin-facing — studentId is derived exclusively from
@@ -24,6 +26,7 @@ export class StudentPortalService {
     private readonly finance: FinanceService,
     private readonly assignments: AssignmentsService,
     private readonly knowledgeChecks: KnowledgeChecksService,
+    private readonly discussions: DiscussionsService,
   ) {}
 
   async getDashboard(organizationId: string, userId: string) {
@@ -187,6 +190,54 @@ export class StudentPortalService {
         include: { teachingAssignment: { include: { subject: true, employee: true } } },
         orderBy: { createdAt: "desc" },
       });
+    });
+  }
+
+  // ── Discussions (LMS discovery slice 6) ─────────────────────────────
+  // Reuses DiscussionsService's shared topic/post CRUD wholesale, same
+  // "reuse the existing service, add a self-service enrollment check in
+  // front" precedent as quizzes below. A student can only ever read a
+  // published topic on a course they're enrolled in, and can only post
+  // a reply attributed to their own linked Student row.
+
+  // Flat, cross-course feed — same shape as listAnnouncements/
+  // listAssignments/listQuizzes above, not a per-course pick-a-course-
+  // first list like the teacher-portal side (which is already organized
+  // around an explicit course picker).
+  async listDiscussionTopics(organizationId: string, userId: string) {
+    const student = await this.getOwnStudent(organizationId, userId);
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const enrollment = await tx.studentEnrollment.findFirst({ where: { organizationId, studentId: student.id, status: "ACTIVE" } });
+      if (!enrollment) return [];
+
+      const teachingAssignments = await tx.teachingAssignment.findMany({
+        where: { organizationId, sectionId: enrollment.sectionId, termId: enrollment.termId },
+      });
+      return tx.discussionTopic.findMany({
+        where: { organizationId, isPublished: true, teachingAssignmentId: { in: teachingAssignments.map((t) => t.id) } },
+        include: { teachingAssignment: { include: { subject: true, employee: true } } },
+        orderBy: { createdAt: "desc" },
+      });
+    });
+  }
+
+  async getDiscussionTopic(organizationId: string, userId: string, topicId: string) {
+    const student = await this.getOwnStudent(organizationId, userId);
+    await this.assertEnrolledInPublishedTopicCourse(organizationId, student.id, topicId);
+    return this.discussions.getTopic(organizationId, topicId);
+  }
+
+  async createDiscussionPost(organizationId: string, userId: string, topicId: string, dto: CreateDiscussionPostDto) {
+    const student = await this.getOwnStudent(organizationId, userId);
+    await this.assertEnrolledInPublishedTopicCourse(organizationId, student.id, topicId);
+    return this.discussions.createPost(organizationId, topicId, { studentId: student.id }, dto);
+  }
+
+  private async assertEnrolledInPublishedTopicCourse(organizationId: string, studentId: string, topicId: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const topic = await tx.discussionTopic.findUnique({ where: { id: topicId } });
+      if (!topic || !topic.isPublished) throw new NotFoundException("Discussion topic not found");
+      await this.assertEnrolledInCourse(tx, organizationId, studentId, topic.teachingAssignmentId);
     });
   }
 

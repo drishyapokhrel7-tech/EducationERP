@@ -99,6 +99,18 @@ export default function TeacherPage() {
   );
   const [announcementForm, setAnnouncementForm] = useState({ title: "", body: "" });
 
+  const discussionTopics = useSWR(
+    courseId ? ["teacher-discussion-topics", courseId] : null,
+    () => api.listTeacherDiscussionTopics(courseId),
+  );
+  const [topicForm, setTopicForm] = useState({ title: "", body: "" });
+  const [expandedTopicId, setExpandedTopicId] = useState<string | null>(null);
+  const expandedTopic = useSWR(
+    expandedTopicId ? ["teacher-discussion-topic", expandedTopicId] : null,
+    () => api.getTeacherDiscussionTopic(expandedTopicId as string),
+  );
+  const [replyBody, setReplyBody] = useState("");
+
   async function openClass(classScheduleId: string) {
     try {
       const session = await api.createTeacherClassSession({ classScheduleId, date });
@@ -1080,6 +1092,164 @@ export default function TeacherPage() {
                         disabled={!announcementForm.title || !announcementForm.body}
                       >
                         Post announcement
+                      </Button>
+                    </form>
+                  </>
+                ) : null}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>My courses — discussions</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <NativeSelect
+                  className="w-64"
+                  placeholder="Select a course"
+                  value={courseId}
+                  onChange={(v) => {
+                    setCourseId(v);
+                    setExpandedTopicId(null);
+                  }}
+                  options={me.data.teachingAssignments.map((t) => ({ value: t.id, label: t.subject.name }))}
+                />
+
+                {courseId ? (
+                  <>
+                    {!discussionTopics.data || discussionTopics.data.length === 0 ? (
+                      <p className="text-muted-foreground text-sm">No discussion topics yet.</p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {discussionTopics.data.map((t) => (
+                          <li key={t.id} className="rounded-md border p-3 text-sm">
+                            <div className="flex items-center justify-between gap-3">
+                              <button
+                                type="button"
+                                className="text-left font-medium"
+                                onClick={() => {
+                                  setExpandedTopicId(expandedTopicId === t.id ? null : t.id);
+                                  setReplyBody("");
+                                }}
+                              >
+                                {t.title}
+                              </button>
+                              <div className="flex items-center gap-2">
+                                <Badge variant={t.isPublished ? "success" : "secondary"}>
+                                  {t.isPublished ? "Published" : "Draft"}
+                                </Badge>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={async () => {
+                                    try {
+                                      await api.updateTeacherDiscussionTopic(t.id, { isPublished: !t.isPublished });
+                                      discussionTopics.mutate();
+                                    } catch (err) {
+                                      toast.error(errorMessage(err, "Failed to update topic"));
+                                    }
+                                  }}
+                                >
+                                  {t.isPublished ? "Unpublish" : "Publish"}
+                                </Button>
+                              </div>
+                            </div>
+                            {expandedTopicId === t.id ? (
+                              <div className="mt-3 space-y-3 border-t pt-3">
+                                {!expandedTopic.data ? (
+                                  <p className="text-muted-foreground text-xs">Loading…</p>
+                                ) : (
+                                  <>
+                                    <p className="whitespace-pre-wrap">{expandedTopic.data.body}</p>
+                                    {expandedTopic.data.posts.length === 0 ? (
+                                      <p className="text-muted-foreground text-xs">No replies yet.</p>
+                                    ) : (
+                                      <ul className="space-y-2 border-t pt-2">
+                                        {expandedTopic.data.posts.map((p) => (
+                                          <li key={p.id} className="text-xs">
+                                            <span className="font-medium">
+                                              {p.authorEmployee
+                                                ? `${p.authorEmployee.firstName} ${p.authorEmployee.lastName} (Teacher)`
+                                                : p.authorStudent
+                                                  ? `${p.authorStudent.firstName} ${p.authorStudent.lastName}`
+                                                  : "Unknown"}
+                                            </span>
+                                            <p className="text-muted-foreground whitespace-pre-wrap">{p.body}</p>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    )}
+                                    <form
+                                      className="flex flex-wrap items-end gap-2"
+                                      onSubmit={async (e: FormEvent) => {
+                                        e.preventDefault();
+                                        try {
+                                          await api.createTeacherDiscussionPost(t.id, { body: replyBody });
+                                          setReplyBody("");
+                                          expandedTopic.mutate();
+                                        } catch (err) {
+                                          toast.error(errorMessage(err, "Failed to reply"));
+                                        }
+                                      }}
+                                    >
+                                      <textarea
+                                        className="border-input focus-visible:border-ring focus-visible:ring-ring/50 h-16 w-64 rounded-lg border bg-transparent px-2.5 py-1.5 text-xs outline-none transition-colors focus-visible:ring-3"
+                                        placeholder="Write a reply…"
+                                        value={replyBody}
+                                        onChange={(e) => setReplyBody(e.target.value)}
+                                      />
+                                      <Button type="submit" size="sm" className="h-7" disabled={!replyBody}>
+                                        Reply
+                                      </Button>
+                                    </form>
+                                  </>
+                                )}
+                              </div>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
+                    <Separator />
+
+                    <form
+                      className="space-y-2"
+                      onSubmit={async (e: FormEvent) => {
+                        e.preventDefault();
+                        try {
+                          await api.createTeacherDiscussionTopic({
+                            teachingAssignmentId: courseId,
+                            title: topicForm.title,
+                            body: topicForm.body,
+                          });
+                          setTopicForm({ title: "", body: "" });
+                          discussionTopics.mutate();
+                          toast.success("Topic created");
+                        } catch (err) {
+                          toast.error(errorMessage(err, "Failed to create topic"));
+                        }
+                      }}
+                    >
+                      <div className="space-y-1">
+                        <Label className="text-xs">Title</Label>
+                        <Input
+                          className="w-full"
+                          value={topicForm.title}
+                          onChange={(e) => setTopicForm((f) => ({ ...f, title: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Body</Label>
+                        <textarea
+                          className="border-input focus-visible:border-ring focus-visible:ring-ring/50 min-h-20 w-full rounded-lg border bg-transparent px-2.5 py-1.5 text-sm outline-none transition-colors focus-visible:ring-3"
+                          value={topicForm.body}
+                          onChange={(e) => setTopicForm((f) => ({ ...f, body: e.target.value }))}
+                        />
+                      </div>
+                      <Button type="submit" size="sm" disabled={!topicForm.title || !topicForm.body}>
+                        Start topic
                       </Button>
                     </form>
                   </>

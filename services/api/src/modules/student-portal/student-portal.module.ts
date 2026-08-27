@@ -5,9 +5,10 @@ import { DashboardsModule } from "../dashboards/dashboards.module";
 import { FinanceModule } from "../finance/finance.module";
 import { AssignmentsModule } from "../assignments/assignments.module";
 import { KnowledgeChecksModule } from "../knowledge-checks/knowledge-checks.module";
+import { DiscussionsModule } from "../discussions/discussions.module";
 
 @Module({
-  imports: [DashboardsModule, FinanceModule, AssignmentsModule, KnowledgeChecksModule],
+  imports: [DashboardsModule, FinanceModule, AssignmentsModule, KnowledgeChecksModule, DiscussionsModule],
   providers: [StudentPortalService],
   controllers: [StudentPortalController],
 })

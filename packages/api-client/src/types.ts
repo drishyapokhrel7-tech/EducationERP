@@ -898,6 +898,61 @@ export interface StudentPortalAnnouncement extends Announcement {
   teachingAssignment: AssignmentTeachingAssignmentSummary;
 }
 
+// Course-level discussions (LMS discovery slice 6).
+
+export interface DiscussionTopic {
+  id: string;
+  organizationId: string;
+  teachingAssignmentId: string;
+  title: string;
+  body: string;
+  isPublished: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateDiscussionTopicInput {
+  teachingAssignmentId: string;
+  title: string;
+  body: string;
+}
+
+export interface UpdateDiscussionTopicInput {
+  title?: string;
+  body?: string;
+  isPublished?: boolean;
+}
+
+// Exactly one of authorStudent/authorEmployee is set — mirrors
+// DiscussionPost's own studentId/employeeId XOR (enforced server-side,
+// not by this type). Either can be null if the linked person was later
+// removed — the post itself still stands.
+export interface DiscussionPost {
+  id: string;
+  organizationId: string;
+  discussionTopicId: string;
+  authorStudentId: string | null;
+  authorEmployeeId: string | null;
+  body: string;
+  createdAt: string;
+  authorStudent: Student | null;
+  authorEmployee: Employee | null;
+}
+
+export interface DiscussionTopicWithPosts extends DiscussionTopic {
+  posts: DiscussionPost[];
+}
+
+export interface CreateDiscussionPostInput {
+  body: string;
+}
+
+// Student-portal's flat, cross-course feed — same narrowing precedent
+// as StudentPortalAnnouncement.
+export interface StudentPortalDiscussionTopic extends DiscussionTopic {
+  teachingAssignment: AssignmentTeachingAssignmentSummary;
+}
+
 export type KnowledgeCheckStatus = "DRAFT" | "PUBLISHED";
 
 export interface KnowledgeCheckQuestion {
