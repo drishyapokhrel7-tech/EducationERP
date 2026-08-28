@@ -24,6 +24,41 @@ import { paginate } from "../../common/pagination";
 // dropdown (apps/web/src/app/dashboard/students/page.tsx).
 const GENDER_OPTIONS = ["Male", "Female", "Other"] as const;
 
+// Same standardization goal as GENDER_OPTIONS above (a common, seeded
+// list so "Father" isn't also typed "father"/"Dad"/"Guardian(Father)"
+// depending on who's entering it) — enforced here so a bare API call
+// can't bypass the frontend's dropdown. Deliberately still a free
+// `String` column at the DB layer (StudentGuardian.relationship's own
+// schema comment: family structures aren't a fixed enum) — this list
+// can change without a migration, just edit it here and in the
+// frontend's matching dropdown (apps/web/src/app/dashboard/students/
+// page.tsx), same duplication convention as GENDER_OPTIONS.
+const RELATIONSHIP_OPTIONS = [
+  "Father",
+  "Mother",
+  "Son",
+  "Daughter",
+  "Husband",
+  "Wife",
+  "Brother",
+  "Sister",
+  "Grandfather",
+  "Grandmother",
+  "Uncle",
+  "Aunt",
+  "Cousin",
+  "Friend",
+  "Colleague",
+  "Supervisor",
+  "Subordinate",
+  "Neighbor",
+  "Guardian",
+  "Emergency Contact",
+  "Associate",
+  "Business Partner",
+  "Unknown",
+] as const;
+
 /** Same load-bearing parent-guard pattern as every prior slice's service. */
 @Injectable()
 export class StudentsService {
@@ -43,8 +78,8 @@ export class StudentsService {
     return this.prisma.withTenant(organizationId, (tx) =>
       tx.student.findMany({
         where: { organizationId, deletedAt: null },
-        select: { id: true, firstName: true, lastName: true, studentCode: true, status: true },
-        orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
+        select: { id: true, firstName: true, middleName: true, lastName: true, studentCode: true, status: true },
+        orderBy: [{ firstName: "asc" }, { middleName: "asc" }, { lastName: "asc" }],
       }),
     );
   }
@@ -100,6 +135,7 @@ export class StudentsService {
               organizationId,
               studentCode,
               firstName: dto.firstName,
+              middleName: dto.middleName,
               lastName: dto.lastName,
               dateOfBirth: new Date(dto.dateOfBirth),
               gender: dto.gender,
@@ -121,7 +157,7 @@ export class StudentsService {
     return this.prisma.withTenant(organizationId, (tx) =>
       tx.guardian.findMany({
         where: { organizationId },
-        orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
+        orderBy: [{ firstName: "asc" }, { middleName: "asc" }, { lastName: "asc" }],
       }),
     );
   }
@@ -132,6 +168,7 @@ export class StudentsService {
         data: {
           organizationId,
           firstName: dto.firstName,
+          middleName: dto.middleName,
           lastName: dto.lastName,
           phone: dto.phone,
           email: dto.email,
@@ -151,6 +188,11 @@ export class StudentsService {
   }
 
   async attachGuardian(organizationId: string, studentId: string, dto: AttachGuardianDto) {
+    if (!(RELATIONSHIP_OPTIONS as readonly string[]).includes(dto.relationship)) {
+      throw new BadRequestException(
+        `Invalid relationship "${dto.relationship}" — must be one of ${RELATIONSHIP_OPTIONS.join(", ")}`,
+      );
+    }
     await this.requireStudent(organizationId, studentId);
     return this.prisma.withTenant(organizationId, async (tx) => {
       const guardian = await tx.guardian.findUnique({ where: { id: dto.guardianId } });

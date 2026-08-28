@@ -13,6 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { EntityCard } from "@/components/dashboard/entity-card";
 import { ListPager } from "@/components/dashboard/list-pager";
 import { PhotoInput } from "@/components/photo-input";
+import { Avatar } from "@/components/avatar";
 import { EditionUsageBadge } from "@/components/edition-usage-badge";
 import { EditionUpgradeBanner } from "@/components/edition-upgrade-banner";
 import { api } from "@/lib/api";
@@ -27,6 +28,37 @@ import { ApiError, type Edition, type ImportResult } from "@education-erp/api-cl
 // import template's dropdown offers, so a record created here is
 // never rejected on re-import. Update both places together.
 const GENDER_OPTIONS = ["Male", "Female", "Other"] as const;
+
+// Matches the backend's RELATIONSHIP_OPTIONS
+// (services/api/src/modules/students/students.service.ts) exactly —
+// the stored value is always the plain English label (e.g. "Father"),
+// same as GENDER_OPTIONS; the Nepali translation shown alongside it
+// here is display-only, not persisted separately.
+const RELATIONSHIP_OPTIONS = [
+  { label: "Father", nepali: "बुबा" },
+  { label: "Mother", nepali: "आमा" },
+  { label: "Son", nepali: "छोरा" },
+  { label: "Daughter", nepali: "छोरी" },
+  { label: "Husband", nepali: "श्रीमान्" },
+  { label: "Wife", nepali: "श्रीमती" },
+  { label: "Brother", nepali: "दाजु/भाइ" },
+  { label: "Sister", nepali: "दिदी/बहिनी" },
+  { label: "Grandfather", nepali: "हजुरबुबा" },
+  { label: "Grandmother", nepali: "हजुरआमा" },
+  { label: "Uncle", nepali: "काका/मामा" },
+  { label: "Aunt", nepali: "काकी/माइजू/फुपू" },
+  { label: "Cousin", nepali: "काकाको/मामाको छोरा/छोरी" },
+  { label: "Friend", nepali: "साथी" },
+  { label: "Colleague", nepali: "सहकर्मी" },
+  { label: "Supervisor", nepali: "सुपरिवेक्षक" },
+  { label: "Subordinate", nepali: "मातहत कर्मचारी" },
+  { label: "Neighbor", nepali: "छिमेकी" },
+  { label: "Guardian", nepali: "अभिभावक" },
+  { label: "Emergency Contact", nepali: "आपतकालीन सम्पर्क" },
+  { label: "Associate", nepali: "सम्बन्धित व्यक्ति" },
+  { label: "Business Partner", nepali: "व्यावसायिक साझेदार" },
+  { label: "Unknown", nepali: "अज्ञात" },
+] as const;
 
 export default function StudentsPage() {
   // Paginated (Phase 8 performance-optimization slice) — studentsPage
@@ -50,6 +82,7 @@ export default function StudentsPage() {
   // part of this form.
   const [studentForm, setStudentForm] = useState({
     firstName: "",
+    middleName: "",
     lastName: "",
     dateOfBirth: "",
     gender: "",
@@ -57,6 +90,7 @@ export default function StudentsPage() {
   const [studentPhotoUrl, setStudentPhotoUrl] = useState<string | null>(null);
   const [guardianForm, setGuardianForm] = useState({
     firstName: "",
+    middleName: "",
     lastName: "",
     phone: "",
     email: "",
@@ -246,6 +280,7 @@ export default function StudentsPage() {
           id: string;
           userId: string | null;
           firstName: string;
+          middleName: string | null;
           lastName: string;
           studentCode: string;
           status: string;
@@ -254,12 +289,9 @@ export default function StudentsPage() {
         }) => (
           <div id={`student-${s.id}`} className="rounded-md transition-shadow">
             <span className="flex items-center gap-2">
-              {s.photoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element -- external/storage-backend URL
-                <img src={s.photoUrl} alt="" className="bg-muted size-6 rounded-full border object-cover" />
-              ) : null}
-              {s.firstName} {s.lastName}{" "}
-              <span className="text-muted-foreground">{s.studentCode}</span>
+              <Avatar src={s.photoUrl} />
+              {s.firstName} {s.middleName ? `${s.middleName} ` : ""}
+              {s.lastName} <span className="text-muted-foreground">{s.studentCode}</span>
               <Badge variant={statusVariant(s.status)}>{s.status}</Badge>
             </span>
             {s.guardians.length > 0 ? (
@@ -311,11 +343,12 @@ export default function StudentsPage() {
               () =>
                 api.createStudent({
                   ...studentForm,
+                  middleName: studentForm.middleName || undefined,
                   gender: studentForm.gender || undefined,
                   photoUrl: studentPhotoUrl,
                 }),
               () => {
-                setStudentForm({ firstName: "", lastName: "", dateOfBirth: "", gender: "" });
+                setStudentForm({ firstName: "", middleName: "", lastName: "", dateOfBirth: "", gender: "" });
                 setStudentPhotoUrl(null);
                 setEditionLimitEdition(null);
                 students.mutate();
@@ -330,6 +363,13 @@ export default function StudentsPage() {
               required
               value={studentForm.firstName}
               onChange={(e) => setStudentForm((f) => ({ ...f, firstName: e.target.value }))}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Middle name (optional)</Label>
+            <Input
+              value={studentForm.middleName}
+              onChange={(e) => setStudentForm((f) => ({ ...f, middleName: e.target.value }))}
             />
           </div>
           <div className="space-y-2">
@@ -377,16 +417,15 @@ export default function StudentsPage() {
         renderItem={(g: {
           id: string;
           firstName: string;
+          middleName: string | null;
           lastName: string;
           phone: string;
           photoUrl: string | null;
         }) => (
           <span id={`guardian-${g.id}`} className="flex items-center gap-2">
-            {g.photoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element -- external/storage-backend URL
-              <img src={g.photoUrl} alt="" className="bg-muted size-6 rounded-full border object-cover" />
-            ) : null}
-            {g.firstName} {g.lastName} <span className="text-muted-foreground">{g.phone}</span>
+            <Avatar src={g.photoUrl} />
+            {g.firstName} {g.middleName ? `${g.middleName} ` : ""}
+            {g.lastName} <span className="text-muted-foreground">{g.phone}</span>
           </span>
         )}
       >
@@ -399,11 +438,12 @@ export default function StudentsPage() {
               () =>
                 api.createGuardian({
                   ...guardianForm,
+                  middleName: guardianForm.middleName || undefined,
                   email: guardianForm.email || undefined,
                   photoUrl: guardianPhotoUrl,
                 }),
               () => {
-                setGuardianForm({ firstName: "", lastName: "", phone: "", email: "" });
+                setGuardianForm({ firstName: "", middleName: "", lastName: "", phone: "", email: "" });
                 setGuardianPhotoUrl(null);
                 guardians.mutate();
               },
@@ -416,6 +456,13 @@ export default function StudentsPage() {
               required
               value={guardianForm.firstName}
               onChange={(e) => setGuardianForm((f) => ({ ...f, firstName: e.target.value }))}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Middle name (optional)</Label>
+            <Input
+              value={guardianForm.middleName}
+              onChange={(e) => setGuardianForm((f) => ({ ...f, middleName: e.target.value }))}
             />
           </div>
           <div className="space-y-2">
@@ -499,15 +546,15 @@ export default function StudentsPage() {
           </div>
           <div className="space-y-2">
             <Label>Relationship</Label>
-            <Input
-              required
-              className="w-28"
-              placeholder="Father"
+            <NativeSelect
+              className="w-40"
+              placeholder="Select relationship"
               value={linkForm.relationship}
-              onChange={(e) => setLinkForm((f) => ({ ...f, relationship: e.target.value }))}
+              onChange={(v) => setLinkForm((f) => ({ ...f, relationship: v }))}
+              options={RELATIONSHIP_OPTIONS.map((r) => ({ value: r.label, label: `${r.label} (${r.nepali})` }))}
             />
           </div>
-          <Button type="submit" disabled={!linkForm.studentId || !linkForm.guardianId}>
+          <Button type="submit" disabled={!linkForm.studentId || !linkForm.guardianId || !linkForm.relationship}>
             Link
           </Button>
         </form>

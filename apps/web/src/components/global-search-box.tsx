@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Avatar } from "@/components/avatar";
 import { api } from "@/lib/api";
 import type { SearchResult } from "@education-erp/api-client";
 
@@ -126,10 +127,7 @@ export function GlobalSearchBox() {
                           className="hover:bg-accent flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm"
                           onClick={() => goTo("/dashboard/students", `student-${s.id}`)}
                         >
-                          {s.photoUrl ? (
-                            // eslint-disable-next-line @next/next/no-img-element -- external/storage-backend URL
-                            <img src={s.photoUrl} alt="" className="bg-muted size-6 rounded-full border object-cover" />
-                          ) : null}
+                          <Avatar src={s.photoUrl} />
                           <span>
                             {s.firstName} {s.lastName} <span className="text-muted-foreground">{s.studentCode}</span>
                           </span>
@@ -150,10 +148,7 @@ export function GlobalSearchBox() {
                           className="hover:bg-accent flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm"
                           onClick={() => goTo("/dashboard/staff", `employee-${e.id}`)}
                         >
-                          {e.photoUrl ? (
-                            // eslint-disable-next-line @next/next/no-img-element -- external/storage-backend URL
-                            <img src={e.photoUrl} alt="" className="bg-muted size-6 rounded-full border object-cover" />
-                          ) : null}
+                          <Avatar src={e.photoUrl} />
                           <span>
                             {e.firstName} {e.lastName} <span className="text-muted-foreground">{e.employeeCode}</span>
                           </span>

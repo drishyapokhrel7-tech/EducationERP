@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { FileUploadButton } from "@/components/file-upload-button";
 import { CameraCapture } from "@/components/camera-capture";
+import { Avatar } from "@/components/avatar";
 import { api } from "@/lib/api";
 
 // A reasonable cap for an identification-style photo — generous
@@ -27,14 +28,7 @@ export function PhotoInput({ value, onChange }: { value: string | null; onChange
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-3">
-        {value ? (
-          // eslint-disable-next-line @next/next/no-img-element -- external/storage-backend URL, not a local static asset next/image can optimize
-          <img src={value} alt="" className="bg-muted size-16 rounded-full border object-cover" />
-        ) : (
-          <div className="bg-muted text-muted-foreground flex size-16 items-center justify-center rounded-full border text-[10px]">
-            No photo
-          </div>
-        )}
+        <Avatar src={value} size="lg" />
         <div className="flex flex-col gap-1">
           <FileUploadButton
             label={value ? "Replace photo" : "Upload photo"}

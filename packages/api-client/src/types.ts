@@ -314,6 +314,7 @@ export interface Employee {
   departmentId: string | null;
   employeeCode: string;
   firstName: string;
+  middleName: string | null;
   lastName: string;
   email: string;
   phone: string | null;
@@ -335,6 +336,7 @@ export interface EmployeePicker {
   id: string;
   userId: string | null;
   firstName: string;
+  middleName: string | null;
   lastName: string;
   employeeCode: string;
   status: EmployeeStatus;
@@ -346,6 +348,7 @@ export interface CreateEmployeeInput {
   departmentId?: string;
   employeeCode: string;
   firstName: string;
+  middleName?: string;
   lastName: string;
   email: string;
   phone?: string;
@@ -458,6 +461,7 @@ export interface Guardian {
   id: string;
   organizationId: string;
   firstName: string;
+  middleName: string | null;
   lastName: string;
   phone: string;
   email: string | null;
@@ -467,6 +471,7 @@ export interface Guardian {
 
 export interface CreateGuardianInput {
   firstName: string;
+  middleName?: string;
   lastName: string;
   phone: string;
   email?: string;
@@ -497,6 +502,7 @@ export interface Student {
   userId: string | null;
   studentCode: string;
   firstName: string;
+  middleName: string | null;
   lastName: string;
   dateOfBirth: string;
   gender: string | null;
@@ -512,6 +518,7 @@ export interface Student {
 export interface StudentPicker {
   id: string;
   firstName: string;
+  middleName: string | null;
   lastName: string;
   studentCode: string;
   status: StudentStatus;
@@ -521,6 +528,7 @@ export interface CreateStudentInput {
   // studentCode is deliberately absent — generated server-side
   // (sequential per organization), not supplied by the caller.
   firstName: string;
+  middleName?: string;
   lastName: string;
   dateOfBirth: string;
   gender?: string;

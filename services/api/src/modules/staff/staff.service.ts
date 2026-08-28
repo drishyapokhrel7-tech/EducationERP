@@ -178,8 +178,16 @@ export class StaffService {
     return this.prisma.withTenant(organizationId, (tx) =>
       tx.employee.findMany({
         where: { organizationId, deletedAt: null },
-        select: { id: true, userId: true, firstName: true, lastName: true, employeeCode: true, status: true },
-        orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
+        select: {
+          id: true,
+          userId: true,
+          firstName: true,
+          middleName: true,
+          lastName: true,
+          employeeCode: true,
+          status: true,
+        },
+        orderBy: [{ firstName: "asc" }, { middleName: "asc" }, { lastName: "asc" }],
       }),
     );
   }
@@ -225,6 +233,7 @@ export class StaffService {
           departmentId: dto.departmentId,
           employeeCode: dto.employeeCode,
           firstName: dto.firstName,
+          middleName: dto.middleName,
           lastName: dto.lastName,
           email: dto.email,
           phone: dto.phone,

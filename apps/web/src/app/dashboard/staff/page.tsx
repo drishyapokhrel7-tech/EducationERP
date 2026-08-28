@@ -10,6 +10,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { EntityCard } from "@/components/dashboard/entity-card";
 import { ListPager } from "@/components/dashboard/list-pager";
 import { PhotoInput } from "@/components/photo-input";
+import { Avatar } from "@/components/avatar";
 import { EditionUsageBadge } from "@/components/edition-usage-badge";
 import { EditionUpgradeBanner } from "@/components/edition-upgrade-banner";
 import { api } from "@/lib/api";
@@ -67,6 +68,7 @@ export default function StaffPage() {
     departmentId: "",
     employeeCode: "",
     firstName: "",
+    middleName: "",
     lastName: "",
     email: "",
     phone: "",
@@ -334,6 +336,7 @@ export default function StaffPage() {
         renderItem={(e: {
           id: string;
           firstName: string;
+          middleName: string | null;
           lastName: string;
           employeeCode: string;
           userId: string | null;
@@ -342,12 +345,9 @@ export default function StaffPage() {
         }) => (
           <div id={`employee-${e.id}`} className="rounded-md transition-shadow">
             <span className="flex items-center gap-2">
-              {e.photoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element -- external/storage-backend URL
-                <img src={e.photoUrl} alt="" className="bg-muted size-6 rounded-full border object-cover" />
-              ) : null}
-              {e.firstName} {e.lastName}{" "}
-              <span className="text-muted-foreground">
+              <Avatar src={e.photoUrl} />
+              {e.firstName} {e.middleName ? `${e.middleName} ` : ""}
+              {e.lastName} <span className="text-muted-foreground">
                 {e.employeeCode}
                 {e.designation ? ` · ${e.designation.name}` : ""}
               </span>
@@ -395,6 +395,7 @@ export default function StaffPage() {
                 api.createEmployee({
                   ...employeeForm,
                   departmentId: employeeForm.departmentId || undefined,
+                  middleName: employeeForm.middleName || undefined,
                   phone: employeeForm.phone || undefined,
                   photoUrl: employeePhotoUrl,
                 }),
@@ -405,6 +406,7 @@ export default function StaffPage() {
                   departmentId: "",
                   employeeCode: "",
                   firstName: "",
+                  middleName: "",
                   lastName: "",
                   email: "",
                   phone: "",
@@ -462,6 +464,13 @@ export default function StaffPage() {
               required
               value={employeeForm.firstName}
               onChange={(e) => setEmployeeForm((f) => ({ ...f, firstName: e.target.value }))}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Middle name (optional)</Label>
+            <Input
+              value={employeeForm.middleName}
+              onChange={(e) => setEmployeeForm((f) => ({ ...f, middleName: e.target.value }))}
             />
           </div>
           <div className="space-y-2">

@@ -730,6 +730,7 @@ model Employee {
   departmentId      String?
   employeeCode      String
   firstName         String
+  middleName        String?
   lastName          String
   email             String
   phone             String?
@@ -859,6 +860,7 @@ model Student {
   userId         String?       @unique
   studentCode    String
   firstName      String
+  middleName     String?
   lastName       String
   dateOfBirth    DateTime
   // Free text, not an enum — plan §1 forbids hard-coding
@@ -911,6 +913,7 @@ model Guardian {
   id             String   @id @default(uuid())
   organizationId String
   firstName      String
+  middleName     String?
   lastName       String
   phone          String
   email          String?

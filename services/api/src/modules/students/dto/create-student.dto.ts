@@ -8,6 +8,10 @@ export class CreateStudentDto {
   @MinLength(1)
   firstName!: string;
 
+  @IsOptional()
+  @IsString()
+  middleName?: string;
+
   @IsString()
   @MinLength(1)
   lastName!: string;

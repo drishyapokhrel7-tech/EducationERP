@@ -19,6 +19,10 @@ export class CreateEmployeeDto {
   @MinLength(1)
   firstName!: string;
 
+  @IsOptional()
+  @IsString()
+  middleName?: string;
+
   @IsString()
   @MinLength(1)
   lastName!: string;
