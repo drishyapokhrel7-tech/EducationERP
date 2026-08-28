@@ -1227,6 +1227,8 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
     listVehicles: () => request<VehicleRecord[]>("/organizations/me/vehicles"),
     updateVehicle: (id: string, input: UpdateVehicleInput) =>
       request<VehicleRecord>(`/organizations/me/vehicles/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    deleteVehicle: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/vehicles/${id}`, { method: "DELETE" }),
     createDriver: (input: CreateDriverInput) =>
       request<DriverRecord>("/organizations/me/drivers", { method: "POST", body: JSON.stringify(input) }),
     listDrivers: () => request<DriverRecord[]>("/organizations/me/drivers"),

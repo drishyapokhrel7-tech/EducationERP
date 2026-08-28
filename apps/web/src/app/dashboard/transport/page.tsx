@@ -43,6 +43,13 @@ export default function TransportPage() {
 
   // ── Vehicles ──────────────────────────────────────────────────────
   const [vehicleForm, setVehicleForm] = useState({ registrationNumber: "", type: "", capacity: "" });
+  const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null);
+  const [editVehicleForm, setEditVehicleForm] = useState({
+    registrationNumber: "",
+    type: "",
+    capacity: "",
+    status: "ACTIVE" as "ACTIVE" | "MAINTENANCE" | "INACTIVE",
+  });
 
   // ── Drivers ───────────────────────────────────────────────────────
   const [driverForm, setDriverForm] = useState({ employeeId: "", licenseNumber: "", licenseExpiry: "" });
@@ -107,11 +114,104 @@ export default function TransportPage() {
                   <span>
                     {v.registrationNumber} <span className="text-muted-foreground">— {v.type} · {v.capacity} seats</span>
                   </span>
-                  <Badge variant={v.status === "ACTIVE" ? "success" : v.status === "MAINTENANCE" ? "warning" : "destructive"}>{v.status}</Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={v.status === "ACTIVE" ? "success" : v.status === "MAINTENANCE" ? "warning" : "destructive"}>{v.status}</Badge>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setEditingVehicleId(v.id);
+                        setEditVehicleForm({
+                          registrationNumber: v.registrationNumber,
+                          type: v.type,
+                          capacity: String(v.capacity),
+                          status: v.status,
+                        });
+                      }}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => submitDelete(() => api.deleteVehicle(v.id), () => vehicles.mutate())}
+                    >
+                      Delete
+                    </Button>
+                  </div>
                 </li>
               ))}
             </ul>
           )}
+          {editingVehicleId ? (
+            <form
+              className="flex flex-wrap items-end gap-3 rounded-md border p-2"
+              onSubmit={(e: FormEvent) => {
+                e.preventDefault();
+                submitAction(
+                  () =>
+                    api.updateVehicle(editingVehicleId, {
+                      registrationNumber: editVehicleForm.registrationNumber,
+                      type: editVehicleForm.type,
+                      capacity: Number(editVehicleForm.capacity),
+                      status: editVehicleForm.status,
+                    }),
+                  () => {
+                    setEditingVehicleId(null);
+                    vehicles.mutate();
+                  },
+                );
+              }}
+            >
+              <div className="space-y-1">
+                <Label className="text-xs">Registration number</Label>
+                <Input
+                  className="w-40"
+                  value={editVehicleForm.registrationNumber}
+                  onChange={(e) => setEditVehicleForm((f) => ({ ...f, registrationNumber: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Type</Label>
+                <Input
+                  className="w-32"
+                  value={editVehicleForm.type}
+                  onChange={(e) => setEditVehicleForm((f) => ({ ...f, type: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Capacity</Label>
+                <Input
+                  type="number"
+                  className="w-24"
+                  value={editVehicleForm.capacity}
+                  onChange={(e) => setEditVehicleForm((f) => ({ ...f, capacity: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Status</Label>
+                <NativeSelect
+                  className="w-36"
+                  placeholder="Select status"
+                  value={editVehicleForm.status}
+                  onChange={(v) => setEditVehicleForm((f) => ({ ...f, status: v as "ACTIVE" | "MAINTENANCE" | "INACTIVE" }))}
+                  options={[
+                    { value: "ACTIVE", label: "Active" },
+                    { value: "MAINTENANCE", label: "Maintenance" },
+                    { value: "INACTIVE", label: "Inactive" },
+                  ]}
+                />
+              </div>
+              <Button type="submit" size="sm">
+                Save
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setEditingVehicleId(null)}>
+                Cancel
+              </Button>
+            </form>
+          ) : null}
           <Separator />
           <form
             className="flex flex-wrap items-end gap-3"

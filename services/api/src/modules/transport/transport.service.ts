@@ -38,6 +38,21 @@ export class TransportService {
     });
   }
 
+  async deleteVehicle(organizationId: string, id: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadVehicle(tx, organizationId, id);
+      await assertNoDependents(
+        [
+          tx.route.count({ where: { vehicleId: id } }),
+          tx.vehicleTrackingEvent.count({ where: { vehicleId: id } }),
+        ],
+        "vehicle",
+      );
+      await tx.vehicle.delete({ where: { id } });
+      return { deleted: true };
+    });
+  }
+
   private async loadVehicle(tx: PrismaClient, organizationId: string, id: string) {
     const vehicle = await tx.vehicle.findUnique({ where: { id } });
     if (!vehicle || vehicle.organizationId !== organizationId) throw new NotFoundException("Vehicle not found");

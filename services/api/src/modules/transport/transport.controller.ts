@@ -37,6 +37,12 @@ export class TransportController {
     return this.transport.updateVehicle(user.organizationId, id, dto);
   }
 
+  @Delete("vehicles/:id")
+  @RequirePermissions("vehicle:delete")
+  deleteVehicle(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.transport.deleteVehicle(user.organizationId, id);
+  }
+
   @Post("drivers")
   @RequirePermissions("route:create")
   createDriver(@CurrentUser() user: JwtPayload, @Body() dto: CreateDriverDto) {
