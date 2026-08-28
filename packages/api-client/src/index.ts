@@ -55,6 +55,28 @@ import type {
   Term,
   UpdateAdmissionStatusInput,
   UpdateStudentStatusInput,
+  UpdateFacultyInput,
+  UpdateDepartmentInput,
+  UpdateProgramInput,
+  UpdateAcademicYearInput,
+  UpdateTermInput,
+  UpdateSectionInput,
+  UpdateStaffTypeInput,
+  UpdateDesignationInput,
+  UpdateSubjectInput,
+  UpdateCurriculumInput,
+  UpdateRoomInput,
+  UpdatePeriodInput,
+  UpdateExamTypeInput,
+  UpdateGradingSchemeInput,
+  UpdateFeeCategoryInput,
+  UpdateScholarshipInput,
+  UpdateLeaveTypeInput,
+  UpdateDriverInput,
+  UpdateHostelLookupInput,
+  UpdateInventoryCategoryInput,
+  UpdateSupplierInput,
+  UpdateMessageTemplateInput,
   UpsertTeacherProfileInput,
   Room,
   CreateRoomInput,
@@ -496,6 +518,10 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         method: "POST",
         body: JSON.stringify(input),
       }),
+    updateFaculty: (id: string, input: UpdateFacultyInput) =>
+      request<Faculty>(`/organizations/me/faculties/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    deleteFaculty: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/faculties/${id}`, { method: "DELETE" }),
 
     listDepartments: () => request<Department[]>("/organizations/me/departments"),
     createDepartment: (input: CreateDepartmentInput) =>
@@ -503,6 +529,10 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         method: "POST",
         body: JSON.stringify(input),
       }),
+    updateDepartment: (id: string, input: UpdateDepartmentInput) =>
+      request<Department>(`/organizations/me/departments/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    deleteDepartment: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/departments/${id}`, { method: "DELETE" }),
 
     listPrograms: () => request<Program[]>("/organizations/me/programs"),
     createProgram: (input: CreateProgramInput) =>
@@ -510,6 +540,10 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         method: "POST",
         body: JSON.stringify(input),
       }),
+    updateProgram: (id: string, input: UpdateProgramInput) =>
+      request<Program>(`/organizations/me/programs/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    deleteProgram: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/programs/${id}`, { method: "DELETE" }),
 
     listAcademicYears: () => request<AcademicYear[]>("/organizations/me/academic-years"),
     createAcademicYear: (input: CreateAcademicYearInput) =>
@@ -517,6 +551,10 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         method: "POST",
         body: JSON.stringify(input),
       }),
+    updateAcademicYear: (id: string, input: UpdateAcademicYearInput) =>
+      request<AcademicYear>(`/organizations/me/academic-years/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    deleteAcademicYear: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/academic-years/${id}`, { method: "DELETE" }),
 
     listTerms: () => request<Term[]>("/organizations/me/terms"),
     createTerm: (input: CreateTermInput) =>
@@ -524,6 +562,9 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         method: "POST",
         body: JSON.stringify(input),
       }),
+    updateTerm: (id: string, input: UpdateTermInput) =>
+      request<Term>(`/organizations/me/terms/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    deleteTerm: (id: string) => request<{ deleted: true }>(`/organizations/me/terms/${id}`, { method: "DELETE" }),
 
     listSections: () => request<Section[]>("/organizations/me/sections"),
     createSection: (input: CreateSectionInput) =>
@@ -531,6 +572,10 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         method: "POST",
         body: JSON.stringify(input),
       }),
+    updateSection: (id: string, input: UpdateSectionInput) =>
+      request<Section>(`/organizations/me/sections/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    deleteSection: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/sections/${id}`, { method: "DELETE" }),
 
     listStaffTypes: () => request<StaffType[]>("/organizations/me/staff-types"),
     createStaffType: (input: CreateStaffTypeInput) =>
@@ -538,6 +583,10 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         method: "POST",
         body: JSON.stringify(input),
       }),
+    updateStaffType: (id: string, input: UpdateStaffTypeInput) =>
+      request<StaffType>(`/organizations/me/staff-types/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    deleteStaffType: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/staff-types/${id}`, { method: "DELETE" }),
 
     listDesignations: () => request<Designation[]>("/organizations/me/designations"),
     createDesignation: (input: CreateDesignationInput) =>
@@ -545,6 +594,10 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         method: "POST",
         body: JSON.stringify(input),
       }),
+    updateDesignation: (id: string, input: UpdateDesignationInput) =>
+      request<Designation>(`/organizations/me/designations/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    deleteDesignation: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/designations/${id}`, { method: "DELETE" }),
 
     listEmployees: (pagination?: PaginationParams) =>
       request<PaginatedResult<Employee>>(`/organizations/me/employees${paginationQuery(pagination)}`),
@@ -590,6 +643,10 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         method: "POST",
         body: JSON.stringify(input),
       }),
+    updateSubject: (id: string, input: UpdateSubjectInput) =>
+      request<Subject>(`/organizations/me/subjects/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    deleteSubject: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/subjects/${id}`, { method: "DELETE" }),
 
     listCurricula: () => request<Curriculum[]>("/organizations/me/curricula"),
     createCurriculum: (input: CreateCurriculumInput) =>
@@ -597,6 +654,10 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         method: "POST",
         body: JSON.stringify(input),
       }),
+    updateCurriculum: (id: string, input: UpdateCurriculumInput) =>
+      request<Curriculum>(`/organizations/me/curricula/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    deleteCurriculum: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/curricula/${id}`, { method: "DELETE" }),
     attachCurriculumSubject: (curriculumId: string, input: AttachCurriculumSubjectInput) =>
       request<CurriculumSubject>(`/organizations/me/curricula/${curriculumId}/subjects`, {
         method: "POST",
@@ -677,10 +738,16 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
     listRooms: () => request<Room[]>("/organizations/me/rooms"),
     createRoom: (input: CreateRoomInput) =>
       request<Room>("/organizations/me/rooms", { method: "POST", body: JSON.stringify(input) }),
+    updateRoom: (id: string, input: UpdateRoomInput) =>
+      request<Room>(`/organizations/me/rooms/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    deleteRoom: (id: string) => request<{ deleted: true }>(`/organizations/me/rooms/${id}`, { method: "DELETE" }),
 
     listPeriods: () => request<Period[]>("/organizations/me/periods"),
     createPeriod: (input: CreatePeriodInput) =>
       request<Period>("/organizations/me/periods", { method: "POST", body: JSON.stringify(input) }),
+    updatePeriod: (id: string, input: UpdatePeriodInput) =>
+      request<Period>(`/organizations/me/periods/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    deletePeriod: (id: string) => request<{ deleted: true }>(`/organizations/me/periods/${id}`, { method: "DELETE" }),
 
     listTeachingAssignments: () =>
       request<TeachingAssignment[]>("/organizations/me/teaching-assignments"),
@@ -819,10 +886,21 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
     listExamTypes: () => request<ExamType[]>("/organizations/me/exam-types"),
     createExamType: (input: CreateExamTypeInput) =>
       request<ExamType>("/organizations/me/exam-types", { method: "POST", body: JSON.stringify(input) }),
+    updateExamType: (id: string, input: UpdateExamTypeInput) =>
+      request<ExamType>(`/organizations/me/exam-types/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    deleteExamType: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/exam-types/${id}`, { method: "DELETE" }),
 
     listGradingSchemes: () => request<GradingScheme[]>("/organizations/me/grading-schemes"),
     createGradingScheme: (input: CreateGradingSchemeInput) =>
       request<GradingScheme>("/organizations/me/grading-schemes", { method: "POST", body: JSON.stringify(input) }),
+    updateGradingScheme: (id: string, input: UpdateGradingSchemeInput) =>
+      request<GradingScheme>(`/organizations/me/grading-schemes/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      }),
+    deleteGradingScheme: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/grading-schemes/${id}`, { method: "DELETE" }),
 
     listQuestionBanks: () => request<QuestionBankSummary[]>("/organizations/me/question-banks"),
     createQuestionBank: (input: CreateQuestionBankInput) =>
@@ -956,6 +1034,13 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
     createFeeCategory: (input: CreateFeeCategoryInput) =>
       request<FeeCategoryRecord>("/organizations/me/fee-categories", { method: "POST", body: JSON.stringify(input) }),
     listFeeCategories: () => request<FeeCategoryRecord[]>("/organizations/me/fee-categories"),
+    updateFeeCategory: (id: string, input: UpdateFeeCategoryInput) =>
+      request<FeeCategoryRecord>(`/organizations/me/fee-categories/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      }),
+    deleteFeeCategory: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/fee-categories/${id}`, { method: "DELETE" }),
     createFeeStructure: (input: CreateFeeStructureInput) =>
       request<FeeStructureRecord>("/organizations/me/fee-structures", { method: "POST", body: JSON.stringify(input) }),
     listFeeStructures: () => request<FeeStructureRecord[]>("/organizations/me/fee-structures"),
@@ -1003,6 +1088,13 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
     createScholarship: (input: CreateScholarshipInput) =>
       request<ScholarshipRecord>("/organizations/me/scholarships", { method: "POST", body: JSON.stringify(input) }),
     listScholarships: () => request<ScholarshipRecord[]>("/organizations/me/scholarships"),
+    updateScholarship: (id: string, input: UpdateScholarshipInput) =>
+      request<ScholarshipRecord>(`/organizations/me/scholarships/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      }),
+    deleteScholarship: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/scholarships/${id}`, { method: "DELETE" }),
     assignScholarship: (studentId: string, input: AssignScholarshipInput) =>
       request<StudentScholarshipRecord>(`/organizations/me/students/${studentId}/scholarships`, {
         method: "POST",
@@ -1038,6 +1130,13 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
     createLeaveType: (input: CreateLeaveTypeInput) =>
       request<LeaveTypeRecord>("/organizations/me/leave-types", { method: "POST", body: JSON.stringify(input) }),
     listLeaveTypes: () => request<LeaveTypeRecord[]>("/organizations/me/leave-types"),
+    updateLeaveType: (id: string, input: UpdateLeaveTypeInput) =>
+      request<LeaveTypeRecord>(`/organizations/me/leave-types/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      }),
+    deleteLeaveType: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/leave-types/${id}`, { method: "DELETE" }),
     allocateLeaveBalance: (input: AllocateLeaveBalanceInput) =>
       request<StaffLeaveBalanceRecord>("/organizations/me/leave-balances", { method: "POST", body: JSON.stringify(input) }),
     listEmployeeLeaveBalances: (employeeId: string) =>
@@ -1110,6 +1209,10 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
     createDriver: (input: CreateDriverInput) =>
       request<DriverRecord>("/organizations/me/drivers", { method: "POST", body: JSON.stringify(input) }),
     listDrivers: () => request<DriverRecord[]>("/organizations/me/drivers"),
+    updateDriver: (id: string, input: UpdateDriverInput) =>
+      request<DriverRecord>(`/organizations/me/drivers/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    deleteDriver: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/drivers/${id}`, { method: "DELETE" }),
     createRoute: (input: CreateRouteInput) =>
       request<RouteRecord>("/organizations/me/routes", { method: "POST", body: JSON.stringify(input) }),
     listRoutes: () => request<RouteRecord[]>("/organizations/me/routes"),
@@ -1400,6 +1503,13 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         method: "POST",
         body: JSON.stringify(input),
       }),
+    updateHostelLookup: (id: string, input: UpdateHostelLookupInput) =>
+      request<HostelLookupRecord>(`/organizations/me/hostel-lookups/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      }),
+    deleteHostelLookup: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/hostel-lookups/${id}`, { method: "DELETE" }),
     listHostelLookups: (kind?: HostelLookupKind) =>
       request<HostelLookupRecord[]>(`/organizations/me/hostel-lookups${kind ? `?kind=${kind}` : ""}`),
 
@@ -1410,9 +1520,20 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         body: JSON.stringify(input),
       }),
     listInventoryCategories: () => request<InventoryCategoryRecord[]>("/organizations/me/inventory-categories"),
+    updateInventoryCategory: (id: string, input: UpdateInventoryCategoryInput) =>
+      request<InventoryCategoryRecord>(`/organizations/me/inventory-categories/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      }),
+    deleteInventoryCategory: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/inventory-categories/${id}`, { method: "DELETE" }),
     createSupplier: (input: CreateSupplierInput) =>
       request<SupplierRecord>("/organizations/me/suppliers", { method: "POST", body: JSON.stringify(input) }),
     listSuppliers: () => request<SupplierRecord[]>("/organizations/me/suppliers"),
+    updateSupplier: (id: string, input: UpdateSupplierInput) =>
+      request<SupplierRecord>(`/organizations/me/suppliers/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    deleteSupplier: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/suppliers/${id}`, { method: "DELETE" }),
     createInventoryItem: (input: CreateInventoryItemInput) =>
       request<InventoryItemRecord>("/organizations/me/inventory-items", { method: "POST", body: JSON.stringify(input) }),
     listInventoryItems: () => request<InventoryItemRecord[]>("/organizations/me/inventory-items"),
@@ -1455,6 +1576,13 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
     createMessageTemplate: (input: CreateMessageTemplateInput) =>
       request<MessageTemplateRecord>("/organizations/me/message-templates", { method: "POST", body: JSON.stringify(input) }),
     listMessageTemplates: () => request<MessageTemplateRecord[]>("/organizations/me/message-templates"),
+    updateMessageTemplate: (id: string, input: UpdateMessageTemplateInput) =>
+      request<MessageTemplateRecord>(`/organizations/me/message-templates/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      }),
+    deleteMessageTemplate: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/message-templates/${id}`, { method: "DELETE" }),
     createMessage: (input: CreateMessageInput) =>
       request<MessageRecord>("/organizations/me/messages", { method: "POST", body: JSON.stringify(input) }),
     listMessages: () => request<MessageRecord[]>("/organizations/me/messages"),

@@ -10,6 +10,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { EntityCard } from "@/components/dashboard/entity-card";
 import { api } from "@/lib/api";
+import { submitAction } from "@/lib/submit-action";
 
 export default function AcademicsPage() {
   const subjects = useSWR("subjects", () => api.listSubjects());
@@ -23,6 +24,11 @@ export default function AcademicsPage() {
     subjectId: "",
     isCompulsory: true,
   });
+
+  const [editingSubjectId, setEditingSubjectId] = useState<string | null>(null);
+  const [editSubjectForm, setEditSubjectForm] = useState({ name: "", code: "" });
+  const [editingCurriculumId, setEditingCurriculumId] = useState<string | null>(null);
+  const [editCurriculumForm, setEditCurriculumForm] = useState({ programId: "", name: "", code: "" });
 
   async function submit(action: () => Promise<unknown>, onSuccess: () => void) {
     try {
@@ -48,11 +54,75 @@ export default function AcademicsPage() {
         title="Subjects"
         emptyLabel="No subjects yet."
         items={subjects.data}
-        renderItem={(s: { name: string; code: string }) => (
-          <span>
-            {s.name} <span className="text-muted-foreground">{s.code}</span>
-          </span>
+        renderItem={(s: { id: string; name: string; code: string }) => (
+          <div className="flex items-center justify-between gap-2">
+            <span>
+              {s.name} <span className="text-muted-foreground">{s.code}</span>
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setEditingSubjectId(s.id);
+                  setEditSubjectForm({ name: s.name, code: s.code });
+                }}
+              >
+                Edit
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                onClick={() => submitAction(() => api.deleteSubject(s.id), () => subjects.mutate())}
+              >
+                Delete
+              </Button>
+            </div>
+          </div>
         )}
+        footer={
+          editingSubjectId ? (
+            <form
+              className="flex flex-wrap items-end gap-3"
+              onSubmit={(e: FormEvent) => {
+                e.preventDefault();
+                submitAction(
+                  () => api.updateSubject(editingSubjectId, editSubjectForm),
+                  () => {
+                    setEditingSubjectId(null);
+                    subjects.mutate();
+                  },
+                );
+              }}
+            >
+              <div className="space-y-2">
+                <Label>Name</Label>
+                <Input
+                  required
+                  value={editSubjectForm.name}
+                  onChange={(e) => setEditSubjectForm((f) => ({ ...f, name: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Code</Label>
+                <Input
+                  required
+                  className="w-24"
+                  value={editSubjectForm.code}
+                  onChange={(e) => setEditSubjectForm((f) => ({ ...f, code: e.target.value }))}
+                />
+              </div>
+              <Button type="submit" size="sm">
+                Save
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setEditingSubjectId(null)}>
+                Cancel
+              </Button>
+            </form>
+          ) : null
+        }
       >
         <form
           className="flex flex-wrap items-end gap-3"
@@ -93,23 +163,99 @@ export default function AcademicsPage() {
         emptyLabel="No curricula yet."
         items={curricula.data}
         renderItem={(c: {
+          id: string;
+          programId: string;
           name: string;
           code: string;
           subjects: { subject: { name: string }; isCompulsory: boolean }[];
         }) => (
-          <div>
-            <span>
-              {c.name} <span className="text-muted-foreground">{c.code}</span>
-            </span>
-            {c.subjects.length > 0 ? (
-              <p className="text-muted-foreground mt-1 text-xs">
-                {c.subjects
-                  .map((cs) => cs.subject.name + (cs.isCompulsory ? "" : " (elective)"))
-                  .join(", ")}
-              </p>
-            ) : null}
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <span>
+                {c.name} <span className="text-muted-foreground">{c.code}</span>
+              </span>
+              {c.subjects.length > 0 ? (
+                <p className="text-muted-foreground mt-1 text-xs">
+                  {c.subjects
+                    .map((cs) => cs.subject.name + (cs.isCompulsory ? "" : " (elective)"))
+                    .join(", ")}
+                </p>
+              ) : null}
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setEditingCurriculumId(c.id);
+                  setEditCurriculumForm({ programId: c.programId, name: c.name, code: c.code });
+                }}
+              >
+                Edit
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                onClick={() => submitAction(() => api.deleteCurriculum(c.id), () => curricula.mutate())}
+              >
+                Delete
+              </Button>
+            </div>
           </div>
         )}
+        footer={
+          editingCurriculumId ? (
+            <form
+              className="flex flex-wrap items-end gap-3"
+              onSubmit={(e: FormEvent) => {
+                e.preventDefault();
+                submitAction(
+                  () => api.updateCurriculum(editingCurriculumId, editCurriculumForm),
+                  () => {
+                    setEditingCurriculumId(null);
+                    curricula.mutate();
+                  },
+                );
+              }}
+            >
+              <div className="space-y-2">
+                <Label>Program</Label>
+                <NativeSelect
+                  className="w-40"
+                  placeholder="Select program"
+                  value={editCurriculumForm.programId}
+                  onChange={(v) => setEditCurriculumForm((f) => ({ ...f, programId: v }))}
+                  options={(programs.data ?? []).map((p) => ({ value: p.id, label: p.name }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Name</Label>
+                <Input
+                  required
+                  value={editCurriculumForm.name}
+                  onChange={(e) => setEditCurriculumForm((f) => ({ ...f, name: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Code</Label>
+                <Input
+                  required
+                  className="w-24"
+                  value={editCurriculumForm.code}
+                  onChange={(e) => setEditCurriculumForm((f) => ({ ...f, code: e.target.value }))}
+                />
+              </div>
+              <Button type="submit" size="sm">
+                Save
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setEditingCurriculumId(null)}>
+                Cancel
+              </Button>
+            </form>
+          ) : null
+        }
       >
         <form
           className="flex flex-wrap items-end gap-3"

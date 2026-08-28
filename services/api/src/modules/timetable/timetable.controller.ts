@@ -1,7 +1,9 @@
-import { Body, Controller, Get, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
 import { TimetableService } from "./timetable.service";
 import { CreateRoomDto } from "./dto/create-room.dto";
+import { UpdateRoomDto } from "./dto/update-room.dto";
 import { CreatePeriodDto } from "./dto/create-period.dto";
+import { UpdatePeriodDto } from "./dto/update-period.dto";
 import { CreateTeachingAssignmentDto } from "./dto/create-teaching-assignment.dto";
 import { CreateClassScheduleDto } from "./dto/create-class-schedule.dto";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
@@ -27,6 +29,18 @@ export class TimetableController {
     return this.timetable.createRoom(user.organizationId, dto);
   }
 
+  @Patch("rooms/:id")
+  @RequirePermissions("room:update")
+  updateRoom(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: UpdateRoomDto) {
+    return this.timetable.updateRoom(user.organizationId, id, dto);
+  }
+
+  @Delete("rooms/:id")
+  @RequirePermissions("room:delete")
+  deleteRoom(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.timetable.deleteRoom(user.organizationId, id);
+  }
+
   @Get("periods")
   @RequirePermissions("period:view")
   listPeriods(@CurrentUser() user: JwtPayload) {
@@ -37,6 +51,18 @@ export class TimetableController {
   @RequirePermissions("period:create")
   createPeriod(@CurrentUser() user: JwtPayload, @Body() dto: CreatePeriodDto) {
     return this.timetable.createPeriod(user.organizationId, dto);
+  }
+
+  @Patch("periods/:id")
+  @RequirePermissions("period:update")
+  updatePeriod(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: UpdatePeriodDto) {
+    return this.timetable.updatePeriod(user.organizationId, id, dto);
+  }
+
+  @Delete("periods/:id")
+  @RequirePermissions("period:delete")
+  deletePeriod(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.timetable.deletePeriod(user.organizationId, id);
   }
 
   @Get("teaching-assignments")

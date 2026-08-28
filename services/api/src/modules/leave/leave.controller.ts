@@ -1,7 +1,8 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { LeaveRequestStatus } from "@prisma/client";
 import { LeaveService } from "./leave.service";
 import { CreateLeaveTypeDto } from "./dto/create-leave-type.dto";
+import { UpdateLeaveTypeDto } from "./dto/update-leave-type.dto";
 import { AllocateLeaveBalanceDto } from "./dto/allocate-leave-balance.dto";
 import { CreateLeaveRequestDto } from "./dto/create-leave-request.dto";
 import { ReviewLeaveRequestDto } from "./dto/review-leave-request.dto";
@@ -26,6 +27,18 @@ export class LeaveController {
   @RequirePermissions("leave_type:view")
   listLeaveTypes(@CurrentUser() user: JwtPayload) {
     return this.leave.listLeaveTypes(user.organizationId);
+  }
+
+  @Patch("leave-types/:id")
+  @RequirePermissions("leave_type:update")
+  updateLeaveType(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: UpdateLeaveTypeDto) {
+    return this.leave.updateLeaveType(user.organizationId, id, dto);
+  }
+
+  @Delete("leave-types/:id")
+  @RequirePermissions("leave_type:delete")
+  deleteLeaveType(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.leave.deleteLeaveType(user.organizationId, id);
   }
 
   @Post("leave-balances")

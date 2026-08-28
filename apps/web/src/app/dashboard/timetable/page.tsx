@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { EntityCard } from "@/components/dashboard/entity-card";
 import { api } from "@/lib/api";
+import { submitAction } from "@/lib/submit-action";
 
 const DAYS = [
   { value: 1, label: "Monday" },
@@ -36,6 +37,15 @@ export default function TimetablePage() {
 
   const [roomForm, setRoomForm] = useState({ campusId: "", name: "", code: "", capacity: "", roomType: "" });
   const [periodForm, setPeriodForm] = useState({ name: "", code: "", sequence: "", startTime: "", endTime: "" });
+
+  // Edit state, one per catalog entity on this page — a separate,
+  // small inline form (rendered via EntityCard's `footer`) rather
+  // than merging into the always-visible create form above, matching
+  // the staff/page.tsx reference implementation.
+  const [editingRoomId, setEditingRoomId] = useState<string | null>(null);
+  const [editRoomForm, setEditRoomForm] = useState({ campusId: "", name: "", code: "", capacity: "", roomType: "" });
+  const [editingPeriodId, setEditingPeriodId] = useState<string | null>(null);
+  const [editPeriodForm, setEditPeriodForm] = useState({ name: "", code: "", sequence: "", startTime: "", endTime: "" });
   const [assignmentForm, setAssignmentForm] = useState({
     employeeId: "",
     subjectId: "",
@@ -78,13 +88,124 @@ export default function TimetablePage() {
         title="Rooms"
         emptyLabel="No rooms yet."
         items={rooms.data}
-        renderItem={(r: { name: string; code: string; capacity: number | null; roomType: string | null }) => (
-          <span>
-            {r.name} <span className="text-muted-foreground">{r.code}</span>
-            {r.roomType ? <span className="text-muted-foreground"> · {r.roomType}</span> : null}
-            {r.capacity ? <span className="text-muted-foreground"> · capacity {r.capacity}</span> : null}
-          </span>
+        renderItem={(r: {
+          id: string;
+          campusId: string;
+          name: string;
+          code: string;
+          capacity: number | null;
+          roomType: string | null;
+        }) => (
+          <div className="flex items-center justify-between gap-2">
+            <span>
+              {r.name} <span className="text-muted-foreground">{r.code}</span>
+              {r.roomType ? <span className="text-muted-foreground"> · {r.roomType}</span> : null}
+              {r.capacity ? <span className="text-muted-foreground"> · capacity {r.capacity}</span> : null}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setEditingRoomId(r.id);
+                  setEditRoomForm({
+                    campusId: r.campusId,
+                    name: r.name,
+                    code: r.code,
+                    capacity: r.capacity != null ? String(r.capacity) : "",
+                    roomType: r.roomType ?? "",
+                  });
+                }}
+              >
+                Edit
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                onClick={() => submitAction(() => api.deleteRoom(r.id), () => rooms.mutate())}
+              >
+                Delete
+              </Button>
+            </div>
+          </div>
         )}
+        footer={
+          editingRoomId ? (
+            <form
+              className="flex flex-wrap items-end gap-3"
+              onSubmit={(e: FormEvent) => {
+                e.preventDefault();
+                submitAction(
+                  () =>
+                    api.updateRoom(editingRoomId, {
+                      campusId: editRoomForm.campusId,
+                      name: editRoomForm.name,
+                      code: editRoomForm.code,
+                      capacity: editRoomForm.capacity ? Number(editRoomForm.capacity) : undefined,
+                      roomType: editRoomForm.roomType || undefined,
+                    }),
+                  () => {
+                    setEditingRoomId(null);
+                    rooms.mutate();
+                  },
+                );
+              }}
+            >
+              <div className="space-y-2">
+                <Label>Campus</Label>
+                <NativeSelect
+                  className="w-40"
+                  placeholder="Select campus"
+                  value={editRoomForm.campusId}
+                  onChange={(v) => setEditRoomForm((f) => ({ ...f, campusId: v }))}
+                  options={(campuses.data ?? []).map((c) => ({ value: c.id, label: c.name }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Name</Label>
+                <Input
+                  required
+                  value={editRoomForm.name}
+                  onChange={(e) => setEditRoomForm((f) => ({ ...f, name: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Code</Label>
+                <Input
+                  required
+                  className="w-24"
+                  value={editRoomForm.code}
+                  onChange={(e) => setEditRoomForm((f) => ({ ...f, code: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Capacity (optional)</Label>
+                <Input
+                  type="number"
+                  className="w-24"
+                  value={editRoomForm.capacity}
+                  onChange={(e) => setEditRoomForm((f) => ({ ...f, capacity: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Type (optional)</Label>
+                <Input
+                  className="w-28"
+                  value={editRoomForm.roomType}
+                  onChange={(e) => setEditRoomForm((f) => ({ ...f, roomType: e.target.value }))}
+                />
+              </div>
+              <Button type="submit" size="sm">
+                Save
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setEditingRoomId(null)}>
+                Cancel
+              </Button>
+            </form>
+          ) : null
+        }
       >
         <form
           className="flex flex-wrap items-end gap-3"
@@ -161,11 +282,117 @@ export default function TimetablePage() {
         title="Periods"
         emptyLabel="No periods yet."
         items={periods.data}
-        renderItem={(p: { name: string; code: string; startTime: string; endTime: string }) => (
-          <span>
-            {p.name} <span className="text-muted-foreground">{p.code} · {p.startTime}–{p.endTime}</span>
-          </span>
+        renderItem={(p: { id: string; name: string; code: string; sequence: number; startTime: string; endTime: string }) => (
+          <div className="flex items-center justify-between gap-2">
+            <span>
+              {p.name} <span className="text-muted-foreground">{p.code} · {p.startTime}–{p.endTime}</span>
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setEditingPeriodId(p.id);
+                  setEditPeriodForm({
+                    name: p.name,
+                    code: p.code,
+                    sequence: String(p.sequence),
+                    startTime: p.startTime,
+                    endTime: p.endTime,
+                  });
+                }}
+              >
+                Edit
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                onClick={() => submitAction(() => api.deletePeriod(p.id), () => periods.mutate())}
+              >
+                Delete
+              </Button>
+            </div>
+          </div>
         )}
+        footer={
+          editingPeriodId ? (
+            <form
+              className="flex flex-wrap items-end gap-3"
+              onSubmit={(e: FormEvent) => {
+                e.preventDefault();
+                submitAction(
+                  () =>
+                    api.updatePeriod(editingPeriodId, {
+                      name: editPeriodForm.name,
+                      code: editPeriodForm.code,
+                      sequence: Number(editPeriodForm.sequence),
+                      startTime: editPeriodForm.startTime,
+                      endTime: editPeriodForm.endTime,
+                    }),
+                  () => {
+                    setEditingPeriodId(null);
+                    periods.mutate();
+                  },
+                );
+              }}
+            >
+              <div className="space-y-2">
+                <Label>Name</Label>
+                <Input
+                  required
+                  className="w-28"
+                  value={editPeriodForm.name}
+                  onChange={(e) => setEditPeriodForm((f) => ({ ...f, name: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Code</Label>
+                <Input
+                  required
+                  className="w-20"
+                  value={editPeriodForm.code}
+                  onChange={(e) => setEditPeriodForm((f) => ({ ...f, code: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Sequence</Label>
+                <Input
+                  required
+                  type="number"
+                  className="w-20"
+                  value={editPeriodForm.sequence}
+                  onChange={(e) => setEditPeriodForm((f) => ({ ...f, sequence: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Start (HH:mm)</Label>
+                <Input
+                  required
+                  className="w-24"
+                  value={editPeriodForm.startTime}
+                  onChange={(e) => setEditPeriodForm((f) => ({ ...f, startTime: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>End (HH:mm)</Label>
+                <Input
+                  required
+                  className="w-24"
+                  value={editPeriodForm.endTime}
+                  onChange={(e) => setEditPeriodForm((f) => ({ ...f, endTime: e.target.value }))}
+                />
+              </div>
+              <Button type="submit" size="sm">
+                Save
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setEditingPeriodId(null)}>
+                Cancel
+              </Button>
+            </form>
+          ) : null
+        }
       >
         <form
           className="flex flex-wrap items-end gap-3"

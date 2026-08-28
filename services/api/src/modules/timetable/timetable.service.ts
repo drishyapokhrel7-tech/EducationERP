@@ -1,9 +1,13 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { PrismaClient } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateRoomDto } from "./dto/create-room.dto";
+import { UpdateRoomDto } from "./dto/update-room.dto";
 import { CreatePeriodDto } from "./dto/create-period.dto";
+import { UpdatePeriodDto } from "./dto/update-period.dto";
 import { CreateTeachingAssignmentDto } from "./dto/create-teaching-assignment.dto";
 import { CreateClassScheduleDto } from "./dto/create-class-schedule.dto";
+import { assertNoDependents } from "../../common/assert-no-dependents";
 
 /**
  * Same FK-vs-RLS parent-guard pattern as every prior slice's service.
@@ -41,6 +45,42 @@ export class TimetableService {
     });
   }
 
+  async updateRoom(organizationId: string, id: string, dto: UpdateRoomDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadRoom(tx, organizationId, id);
+      if (dto.campusId) {
+        const campus = await tx.campus.findUnique({ where: { id: dto.campusId } });
+        if (!campus) throw new NotFoundException("Campus not found");
+      }
+      return tx.room.update({ where: { id }, data: dto });
+    });
+  }
+
+  // Hard-delete, guarded — Room does have a deletedAt column (used
+  // elsewhere for soft-archival), but this endpoint intentionally does
+  // not touch it: a real delete here is only permitted once nothing
+  // still references the room.
+  async deleteRoom(organizationId: string, id: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadRoom(tx, organizationId, id);
+      await assertNoDependents(
+        [
+          tx.examRoom.count({ where: { roomId: id } }),
+          tx.classSchedule.count({ where: { roomId: id } }),
+        ],
+        "room",
+      );
+      await tx.room.delete({ where: { id } });
+      return { deleted: true };
+    });
+  }
+
+  private async loadRoom(tx: PrismaClient, organizationId: string, id: string) {
+    const room = await tx.room.findUnique({ where: { id } });
+    if (!room || room.organizationId !== organizationId || room.deletedAt) throw new NotFoundException("Room not found");
+    return room;
+  }
+
   listPeriods(organizationId: string) {
     return this.prisma.withTenant(organizationId, (tx) =>
       tx.period.findMany({ where: { organizationId }, orderBy: { sequence: "asc" } }),
@@ -62,11 +102,34 @@ export class TimetableService {
     );
   }
 
+  async updatePeriod(organizationId: string, id: string, dto: UpdatePeriodDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadPeriod(tx, organizationId, id);
+      return tx.period.update({ where: { id }, data: dto });
+    });
+  }
+
+  async deletePeriod(organizationId: string, id: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadPeriod(tx, organizationId, id);
+      await assertNoDependents([tx.classSchedule.count({ where: { periodId: id } })], "period");
+      await tx.period.delete({ where: { id } });
+      return { deleted: true };
+    });
+  }
+
+  private async loadPeriod(tx: PrismaClient, organizationId: string, id: string) {
+    const period = await tx.period.findUnique({ where: { id } });
+    if (!period || period.organizationId !== organizationId) throw new NotFoundException("Period not found");
+    return period;
+  }
+
   listTeachingAssignments(organizationId: string) {
     return this.prisma.withTenant(organizationId, (tx) =>
       tx.teachingAssignment.findMany({
         where: { organizationId },
         include: { employee: true, subject: true, section: true, term: true },
+        orderBy: [{ employee: { firstName: "asc" } }, { employee: { lastName: "asc" } }],
       }),
     );
   }

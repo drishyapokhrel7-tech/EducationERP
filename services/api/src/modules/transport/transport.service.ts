@@ -4,10 +4,12 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { CreateVehicleDto } from "./dto/create-vehicle.dto";
 import { UpdateVehicleDto } from "./dto/update-vehicle.dto";
 import { CreateDriverDto } from "./dto/create-driver.dto";
+import { UpdateDriverDto } from "./dto/update-driver.dto";
 import { CreateRouteDto } from "./dto/create-route.dto";
 import { UpdateRouteDto } from "./dto/update-route.dto";
 import { AddStopDto } from "./dto/add-stop.dto";
 import { AssignStudentTransportDto } from "./dto/assign-student-transport.dto";
+import { assertNoDependents } from "../../common/assert-no-dependents";
 
 @Injectable()
 export class TransportService {
@@ -87,8 +89,53 @@ export class TransportService {
 
   listDrivers(organizationId: string) {
     return this.prisma.withTenant(organizationId, (tx) =>
-      tx.driver.findMany({ where: { organizationId }, include: { employee: true }, orderBy: { createdAt: "desc" } }),
+      tx.driver.findMany({
+        where: { organizationId },
+        include: { employee: true },
+        orderBy: [{ employee: { firstName: "asc" } }, { employee: { lastName: "asc" } }],
+      }),
     );
+  }
+
+  async updateDriver(organizationId: string, id: string, dto: UpdateDriverDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadDriver(tx, organizationId, id);
+      if (dto.employeeId) {
+        const employee = await tx.employee.findUnique({ where: { id: dto.employeeId } });
+        if (!employee || employee.organizationId !== organizationId) throw new NotFoundException("Employee not found");
+        const existing = await tx.driver.findUnique({ where: { employeeId: dto.employeeId } });
+        if (existing && existing.id !== id) throw new ConflictException("This employee already has a driver profile");
+      }
+      return tx.driver.update({
+        where: { id },
+        data: {
+          employeeId: dto.employeeId,
+          licenseNumber: dto.licenseNumber,
+          licenseExpiry: dto.licenseExpiry ? new Date(dto.licenseExpiry) : undefined,
+        },
+        include: { employee: true },
+      });
+    });
+  }
+
+  // Note: Route.driverId stores the driver's Employee.id, not the
+  // Driver row's own id (see assertIsDriver — a route's "driver" is
+  // resolved by employeeId, not by Driver.id). So the dependency count
+  // here is keyed off the loaded driver's employeeId, not the :id path
+  // param itself.
+  async deleteDriver(organizationId: string, id: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const driver = await this.loadDriver(tx, organizationId, id);
+      await assertNoDependents([tx.route.count({ where: { driverId: driver.employeeId } })], "driver");
+      await tx.driver.delete({ where: { id } });
+      return { deleted: true };
+    });
+  }
+
+  private async loadDriver(tx: PrismaClient, organizationId: string, id: string) {
+    const driver = await tx.driver.findUnique({ where: { id } });
+    if (!driver || driver.organizationId !== organizationId) throw new NotFoundException("Driver not found");
+    return driver;
   }
 
   // ── Routes ────────────────────────────────────────────────────────

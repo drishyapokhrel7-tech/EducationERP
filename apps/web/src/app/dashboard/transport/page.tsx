@@ -58,6 +58,8 @@ export default function TransportPage() {
 
   // ── Drivers ───────────────────────────────────────────────────────
   const [driverForm, setDriverForm] = useState({ employeeId: "", licenseNumber: "", licenseExpiry: "" });
+  const [editingDriverId, setEditingDriverId] = useState<string | null>(null);
+  const [editDriverForm, setEditDriverForm] = useState({ employeeId: "", licenseNumber: "", licenseExpiry: "" });
   // Keyed by employeeId, same per-row pattern as the students page's
   // create-login form.
   const [driverLoginPasswordForms, setDriverLoginPasswordForms] = useState<Record<string, string>>({});
@@ -174,11 +176,38 @@ export default function TransportPage() {
             <ul className="divide-y text-sm">
               {drivers.data.map((d) => (
                 <li key={d.id} className="py-2">
-                  <div>
-                    {d.employee.firstName} {d.employee.lastName}{" "}
-                    <span className="text-muted-foreground">
-                      — license {d.licenseNumber}, expires {new Date(d.licenseExpiry).toLocaleDateString()}
-                    </span>
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      {d.employee.firstName} {d.employee.lastName}{" "}
+                      <span className="text-muted-foreground">
+                        — license {d.licenseNumber}, expires {new Date(d.licenseExpiry).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setEditingDriverId(d.id);
+                          setEditDriverForm({
+                            employeeId: d.employeeId,
+                            licenseNumber: d.licenseNumber,
+                            licenseExpiry: d.licenseExpiry.slice(0, 10),
+                          });
+                        }}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => submitAction(() => api.deleteDriver(d.id), () => drivers.mutate())}
+                      >
+                        Delete
+                      </Button>
+                    </div>
                   </div>
                   {d.employee.userId ? (
                     <p className="text-muted-foreground mt-1 text-xs">
@@ -216,6 +245,62 @@ export default function TransportPage() {
               ))}
             </ul>
           )}
+          {editingDriverId ? (
+            <form
+              className="flex flex-wrap items-end gap-3 rounded-md border p-2"
+              onSubmit={(e: FormEvent) => {
+                e.preventDefault();
+                submitAction(
+                  () => api.updateDriver(editingDriverId, editDriverForm),
+                  () => {
+                    setEditingDriverId(null);
+                    drivers.mutate();
+                  },
+                );
+              }}
+            >
+              <div className="space-y-1">
+                <Label className="text-xs">Employee</Label>
+                <NativeSelect
+                  className="w-48"
+                  placeholder="Select employee"
+                  value={editDriverForm.employeeId}
+                  onChange={(v) => setEditDriverForm((f) => ({ ...f, employeeId: v }))}
+                  options={(employees.data ?? []).map((e) => ({
+                    value: e.id,
+                    label: `${e.firstName} ${e.lastName} (${e.employeeCode})`,
+                  }))}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">License number</Label>
+                <Input
+                  className="w-36"
+                  value={editDriverForm.licenseNumber}
+                  onChange={(e) => setEditDriverForm((f) => ({ ...f, licenseNumber: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">License expiry</Label>
+                <Input
+                  type="date"
+                  className="w-36"
+                  value={editDriverForm.licenseExpiry}
+                  onChange={(e) => setEditDriverForm((f) => ({ ...f, licenseExpiry: e.target.value }))}
+                />
+              </div>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={!editDriverForm.employeeId || !editDriverForm.licenseNumber || !editDriverForm.licenseExpiry}
+              >
+                Save
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setEditingDriverId(null)}>
+                Cancel
+              </Button>
+            </form>
+          ) : null}
           <Separator />
           <form
             className="flex flex-wrap items-end gap-3"

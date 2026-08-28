@@ -1,8 +1,11 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { PrismaClient } from "@prisma/client";
 import * as argon2 from "argon2";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateStaffTypeDto } from "./dto/create-staff-type.dto";
+import { UpdateStaffTypeDto } from "./dto/update-staff-type.dto";
 import { CreateDesignationDto } from "./dto/create-designation.dto";
+import { UpdateDesignationDto } from "./dto/update-designation.dto";
 import { CreateEmployeeDto } from "./dto/create-employee.dto";
 import { CreateEmploymentHistoryDto } from "./dto/create-employment-history.dto";
 import { CreateQualificationDto } from "./dto/create-qualification.dto";
@@ -10,6 +13,7 @@ import { UpsertTeacherProfileDto } from "./dto/upsert-teacher-profile.dto";
 import { CreateEmployeeLoginDto } from "./dto/create-employee-login.dto";
 import { assertUnderEditionLimit } from "../organizations/edition-limits";
 import { paginate } from "../../common/pagination";
+import { assertNoDependents } from "../../common/assert-no-dependents";
 
 /**
  * Same load-bearing pattern as org-structure.service.ts: every create*
@@ -35,6 +39,28 @@ export class StaffService {
     );
   }
 
+  async updateStaffType(organizationId: string, id: string, dto: UpdateStaffTypeDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadStaffType(tx, organizationId, id);
+      return tx.staffType.update({ where: { id }, data: dto });
+    });
+  }
+
+  async deleteStaffType(organizationId: string, id: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadStaffType(tx, organizationId, id);
+      await assertNoDependents([tx.employee.count({ where: { staffTypeId: id } })], "staff type");
+      await tx.staffType.delete({ where: { id } });
+      return { deleted: true };
+    });
+  }
+
+  private async loadStaffType(tx: PrismaClient, organizationId: string, id: string) {
+    const staffType = await tx.staffType.findUnique({ where: { id } });
+    if (!staffType || staffType.organizationId !== organizationId) throw new NotFoundException("Staff type not found");
+    return staffType;
+  }
+
   listDesignations(organizationId: string) {
     return this.prisma.withTenant(organizationId, (tx) =>
       tx.designation.findMany({ where: { organizationId } }),
@@ -45,6 +71,34 @@ export class StaffService {
     return this.prisma.withTenant(organizationId, (tx) =>
       tx.designation.create({ data: { organizationId, name: dto.name, code: dto.code } }),
     );
+  }
+
+  async updateDesignation(organizationId: string, id: string, dto: UpdateDesignationDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadDesignation(tx, organizationId, id);
+      return tx.designation.update({ where: { id }, data: dto });
+    });
+  }
+
+  async deleteDesignation(organizationId: string, id: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadDesignation(tx, organizationId, id);
+      await assertNoDependents(
+        [
+          tx.employee.count({ where: { designationId: id } }),
+          tx.employmentHistory.count({ where: { designationId: id } }),
+        ],
+        "designation",
+      );
+      await tx.designation.delete({ where: { id } });
+      return { deleted: true };
+    });
+  }
+
+  private async loadDesignation(tx: PrismaClient, organizationId: string, id: string) {
+    const designation = await tx.designation.findUnique({ where: { id } });
+    if (!designation || designation.organizationId !== organizationId) throw new NotFoundException("Designation not found");
+    return designation;
   }
 
   // Deliberately unbounded, deliberately narrow — same reasoning as

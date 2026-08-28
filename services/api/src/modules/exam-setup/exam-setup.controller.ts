@@ -1,7 +1,9 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
 import { ExamSetupService } from "./exam-setup.service";
 import { CreateExamTypeDto } from "./dto/create-exam-type.dto";
+import { UpdateExamTypeDto } from "./dto/update-exam-type.dto";
 import { CreateGradingSchemeDto } from "./dto/create-grading-scheme.dto";
+import { UpdateGradingSchemeDto } from "./dto/update-grading-scheme.dto";
 import { CreateQuestionBankDto } from "./dto/create-question-bank.dto";
 import { CreateQuestionDto } from "./dto/create-question.dto";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
@@ -27,6 +29,18 @@ export class ExamSetupController {
     return this.examSetup.createExamType(user.organizationId, dto);
   }
 
+  @Patch("exam-types/:id")
+  @RequirePermissions("exam_type:update")
+  updateExamType(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: UpdateExamTypeDto) {
+    return this.examSetup.updateExamType(user.organizationId, id, dto);
+  }
+
+  @Delete("exam-types/:id")
+  @RequirePermissions("exam_type:delete")
+  deleteExamType(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.examSetup.deleteExamType(user.organizationId, id);
+  }
+
   @Get("grading-schemes")
   @RequirePermissions("grading_scheme:view")
   listGradingSchemes(@CurrentUser() user: JwtPayload) {
@@ -37,6 +51,18 @@ export class ExamSetupController {
   @RequirePermissions("grading_scheme:create")
   createGradingScheme(@CurrentUser() user: JwtPayload, @Body() dto: CreateGradingSchemeDto) {
     return this.examSetup.createGradingScheme(user.organizationId, dto);
+  }
+
+  @Patch("grading-schemes/:id")
+  @RequirePermissions("grading_scheme:update")
+  updateGradingScheme(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: UpdateGradingSchemeDto) {
+    return this.examSetup.updateGradingScheme(user.organizationId, id, dto);
+  }
+
+  @Delete("grading-schemes/:id")
+  @RequirePermissions("grading_scheme:delete")
+  deleteGradingScheme(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.examSetup.deleteGradingScheme(user.organizationId, id);
   }
 
   @Get("question-banks")

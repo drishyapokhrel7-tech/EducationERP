@@ -2,9 +2,11 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { LeaveRequestStatus, PrismaClient } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateLeaveTypeDto } from "./dto/create-leave-type.dto";
+import { UpdateLeaveTypeDto } from "./dto/update-leave-type.dto";
 import { AllocateLeaveBalanceDto } from "./dto/allocate-leave-balance.dto";
 import { CreateLeaveRequestDto } from "./dto/create-leave-request.dto";
 import { ReviewLeaveRequestDto } from "./dto/review-leave-request.dto";
+import { assertNoDependents } from "../../common/assert-no-dependents";
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -37,6 +39,34 @@ export class LeaveService {
     return this.prisma.withTenant(organizationId, (tx) =>
       tx.leaveType.findMany({ where: { organizationId }, orderBy: { name: "asc" } }),
     );
+  }
+
+  async updateLeaveType(organizationId: string, id: string, dto: UpdateLeaveTypeDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadLeaveType(tx, organizationId, id);
+      return tx.leaveType.update({ where: { id }, data: dto });
+    });
+  }
+
+  async deleteLeaveType(organizationId: string, id: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadLeaveType(tx, organizationId, id);
+      await assertNoDependents(
+        [
+          tx.staffLeaveBalance.count({ where: { leaveTypeId: id } }),
+          tx.leaveRequest.count({ where: { leaveTypeId: id } }),
+        ],
+        "leave type",
+      );
+      await tx.leaveType.delete({ where: { id } });
+      return { deleted: true };
+    });
+  }
+
+  private async loadLeaveType(tx: PrismaClient, organizationId: string, id: string) {
+    const leaveType = await tx.leaveType.findUnique({ where: { id } });
+    if (!leaveType || leaveType.organizationId !== organizationId) throw new NotFoundException("Leave type not found");
+    return leaveType;
   }
 
   // ── Balances ──────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
 import { CommunicationService } from "./communication.service";
 import { CreateMessageTemplateDto } from "./dto/create-message-template.dto";
+import { UpdateMessageTemplateDto } from "./dto/update-message-template.dto";
 import { CreateMessageDto } from "./dto/create-message.dto";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
@@ -23,6 +24,22 @@ export class CommunicationController {
   @RequirePermissions("communication:view")
   listTemplates(@CurrentUser() user: JwtPayload) {
     return this.communication.listTemplates(user.organizationId);
+  }
+
+  // Folded under the single coarse communication:manage permission,
+  // not a split :update/:delete pair — this file never introduced that
+  // split for any of its own mutating routes (createTemplate/
+  // createMessage sit under :create, sendMessage under :manage).
+  @Patch("message-templates/:id")
+  @RequirePermissions("communication:manage")
+  updateTemplate(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: UpdateMessageTemplateDto) {
+    return this.communication.updateTemplate(user.organizationId, id, dto);
+  }
+
+  @Delete("message-templates/:id")
+  @RequirePermissions("communication:manage")
+  deleteTemplate(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.communication.deleteTemplate(user.organizationId, id);
   }
 
   @Post("messages")

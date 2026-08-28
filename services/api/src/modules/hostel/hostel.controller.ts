@@ -14,6 +14,7 @@ import { UpdateComplaintDto } from "./dto/update-complaint.dto";
 import { CreateMaintenanceRequestDto } from "./dto/create-maintenance-request.dto";
 import { UpdateMaintenanceRequestDto } from "./dto/update-maintenance-request.dto";
 import { CreateLookupDto } from "./dto/create-lookup.dto";
+import { UpdateLookupDto } from "./dto/update-lookup.dto";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
@@ -161,5 +162,17 @@ export class HostelController {
   @RequirePermissions("hostel:view")
   listLookups(@CurrentUser() user: JwtPayload, @Query("kind") kind?: HostelLookupKind) {
     return this.hostel.listLookups(user.organizationId, kind);
+  }
+
+  @Patch("hostel-lookups/:id")
+  @RequirePermissions("hostel:manage")
+  updateLookup(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: UpdateLookupDto) {
+    return this.hostel.updateLookup(user.organizationId, id, dto);
+  }
+
+  @Delete("hostel-lookups/:id")
+  @RequirePermissions("hostel:manage")
+  deleteLookup(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.hostel.deleteLookup(user.organizationId, id);
   }
 }

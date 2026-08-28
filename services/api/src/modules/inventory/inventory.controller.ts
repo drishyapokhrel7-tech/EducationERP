@@ -1,7 +1,9 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { InventoryService } from "./inventory.service";
 import { CreateCategoryDto } from "./dto/create-category.dto";
+import { UpdateCategoryDto } from "./dto/update-category.dto";
 import { CreateSupplierDto } from "./dto/create-supplier.dto";
+import { UpdateSupplierDto } from "./dto/update-supplier.dto";
 import { CreateItemDto } from "./dto/create-item.dto";
 import { CreatePurchaseOrderDto } from "./dto/create-purchase-order.dto";
 import { AddPurchaseOrderItemDto } from "./dto/add-purchase-order-item.dto";
@@ -33,6 +35,21 @@ export class InventoryController {
     return this.inventory.listCategories(user.organizationId);
   }
 
+  // inventory:manage for both, matching the coarse permission this
+  // file already uses for every other mutating route beyond plain
+  // create/view (see updateAsset below).
+  @Patch("inventory-categories/:id")
+  @RequirePermissions("inventory:manage")
+  updateCategory(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: UpdateCategoryDto) {
+    return this.inventory.updateCategory(user.organizationId, id, dto);
+  }
+
+  @Delete("inventory-categories/:id")
+  @RequirePermissions("inventory:manage")
+  deleteCategory(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.inventory.deleteCategory(user.organizationId, id);
+  }
+
   @Post("suppliers")
   @RequirePermissions("inventory:create")
   createSupplier(@CurrentUser() user: JwtPayload, @Body() dto: CreateSupplierDto) {
@@ -43,6 +60,18 @@ export class InventoryController {
   @RequirePermissions("inventory:view")
   listSuppliers(@CurrentUser() user: JwtPayload) {
     return this.inventory.listSuppliers(user.organizationId);
+  }
+
+  @Patch("suppliers/:id")
+  @RequirePermissions("inventory:manage")
+  updateSupplier(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: UpdateSupplierDto) {
+    return this.inventory.updateSupplier(user.organizationId, id, dto);
+  }
+
+  @Delete("suppliers/:id")
+  @RequirePermissions("inventory:manage")
+  deleteSupplier(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.inventory.deleteSupplier(user.organizationId, id);
   }
 
   @Post("inventory-items")

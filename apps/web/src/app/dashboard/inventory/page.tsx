@@ -47,9 +47,19 @@ export default function InventoryPage() {
 
   // ── Categories ────────────────────────────────────────────────────
   const [categoryForm, setCategoryForm] = useState({ name: "", code: "" });
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const [editCategoryForm, setEditCategoryForm] = useState({ name: "", code: "" });
 
   // ── Suppliers ─────────────────────────────────────────────────────
   const [supplierForm, setSupplierForm] = useState({ name: "", contactName: "", phone: "", email: "", address: "" });
+  const [editingSupplierId, setEditingSupplierId] = useState<string | null>(null);
+  const [editSupplierForm, setEditSupplierForm] = useState({
+    name: "",
+    contactName: "",
+    phone: "",
+    email: "",
+    address: "",
+  });
 
   // ── Items ─────────────────────────────────────────────────────────
   const [itemForm, setItemForm] = useState({ categoryId: "", name: "", sku: "", unit: "", barcode: "", reorderLevel: "" });
@@ -89,12 +99,73 @@ export default function InventoryPage() {
           ) : (
             <ul className="divide-y text-sm">
               {categories.data.map((c) => (
-                <li key={c.id} className="py-2">
-                  <span className="font-medium">{c.name}</span> <span className="text-muted-foreground">({c.code})</span>
+                <li key={c.id} className="flex items-center justify-between gap-2 py-2">
+                  <span>
+                    <span className="font-medium">{c.name}</span> <span className="text-muted-foreground">({c.code})</span>
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setEditingCategoryId(c.id);
+                        setEditCategoryForm({ name: c.name, code: c.code });
+                      }}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => submitAction(() => api.deleteInventoryCategory(c.id), () => categories.mutate())}
+                    >
+                      Delete
+                    </Button>
+                  </div>
                 </li>
               ))}
             </ul>
           )}
+          {editingCategoryId ? (
+            <form
+              className="flex flex-wrap items-end gap-3 rounded-md border p-2"
+              onSubmit={(e: FormEvent) => {
+                e.preventDefault();
+                submitAction(
+                  () => api.updateInventoryCategory(editingCategoryId, editCategoryForm),
+                  () => {
+                    setEditingCategoryId(null);
+                    categories.mutate();
+                  },
+                );
+              }}
+            >
+              <div className="space-y-1">
+                <Label className="text-xs">Name</Label>
+                <Input
+                  className="w-40"
+                  value={editCategoryForm.name}
+                  onChange={(e) => setEditCategoryForm((f) => ({ ...f, name: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Code</Label>
+                <Input
+                  className="w-28"
+                  value={editCategoryForm.code}
+                  onChange={(e) => setEditCategoryForm((f) => ({ ...f, code: e.target.value }))}
+                />
+              </div>
+              <Button type="submit" size="sm" disabled={!editCategoryForm.name || !editCategoryForm.code}>
+                Save
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setEditingCategoryId(null)}>
+                Cancel
+              </Button>
+            </form>
+          ) : null}
           <Separator />
           <form
             className="flex flex-wrap items-end gap-3"
@@ -139,14 +210,112 @@ export default function InventoryPage() {
           ) : (
             <ul className="divide-y text-sm">
               {suppliers.data.map((s) => (
-                <li key={s.id} className="py-2">
-                  <span className="font-medium">{s.name}</span>
-                  {s.contactName ? <span className="text-muted-foreground"> — {s.contactName}</span> : null}
-                  {s.phone ? <span className="text-muted-foreground"> · {s.phone}</span> : null}
+                <li key={s.id} className="flex items-center justify-between gap-2 py-2">
+                  <span>
+                    <span className="font-medium">{s.name}</span>
+                    {s.contactName ? <span className="text-muted-foreground"> — {s.contactName}</span> : null}
+                    {s.phone ? <span className="text-muted-foreground"> · {s.phone}</span> : null}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setEditingSupplierId(s.id);
+                        setEditSupplierForm({
+                          name: s.name,
+                          contactName: s.contactName ?? "",
+                          phone: s.phone ?? "",
+                          email: s.email ?? "",
+                          address: s.address ?? "",
+                        });
+                      }}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => submitAction(() => api.deleteSupplier(s.id), () => suppliers.mutate())}
+                    >
+                      Delete
+                    </Button>
+                  </div>
                 </li>
               ))}
             </ul>
           )}
+          {editingSupplierId ? (
+            <form
+              className="flex flex-wrap items-end gap-3 rounded-md border p-2"
+              onSubmit={(e: FormEvent) => {
+                e.preventDefault();
+                submitAction(
+                  () =>
+                    api.updateSupplier(editingSupplierId, {
+                      name: editSupplierForm.name,
+                      contactName: editSupplierForm.contactName || undefined,
+                      phone: editSupplierForm.phone || undefined,
+                      email: editSupplierForm.email || undefined,
+                      address: editSupplierForm.address || undefined,
+                    }),
+                  () => {
+                    setEditingSupplierId(null);
+                    suppliers.mutate();
+                  },
+                );
+              }}
+            >
+              <div className="space-y-1">
+                <Label className="text-xs">Name</Label>
+                <Input
+                  className="w-40"
+                  value={editSupplierForm.name}
+                  onChange={(e) => setEditSupplierForm((f) => ({ ...f, name: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Contact (optional)</Label>
+                <Input
+                  className="w-32"
+                  value={editSupplierForm.contactName}
+                  onChange={(e) => setEditSupplierForm((f) => ({ ...f, contactName: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Phone (optional)</Label>
+                <Input
+                  className="w-28"
+                  value={editSupplierForm.phone}
+                  onChange={(e) => setEditSupplierForm((f) => ({ ...f, phone: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Email (optional)</Label>
+                <Input
+                  className="w-40"
+                  value={editSupplierForm.email}
+                  onChange={(e) => setEditSupplierForm((f) => ({ ...f, email: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Address (optional)</Label>
+                <Input
+                  className="w-48"
+                  value={editSupplierForm.address}
+                  onChange={(e) => setEditSupplierForm((f) => ({ ...f, address: e.target.value }))}
+                />
+              </div>
+              <Button type="submit" size="sm" disabled={!editSupplierForm.name}>
+                Save
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setEditingSupplierId(null)}>
+                Cancel
+              </Button>
+            </form>
+          ) : null}
           <Separator />
           <form
             className="flex flex-wrap items-end gap-3"

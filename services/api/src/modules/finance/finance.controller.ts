@@ -1,6 +1,7 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { FinanceService } from "./finance.service";
 import { CreateFeeCategoryDto } from "./dto/create-fee-category.dto";
+import { UpdateFeeCategoryDto } from "./dto/update-fee-category.dto";
 import { CreateFeeStructureDto } from "./dto/create-fee-structure.dto";
 import { AssignFeeStructureDto, AssignFeeStructureBulkDto } from "./dto/assign-fee-structure.dto";
 import { RecordPaymentDto } from "./dto/record-payment.dto";
@@ -9,6 +10,7 @@ import { ConfirmEsewaPaymentDto } from "./dto/confirm-esewa-payment.dto";
 import { ApplyDiscountDto } from "./dto/apply-discount.dto";
 import { IssueRefundDto } from "./dto/issue-refund.dto";
 import { CreateScholarshipDto } from "./dto/create-scholarship.dto";
+import { UpdateScholarshipDto } from "./dto/update-scholarship.dto";
 import { AssignScholarshipDto } from "./dto/assign-scholarship.dto";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
@@ -32,6 +34,18 @@ export class FinanceController {
   @RequirePermissions("fee_category:view")
   listFeeCategories(@CurrentUser() user: JwtPayload) {
     return this.finance.listFeeCategories(user.organizationId);
+  }
+
+  @Patch("fee-categories/:id")
+  @RequirePermissions("fee_category:update")
+  updateFeeCategory(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: UpdateFeeCategoryDto) {
+    return this.finance.updateFeeCategory(user.organizationId, id, dto);
+  }
+
+  @Delete("fee-categories/:id")
+  @RequirePermissions("fee_category:delete")
+  deleteFeeCategory(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.finance.deleteFeeCategory(user.organizationId, id);
   }
 
   @Post("fee-structures")
@@ -131,6 +145,18 @@ export class FinanceController {
   @RequirePermissions("scholarship:view")
   listScholarships(@CurrentUser() user: JwtPayload) {
     return this.finance.listScholarships(user.organizationId);
+  }
+
+  @Patch("scholarships/:id")
+  @RequirePermissions("scholarship:update")
+  updateScholarship(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: UpdateScholarshipDto) {
+    return this.finance.updateScholarship(user.organizationId, id, dto);
+  }
+
+  @Delete("scholarships/:id")
+  @RequirePermissions("scholarship:delete")
+  deleteScholarship(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.finance.deleteScholarship(user.organizationId, id);
   }
 
   @Post("students/:id/scholarships")

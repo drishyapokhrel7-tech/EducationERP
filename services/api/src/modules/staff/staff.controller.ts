@@ -1,7 +1,9 @@
-import { Body, Controller, Get, Param, Post, Put, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards } from "@nestjs/common";
 import { StaffService } from "./staff.service";
 import { CreateStaffTypeDto } from "./dto/create-staff-type.dto";
+import { UpdateStaffTypeDto } from "./dto/update-staff-type.dto";
 import { CreateDesignationDto } from "./dto/create-designation.dto";
+import { UpdateDesignationDto } from "./dto/update-designation.dto";
 import { CreateEmployeeDto } from "./dto/create-employee.dto";
 import { CreateEmploymentHistoryDto } from "./dto/create-employment-history.dto";
 import { CreateQualificationDto } from "./dto/create-qualification.dto";
@@ -31,6 +33,18 @@ export class StaffController {
     return this.staff.createStaffType(user.organizationId, dto);
   }
 
+  @Patch("staff-types/:id")
+  @RequirePermissions("staff_type:update")
+  updateStaffType(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: UpdateStaffTypeDto) {
+    return this.staff.updateStaffType(user.organizationId, id, dto);
+  }
+
+  @Delete("staff-types/:id")
+  @RequirePermissions("staff_type:delete")
+  deleteStaffType(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.staff.deleteStaffType(user.organizationId, id);
+  }
+
   @Get("designations")
   @RequirePermissions("designation:view")
   listDesignations(@CurrentUser() user: JwtPayload) {
@@ -41,6 +55,18 @@ export class StaffController {
   @RequirePermissions("designation:create")
   createDesignation(@CurrentUser() user: JwtPayload, @Body() dto: CreateDesignationDto) {
     return this.staff.createDesignation(user.organizationId, dto);
+  }
+
+  @Patch("designations/:id")
+  @RequirePermissions("designation:update")
+  updateDesignation(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: UpdateDesignationDto) {
+    return this.staff.updateDesignation(user.organizationId, id, dto);
+  }
+
+  @Delete("designations/:id")
+  @RequirePermissions("designation:delete")
+  deleteDesignation(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.staff.deleteDesignation(user.organizationId, id);
   }
 
   @Get("employees")

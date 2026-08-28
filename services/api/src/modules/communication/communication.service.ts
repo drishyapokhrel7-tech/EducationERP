@@ -4,7 +4,9 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { DeliveryProvider } from "./delivery-provider";
 import { CreateMessageTemplateDto } from "./dto/create-message-template.dto";
+import { UpdateMessageTemplateDto } from "./dto/update-message-template.dto";
 import { CreateMessageDto } from "./dto/create-message.dto";
+import { assertNoDependents } from "../../common/assert-no-dependents";
 
 // `select`, not `include: true`, on both user relations — a plain
 // `include` would pull back passwordHash along with everything else,
@@ -57,6 +59,28 @@ export class CommunicationService {
     return this.prisma.withTenant(organizationId, (tx) =>
       tx.messageTemplate.findMany({ where: { organizationId }, orderBy: { name: "asc" } }),
     );
+  }
+
+  async updateTemplate(organizationId: string, id: string, dto: UpdateMessageTemplateDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadTemplate(tx, organizationId, id);
+      return tx.messageTemplate.update({ where: { id }, data: dto });
+    });
+  }
+
+  async deleteTemplate(organizationId: string, id: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadTemplate(tx, organizationId, id);
+      await assertNoDependents([tx.message.count({ where: { templateId: id } })], "message template");
+      await tx.messageTemplate.delete({ where: { id } });
+      return { deleted: true };
+    });
+  }
+
+  private async loadTemplate(tx: PrismaClient, organizationId: string, id: string) {
+    const template = await tx.messageTemplate.findUnique({ where: { id } });
+    if (!template || template.organizationId !== organizationId) throw new NotFoundException("Template not found");
+    return template;
   }
 
   // ── Messages ──────────────────────────────────────────────────────

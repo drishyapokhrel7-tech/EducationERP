@@ -3,6 +3,7 @@ import { TransportService } from "./transport.service";
 import { CreateVehicleDto } from "./dto/create-vehicle.dto";
 import { UpdateVehicleDto } from "./dto/update-vehicle.dto";
 import { CreateDriverDto } from "./dto/create-driver.dto";
+import { UpdateDriverDto } from "./dto/update-driver.dto";
 import { CreateRouteDto } from "./dto/create-route.dto";
 import { UpdateRouteDto } from "./dto/update-route.dto";
 import { AddStopDto } from "./dto/add-stop.dto";
@@ -46,6 +47,21 @@ export class TransportController {
   @RequirePermissions("route:view")
   listDrivers(@CurrentUser() user: JwtPayload) {
     return this.transport.listDrivers(user.organizationId);
+  }
+
+  // Gated under the route resource, not its own driver:* pair — mirrors
+  // Driver's existing create/view routes above, which already gate
+  // under route:create/route:view rather than a dedicated resource.
+  @Patch("drivers/:id")
+  @RequirePermissions("route:update")
+  updateDriver(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: UpdateDriverDto) {
+    return this.transport.updateDriver(user.organizationId, id, dto);
+  }
+
+  @Delete("drivers/:id")
+  @RequirePermissions("route:delete")
+  deleteDriver(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.transport.deleteDriver(user.organizationId, id);
   }
 
   @Post("routes")

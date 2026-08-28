@@ -11,14 +11,17 @@ import {
 import { PrismaService } from "../../prisma/prisma.service";
 import { EsewaGatewayService, EsewaRedirectPayload } from "./esewa-gateway.service";
 import { CreateFeeCategoryDto } from "./dto/create-fee-category.dto";
+import { UpdateFeeCategoryDto } from "./dto/update-fee-category.dto";
 import { CreateFeeStructureDto } from "./dto/create-fee-structure.dto";
 import { AssignFeeStructureDto, AssignFeeStructureBulkDto } from "./dto/assign-fee-structure.dto";
 import { RecordPaymentDto } from "./dto/record-payment.dto";
 import { ApplyDiscountDto } from "./dto/apply-discount.dto";
 import { IssueRefundDto } from "./dto/issue-refund.dto";
 import { CreateScholarshipDto } from "./dto/create-scholarship.dto";
+import { UpdateScholarshipDto } from "./dto/update-scholarship.dto";
 import { AssignScholarshipDto } from "./dto/assign-scholarship.dto";
 import { paginate } from "../../common/pagination";
+import { assertNoDependents } from "../../common/assert-no-dependents";
 
 function toNumber(value: Prisma.Decimal | number): number {
   return typeof value === "number" ? value : value.toNumber();
@@ -45,6 +48,34 @@ export class FinanceService {
     return this.prisma.withTenant(organizationId, (tx) =>
       tx.feeCategory.findMany({ where: { organizationId }, orderBy: { name: "asc" } }),
     );
+  }
+
+  async updateFeeCategory(organizationId: string, id: string, dto: UpdateFeeCategoryDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadFeeCategory(tx, organizationId, id);
+      return tx.feeCategory.update({ where: { id }, data: dto });
+    });
+  }
+
+  async deleteFeeCategory(organizationId: string, id: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadFeeCategory(tx, organizationId, id);
+      await assertNoDependents(
+        [
+          tx.feeStructureItem.count({ where: { feeCategoryId: id } }),
+          tx.invoiceItem.count({ where: { feeCategoryId: id } }),
+        ],
+        "fee category",
+      );
+      await tx.feeCategory.delete({ where: { id } });
+      return { deleted: true };
+    });
+  }
+
+  private async loadFeeCategory(tx: PrismaClient, organizationId: string, id: string) {
+    const category = await tx.feeCategory.findUnique({ where: { id } });
+    if (!category || category.organizationId !== organizationId) throw new NotFoundException("Fee category not found");
+    return category;
   }
 
   // ── Fee structures ──────────────────────────────────────────────────
@@ -553,6 +584,37 @@ export class FinanceService {
     return this.prisma.withTenant(organizationId, (tx) =>
       tx.scholarship.findMany({ where: { organizationId }, orderBy: { name: "asc" } }),
     );
+  }
+
+  async updateScholarship(organizationId: string, id: string, dto: UpdateScholarshipDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadScholarship(tx, organizationId, id);
+      return tx.scholarship.update({
+        where: { id },
+        data: { name: dto.name, description: dto.description, percentage: dto.percentage, amount: dto.amount },
+      });
+    });
+  }
+
+  async deleteScholarship(organizationId: string, id: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadScholarship(tx, organizationId, id);
+      await assertNoDependents(
+        [
+          tx.studentScholarship.count({ where: { scholarshipId: id } }),
+          tx.discount.count({ where: { scholarshipId: id } }),
+        ],
+        "scholarship",
+      );
+      await tx.scholarship.delete({ where: { id } });
+      return { deleted: true };
+    });
+  }
+
+  private async loadScholarship(tx: PrismaClient, organizationId: string, id: string) {
+    const scholarship = await tx.scholarship.findUnique({ where: { id } });
+    if (!scholarship || scholarship.organizationId !== organizationId) throw new NotFoundException("Scholarship not found");
+    return scholarship;
   }
 
   async assignScholarship(organizationId: string, studentId: string, dto: AssignScholarshipDto) {

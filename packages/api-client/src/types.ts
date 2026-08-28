@@ -120,6 +120,12 @@ export interface CreateFacultyInput {
   code: string;
 }
 
+export interface UpdateFacultyInput {
+  campusId?: string;
+  name?: string;
+  code?: string;
+}
+
 export interface Department {
   id: string;
   organizationId: string;
@@ -132,6 +138,12 @@ export interface CreateDepartmentInput {
   facultyId: string;
   name: string;
   code: string;
+}
+
+export interface UpdateDepartmentInput {
+  facultyId?: string;
+  name?: string;
+  code?: string;
 }
 
 export interface Program {
@@ -156,6 +168,16 @@ export interface CreateProgramInput {
   entranceExam?: string;
 }
 
+export interface UpdateProgramInput {
+  departmentId?: string;
+  name?: string;
+  code?: string;
+  level?: string;
+  durationSemesters?: number;
+  creditHours?: number;
+  entranceExam?: string;
+}
+
 export interface AcademicYear {
   id: string;
   organizationId: string;
@@ -169,6 +191,12 @@ export interface CreateAcademicYearInput {
   name: string;
   startDate: string;
   endDate: string;
+}
+
+export interface UpdateAcademicYearInput {
+  name?: string;
+  startDate?: string;
+  endDate?: string;
 }
 
 export interface Term {
@@ -191,6 +219,15 @@ export interface CreateTermInput {
   endDate: string;
 }
 
+export interface UpdateTermInput {
+  academicYearId?: string;
+  name?: string;
+  code?: string;
+  sequence?: number;
+  startDate?: string;
+  endDate?: string;
+}
+
 export interface Section {
   id: string;
   organizationId: string;
@@ -209,6 +246,14 @@ export interface CreateSectionInput {
   capacity?: number;
 }
 
+export interface UpdateSectionInput {
+  programId?: string;
+  termId?: string;
+  name?: string;
+  code?: string;
+  capacity?: number;
+}
+
 export interface StaffType {
   id: string;
   organizationId: string;
@@ -221,6 +266,11 @@ export interface CreateStaffTypeInput {
   code: string;
 }
 
+export interface UpdateStaffTypeInput {
+  name?: string;
+  code?: string;
+}
+
 export interface Designation {
   id: string;
   organizationId: string;
@@ -231,6 +281,11 @@ export interface Designation {
 export interface CreateDesignationInput {
   name: string;
   code: string;
+}
+
+export interface UpdateDesignationInput {
+  name?: string;
+  code?: string;
 }
 
 export type EmployeeStatus = "ACTIVE" | "ON_LEAVE" | "SUSPENDED" | "TERMINATED";
@@ -280,7 +335,8 @@ export interface CreateEmployeeInput {
   email: string;
   phone?: string;
   dateOfJoining: string;
-  photoUrl?: string;
+  // Mandatory (explicit user request).
+  photoUrl: string;
 }
 
 export interface EmploymentHistory {
@@ -342,6 +398,11 @@ export interface CreateSubjectInput {
   code: string;
 }
 
+export interface UpdateSubjectInput {
+  name?: string;
+  code?: string;
+}
+
 export interface CurriculumSubject {
   id: string;
   curriculumId: string;
@@ -365,6 +426,12 @@ export interface CreateCurriculumInput {
   code: string;
 }
 
+export interface UpdateCurriculumInput {
+  programId?: string;
+  name?: string;
+  code?: string;
+}
+
 export interface AttachCurriculumSubjectInput {
   subjectId: string;
   isCompulsory?: boolean;
@@ -380,6 +447,7 @@ export interface Guardian {
   phone: string;
   email: string | null;
   occupation: string | null;
+  photoUrl: string | null;
 }
 
 export interface CreateGuardianInput {
@@ -388,6 +456,9 @@ export interface CreateGuardianInput {
   phone: string;
   email?: string;
   occupation?: string;
+  // Mandatory (explicit user request) — same generic-storage-URL
+  // two-step upload flow as Student/Employee's own photoUrl.
+  photoUrl: string;
 }
 
 export interface StudentGuardian {
@@ -432,12 +503,14 @@ export interface StudentPicker {
 }
 
 export interface CreateStudentInput {
-  studentCode: string;
+  // studentCode is deliberately absent — generated server-side
+  // (sequential per organization), not supplied by the caller.
   firstName: string;
   lastName: string;
   dateOfBirth: string;
   gender?: string;
-  photoUrl?: string;
+  // Mandatory (explicit user request).
+  photoUrl: string;
 }
 
 export interface CreateStudentLoginInput {
@@ -575,6 +648,14 @@ export interface CreateRoomInput {
   roomType?: string;
 }
 
+export interface UpdateRoomInput {
+  campusId?: string;
+  name?: string;
+  code?: string;
+  capacity?: number;
+  roomType?: string;
+}
+
 export interface Period {
   id: string;
   organizationId: string;
@@ -591,6 +672,14 @@ export interface CreatePeriodInput {
   sequence: number;
   startTime: string;
   endTime: string;
+}
+
+export interface UpdatePeriodInput {
+  name?: string;
+  code?: string;
+  sequence?: number;
+  startTime?: string;
+  endTime?: string;
 }
 
 export interface TeachingAssignment {
@@ -1284,6 +1373,11 @@ export interface CreateExamTypeInput {
   code: string;
 }
 
+export interface UpdateExamTypeInput {
+  name?: string;
+  code?: string;
+}
+
 export interface GradeBand {
   minPercentage: number;
   maxPercentage: number;
@@ -1308,6 +1402,13 @@ export interface CreateGradingSchemeInput {
   code: string;
   description?: string;
   bands: GradeBand[];
+}
+
+export interface UpdateGradingSchemeInput {
+  name?: string;
+  code?: string;
+  description?: string;
+  bands?: GradeBand[];
 }
 
 export type QuestionType = "OBJECTIVE" | "SUBJECTIVE";
@@ -1787,6 +1888,12 @@ export interface CreateFeeCategoryInput {
   description?: string;
 }
 
+export interface UpdateFeeCategoryInput {
+  name?: string;
+  code?: string;
+  description?: string;
+}
+
 export interface FeeStructureItemRecord {
   id: string;
   organizationId: string;
@@ -1968,6 +2075,13 @@ export interface CreateScholarshipInput {
   amount?: number;
 }
 
+export interface UpdateScholarshipInput {
+  name?: string;
+  description?: string;
+  percentage?: number;
+  amount?: number;
+}
+
 export interface AssignScholarshipInput {
   scholarshipId: string;
 }
@@ -2089,6 +2203,14 @@ export interface LeaveTypeRecord {
   carryForward: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface UpdateLeaveTypeInput {
+  name?: string;
+  code?: string;
+  defaultDaysPerYear?: number;
+  isPaid?: boolean;
+  carryForward?: boolean;
 }
 
 export interface CreateLeaveTypeInput {
@@ -2279,6 +2401,12 @@ export interface CreateDriverInput {
   employeeId: string;
   licenseNumber: string;
   licenseExpiry: string;
+}
+
+export interface UpdateDriverInput {
+  employeeId?: string;
+  licenseNumber?: string;
+  licenseExpiry?: string;
 }
 
 export interface StopRecord {
@@ -2676,6 +2804,14 @@ export interface CreateHostelLookupInput {
   name: string;
 }
 
+// kind is intentionally not editable after creation — renaming what
+// "kind" an in-use lookup belongs to would be confusing since the
+// referencing rows just store a free-text name (see HostelLookup's
+// own schema comment), only the display name is meant to change.
+export interface UpdateHostelLookupInput {
+  name?: string;
+}
+
 export interface HostelLookupRecord {
   id: string;
   organizationId: string;
@@ -2694,6 +2830,11 @@ export interface CreateInventoryCategoryInput {
   code: string;
 }
 
+export interface UpdateInventoryCategoryInput {
+  name?: string;
+  code?: string;
+}
+
 export interface InventoryCategoryRecord {
   id: string;
   organizationId: string;
@@ -2704,6 +2845,14 @@ export interface InventoryCategoryRecord {
 
 export interface CreateSupplierInput {
   name: string;
+  contactName?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+}
+
+export interface UpdateSupplierInput {
+  name?: string;
   contactName?: string;
   phone?: string;
   email?: string;
@@ -2861,6 +3010,13 @@ export interface CreateMessageTemplateInput {
   channel: MessageChannel;
   subject?: string;
   body: string;
+}
+
+export interface UpdateMessageTemplateInput {
+  name?: string;
+  channel?: MessageChannel;
+  subject?: string;
+  body?: string;
 }
 
 export interface MessageTemplateRecord {

@@ -61,6 +61,8 @@ export default function FinancePage() {
 
   // ── Fee categories ──────────────────────────────────────────────────
   const [categoryForm, setCategoryForm] = useState({ name: "", code: "", description: "" });
+  const [editingFeeCategoryId, setEditingFeeCategoryId] = useState<string | null>(null);
+  const [editFeeCategoryForm, setEditFeeCategoryForm] = useState({ name: "", code: "", description: "" });
 
   // ── Fee structures ──────────────────────────────────────────────────
   const [structureForm, setStructureForm] = useState({ programId: "", termId: "", name: "" });
@@ -76,6 +78,8 @@ export default function FinancePage() {
   // ── Scholarships ─────────────────────────────────────────────────────
   const [scholarshipForm, setScholarshipForm] = useState({ name: "", percentage: "", amount: "" });
   const [scholarshipAssign, setScholarshipAssign] = useState({ studentId: "", scholarshipId: "" });
+  const [editingScholarshipId, setEditingScholarshipId] = useState<string | null>(null);
+  const [editScholarshipForm, setEditScholarshipForm] = useState({ name: "", percentage: "", amount: "" });
 
   // ── Invoices ─────────────────────────────────────────────────────────
   const [activeInvoiceId, setActiveInvoiceId] = useState<string | null>(null);
@@ -101,11 +105,85 @@ export default function FinancePage() {
         title="Fee categories"
         emptyLabel="No fee categories yet."
         items={feeCategories.data}
-        renderItem={(c: { name: string; code: string }) => (
-          <span>
-            {c.name} <span className="text-muted-foreground">({c.code})</span>
-          </span>
+        renderItem={(c: { id: string; name: string; code: string; description: string | null }) => (
+          <div className="flex items-center justify-between gap-2">
+            <span>
+              {c.name} <span className="text-muted-foreground">({c.code})</span>
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setEditingFeeCategoryId(c.id);
+                  setEditFeeCategoryForm({ name: c.name, code: c.code, description: c.description ?? "" });
+                }}
+              >
+                Edit
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                onClick={() => submitAction(() => api.deleteFeeCategory(c.id), () => feeCategories.mutate())}
+              >
+                Delete
+              </Button>
+            </div>
+          </div>
         )}
+        footer={
+          editingFeeCategoryId ? (
+            <form
+              className="flex flex-wrap items-end gap-3"
+              onSubmit={(e: FormEvent) => {
+                e.preventDefault();
+                submitAction(
+                  () =>
+                    api.updateFeeCategory(editingFeeCategoryId, {
+                      name: editFeeCategoryForm.name,
+                      code: editFeeCategoryForm.code,
+                      description: editFeeCategoryForm.description || undefined,
+                    }),
+                  () => {
+                    setEditingFeeCategoryId(null);
+                    feeCategories.mutate();
+                  },
+                );
+              }}
+            >
+              <div className="space-y-2">
+                <Label className="text-xs">Name</Label>
+                <Input
+                  value={editFeeCategoryForm.name}
+                  onChange={(e) => setEditFeeCategoryForm((f) => ({ ...f, name: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs">Code</Label>
+                <Input
+                  className="w-28"
+                  value={editFeeCategoryForm.code}
+                  onChange={(e) => setEditFeeCategoryForm((f) => ({ ...f, code: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs">Description</Label>
+                <Input
+                  value={editFeeCategoryForm.description}
+                  onChange={(e) => setEditFeeCategoryForm((f) => ({ ...f, description: e.target.value }))}
+                />
+              </div>
+              <Button type="submit" size="sm">
+                Save
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setEditingFeeCategoryId(null)}>
+                Cancel
+              </Button>
+            </form>
+          ) : null
+        }
       >
         <form
           className="flex flex-wrap items-end gap-3"
@@ -395,15 +473,95 @@ export default function FinancePage() {
           ) : (
             <ul className="divide-y text-sm">
               {scholarships.data.map((s) => (
-                <li key={s.id} className="py-2">
-                  {s.name}{" "}
-                  <span className="text-muted-foreground">
-                    ({s.percentage != null ? `${s.percentage}%` : formatMoney(s.amount ?? "0")})
+                <li key={s.id} className="flex items-center justify-between gap-2 py-2">
+                  <span>
+                    {s.name}{" "}
+                    <span className="text-muted-foreground">
+                      ({s.percentage != null ? `${s.percentage}%` : formatMoney(s.amount ?? "0")})
+                    </span>
                   </span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setEditingScholarshipId(s.id);
+                        setEditScholarshipForm({
+                          name: s.name,
+                          percentage: s.percentage != null ? String(s.percentage) : "",
+                          amount: s.amount != null ? String(s.amount) : "",
+                        });
+                      }}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => submitAction(() => api.deleteScholarship(s.id), () => scholarships.mutate())}
+                    >
+                      Delete
+                    </Button>
+                  </div>
                 </li>
               ))}
             </ul>
           )}
+          {editingScholarshipId ? (
+            <form
+              className="flex flex-wrap items-end gap-3"
+              onSubmit={(e: FormEvent) => {
+                e.preventDefault();
+                submitAction(
+                  () =>
+                    api.updateScholarship(editingScholarshipId, {
+                      name: editScholarshipForm.name,
+                      percentage: editScholarshipForm.percentage ? Number(editScholarshipForm.percentage) : undefined,
+                      amount: editScholarshipForm.amount ? Number(editScholarshipForm.amount) : undefined,
+                    }),
+                  () => {
+                    setEditingScholarshipId(null);
+                    scholarships.mutate();
+                  },
+                );
+              }}
+            >
+              <div className="space-y-1">
+                <Label className="text-xs">Name</Label>
+                <Input
+                  value={editScholarshipForm.name}
+                  onChange={(e) => setEditScholarshipForm((f) => ({ ...f, name: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Percentage</Label>
+                <Input
+                  type="number"
+                  className="w-24"
+                  value={editScholarshipForm.percentage}
+                  onChange={(e) => setEditScholarshipForm((f) => ({ ...f, percentage: e.target.value, amount: "" }))}
+                />
+              </div>
+              <span className="text-muted-foreground pb-2 text-xs">or</span>
+              <div className="space-y-1">
+                <Label className="text-xs">Fixed amount (NPR)</Label>
+                <Input
+                  type="number"
+                  className="w-32"
+                  value={editScholarshipForm.amount}
+                  onChange={(e) => setEditScholarshipForm((f) => ({ ...f, amount: e.target.value, percentage: "" }))}
+                />
+              </div>
+              <Button type="submit" size="sm">
+                Save
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setEditingScholarshipId(null)}>
+                Cancel
+              </Button>
+            </form>
+          ) : null}
           <Separator />
           <form
             className="flex flex-wrap items-end gap-3"

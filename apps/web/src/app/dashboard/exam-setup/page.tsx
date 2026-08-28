@@ -11,15 +11,8 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { EntityCard } from "@/components/dashboard/entity-card";
 import { api } from "@/lib/api";
+import { submitAction, errorMessage } from "@/lib/submit-action";
 import type { GradeBand, QuestionType } from "@education-erp/api-client";
-
-function errorMessage(err: unknown, fallback: string) {
-  const message =
-    err && typeof err === "object" && "body" in err
-      ? ((err as { body?: { message?: string } }).body?.message ?? null)
-      : null;
-  return typeof message === "string" ? message : fallback;
-}
 
 const emptyBand: GradeBand = { minPercentage: 0, maxPercentage: 0, grade: "" };
 
@@ -41,10 +34,15 @@ export default function ExamSetupPage() {
 
   // --- Exam types ---------------------------------------------------------
   const [examTypeForm, setExamTypeForm] = useState({ name: "", code: "" });
+  const [editingExamTypeId, setEditingExamTypeId] = useState<string | null>(null);
+  const [editExamTypeForm, setEditExamTypeForm] = useState({ name: "", code: "" });
 
   // --- Grading schemes -----------------------------------------------------
   const [schemeForm, setSchemeForm] = useState({ name: "", code: "", description: "" });
   const [bands, setBands] = useState<GradeBand[]>([{ ...emptyBand }]);
+  const [editingGradingSchemeId, setEditingGradingSchemeId] = useState<string | null>(null);
+  const [editSchemeForm, setEditSchemeForm] = useState({ name: "", code: "", description: "" });
+  const [editBands, setEditBands] = useState<GradeBand[]>([{ ...emptyBand }]);
 
   // --- Question banks --------------------------------------------------------
   const curriculumSubjectOptions = (curricula.data ?? []).flatMap((c) =>
@@ -82,10 +80,75 @@ export default function ExamSetupPage() {
         emptyLabel="No exam types yet."
         items={examTypes.data}
         renderItem={(t: { id: string; name: string; code: string }) => (
-          <span>
-            {t.name} <span className="text-muted-foreground">({t.code})</span>
-          </span>
+          <div className="flex items-center justify-between gap-2">
+            <span>
+              {t.name} <span className="text-muted-foreground">({t.code})</span>
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setEditingExamTypeId(t.id);
+                  setEditExamTypeForm({ name: t.name, code: t.code });
+                }}
+              >
+                Edit
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                onClick={() => submitAction(() => api.deleteExamType(t.id), () => examTypes.mutate())}
+              >
+                Delete
+              </Button>
+            </div>
+          </div>
         )}
+        footer={
+          editingExamTypeId ? (
+            <form
+              className="flex flex-wrap items-end gap-3"
+              onSubmit={(e: FormEvent) => {
+                e.preventDefault();
+                submitAction(
+                  () => api.updateExamType(editingExamTypeId, editExamTypeForm),
+                  () => {
+                    setEditingExamTypeId(null);
+                    examTypes.mutate();
+                  },
+                );
+              }}
+            >
+              <div className="space-y-2">
+                <Label>Name</Label>
+                <Input
+                  required
+                  className="w-48"
+                  value={editExamTypeForm.name}
+                  onChange={(e) => setEditExamTypeForm((f) => ({ ...f, name: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Code</Label>
+                <Input
+                  required
+                  className="w-32"
+                  value={editExamTypeForm.code}
+                  onChange={(e) => setEditExamTypeForm((f) => ({ ...f, code: e.target.value }))}
+                />
+              </div>
+              <Button type="submit" size="sm">
+                Save
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setEditingExamTypeId(null)}>
+                Cancel
+              </Button>
+            </form>
+          ) : null
+        }
       >
         <form
           className="flex flex-wrap items-end gap-3"
@@ -128,16 +191,181 @@ export default function ExamSetupPage() {
         title="Grading schemes"
         emptyLabel="No grading schemes yet."
         items={gradingSchemes.data}
-        renderItem={(s: { id: string; name: string; code: string; bands: GradeBand[] }) => (
-          <div>
-            <p>
-              {s.name} <span className="text-muted-foreground">({s.code})</span>
-            </p>
-            <p className="text-muted-foreground text-xs">
-              {s.bands.map((b) => `${b.grade} (${b.minPercentage}-${b.maxPercentage}%)`).join(", ")}
-            </p>
+        renderItem={(s: { id: string; name: string; code: string; description: string | null; bands: GradeBand[] }) => (
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <p>
+                {s.name} <span className="text-muted-foreground">({s.code})</span>
+              </p>
+              <p className="text-muted-foreground text-xs">
+                {s.bands.map((b) => `${b.grade} (${b.minPercentage}-${b.maxPercentage}%)`).join(", ")}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setEditingGradingSchemeId(s.id);
+                  setEditSchemeForm({ name: s.name, code: s.code, description: s.description ?? "" });
+                  setEditBands(s.bands.length > 0 ? s.bands.map((b) => ({ ...b })) : [{ ...emptyBand }]);
+                }}
+              >
+                Edit
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                onClick={() => submitAction(() => api.deleteGradingScheme(s.id), () => gradingSchemes.mutate())}
+              >
+                Delete
+              </Button>
+            </div>
           </div>
         )}
+        footer={
+          editingGradingSchemeId ? (
+            <form
+              className="space-y-3"
+              onSubmit={(e: FormEvent) => {
+                e.preventDefault();
+                submitAction(
+                  () =>
+                    api.updateGradingScheme(editingGradingSchemeId, {
+                      name: editSchemeForm.name,
+                      code: editSchemeForm.code,
+                      description: editSchemeForm.description || undefined,
+                      bands: editBands,
+                    }),
+                  () => {
+                    setEditingGradingSchemeId(null);
+                    gradingSchemes.mutate();
+                  },
+                );
+              }}
+            >
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="space-y-2">
+                  <Label>Name</Label>
+                  <Input
+                    required
+                    className="w-48"
+                    value={editSchemeForm.name}
+                    onChange={(e) => setEditSchemeForm((f) => ({ ...f, name: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Code</Label>
+                  <Input
+                    required
+                    className="w-32"
+                    value={editSchemeForm.code}
+                    onChange={(e) => setEditSchemeForm((f) => ({ ...f, code: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Description (optional)</Label>
+                  <Input
+                    className="w-56"
+                    value={editSchemeForm.description}
+                    onChange={(e) => setEditSchemeForm((f) => ({ ...f, description: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Grade bands</Label>
+                {editBands.map((band, i) => (
+                  <div key={i} className="flex flex-wrap items-end gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Min %</Label>
+                      <Input
+                        type="number"
+                        className="w-20"
+                        value={band.minPercentage}
+                        onChange={(e) =>
+                          setEditBands((bs) =>
+                            bs.map((b, j) => (j === i ? { ...b, minPercentage: Number(e.target.value) } : b)),
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Max %</Label>
+                      <Input
+                        type="number"
+                        className="w-20"
+                        value={band.maxPercentage}
+                        onChange={(e) =>
+                          setEditBands((bs) =>
+                            bs.map((b, j) => (j === i ? { ...b, maxPercentage: Number(e.target.value) } : b)),
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Grade</Label>
+                      <Input
+                        className="w-20"
+                        value={band.grade}
+                        onChange={(e) =>
+                          setEditBands((bs) => bs.map((b, j) => (j === i ? { ...b, grade: e.target.value } : b)))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">GPA (optional)</Label>
+                      <Input
+                        type="number"
+                        step="0.1"
+                        className="w-20"
+                        value={band.gpa ?? ""}
+                        onChange={(e) =>
+                          setEditBands((bs) =>
+                            bs.map((b, j) =>
+                              j === i ? { ...b, gpa: e.target.value ? Number(e.target.value) : undefined } : b,
+                            ),
+                          )
+                        }
+                      />
+                    </div>
+                    {editBands.length > 1 ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => setEditBands((bs) => bs.filter((_, j) => j !== i))}
+                      >
+                        Remove
+                      </Button>
+                    ) : null}
+                  </div>
+                ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setEditBands((bs) => [...bs, { ...emptyBand }])}
+                >
+                  + Add band
+                </Button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={!editSchemeForm.name || !editSchemeForm.code || editBands.some((b) => !b.grade)}
+                >
+                  Save
+                </Button>
+                <Button type="button" size="sm" variant="outline" onClick={() => setEditingGradingSchemeId(null)}>
+                  Cancel
+                </Button>
+              </div>
+            </form>
+          ) : null
+        }
       >
         <form
           className="space-y-3"

@@ -12,7 +12,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
-import type { HostelLookupKind, StudentEnrollment } from "@education-erp/api-client";
+import type { HostelLookupKind, HostelLookupRecord, StudentEnrollment } from "@education-erp/api-client";
 
 function errorMessage(err: unknown, fallback: string) {
   const message =
@@ -103,6 +103,88 @@ function LookupSelect({
   );
 }
 
+// Edit/Delete UI for one HostelLookup kind's catalog. Not an
+// EntityCard (this page doesn't use that component) — a small
+// self-contained list matching the Card/ul/li shape the rest of this
+// page uses, with its own editing state since three of these render
+// side by side on one page. Only `name` is editable (see
+// UpdateHostelLookupInput) and delete has no dependency guard on the
+// backend for this entity, by design — nothing extra needed here for
+// that, the existing error-toast path covers any failure regardless.
+function LookupManageList({
+  title,
+  data,
+  mutate,
+}: {
+  title: string;
+  data: HostelLookupRecord[] | undefined;
+  mutate: () => void;
+}) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ name: "" });
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-medium">{title}</p>
+      {!data || data.length === 0 ? (
+        <p className="text-muted-foreground text-xs">None yet.</p>
+      ) : (
+        <ul className="divide-y text-sm">
+          {data.map((l) => (
+            <li key={l.id} className="flex items-center justify-between gap-2 py-2">
+              <span>{l.name}</span>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setEditingId(l.id);
+                    setEditForm({ name: l.name });
+                  }}
+                >
+                  Edit
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => submitAction(() => api.deleteHostelLookup(l.id), () => mutate())}
+                >
+                  Delete
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {editingId ? (
+        <form
+          className="flex flex-wrap items-end gap-2"
+          onSubmit={(e: FormEvent) => {
+            e.preventDefault();
+            submitAction(() => api.updateHostelLookup(editingId, editForm), () => {
+              setEditingId(null);
+              mutate();
+            });
+          }}
+        >
+          <div className="space-y-1">
+            <Label className="text-xs">Name</Label>
+            <Input className="h-7 w-40" value={editForm.name} onChange={(e) => setEditForm({ name: e.target.value })} />
+          </div>
+          <Button type="submit" size="sm" className="h-7" disabled={!editForm.name}>
+            Save
+          </Button>
+          <Button type="button" size="sm" variant="outline" className="h-7" onClick={() => setEditingId(null)}>
+            Cancel
+          </Button>
+        </form>
+      ) : null}
+    </div>
+  );
+}
+
 export default function HostelPage() {
   // Deliberately the unbounded, narrow picker — this is a "pick a
   // student" dropdown, not the paginated admin list view (Phase 8
@@ -166,6 +248,25 @@ export default function HostelPage() {
           enrollment the same way any other fee is assigned.
         </p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Lookups</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-muted-foreground text-xs">
+            Standard values for room type, visitor relation, and complaint category — new ones can also be added
+            inline from the &quot;+ Add new…&quot; option wherever these are picked below.
+          </p>
+          <LookupManageList title="Room types" data={roomTypeLookups.data} mutate={roomTypeLookups.mutate} />
+          <LookupManageList title="Visitor relations" data={relationLookups.data} mutate={relationLookups.mutate} />
+          <LookupManageList
+            title="Complaint categories"
+            data={categoryLookups.data}
+            mutate={categoryLookups.mutate}
+          />
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

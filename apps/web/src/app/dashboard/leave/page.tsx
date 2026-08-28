@@ -49,6 +49,14 @@ export default function LeavePage() {
 
   // ── Leave types ────────────────────────────────────────────────────
   const [typeForm, setTypeForm] = useState({ name: "", code: "", defaultDaysPerYear: "" });
+  const [editingLeaveTypeId, setEditingLeaveTypeId] = useState<string | null>(null);
+  const [editTypeForm, setEditTypeForm] = useState({
+    name: "",
+    code: "",
+    defaultDaysPerYear: "",
+    isPaid: true,
+    carryForward: false,
+  });
 
   // ── Balances ───────────────────────────────────────────────────────
   const [balanceEmployeeId, setBalanceEmployeeId] = useState("");
@@ -83,12 +91,103 @@ export default function LeavePage() {
           ) : (
             <ul className="divide-y text-sm">
               {leaveTypes.data.map((t) => (
-                <li key={t.id} className="py-2">
-                  {t.name} <span className="text-muted-foreground">({t.code}) — {t.defaultDaysPerYear} days/year{t.isPaid ? "" : " · unpaid"}</span>
+                <li key={t.id} className="flex items-center justify-between gap-2 py-2">
+                  <span>
+                    {t.name} <span className="text-muted-foreground">({t.code}) — {t.defaultDaysPerYear} days/year{t.isPaid ? "" : " · unpaid"}</span>
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setEditingLeaveTypeId(t.id);
+                        setEditTypeForm({
+                          name: t.name,
+                          code: t.code,
+                          defaultDaysPerYear: String(t.defaultDaysPerYear),
+                          isPaid: t.isPaid,
+                          carryForward: t.carryForward,
+                        });
+                      }}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => submitAction(() => api.deleteLeaveType(t.id), () => leaveTypes.mutate())}
+                    >
+                      Delete
+                    </Button>
+                  </div>
                 </li>
               ))}
             </ul>
           )}
+          {editingLeaveTypeId ? (
+            <form
+              className="flex flex-wrap items-end gap-3"
+              onSubmit={(e: FormEvent) => {
+                e.preventDefault();
+                submitAction(
+                  () =>
+                    api.updateLeaveType(editingLeaveTypeId, {
+                      name: editTypeForm.name,
+                      code: editTypeForm.code,
+                      defaultDaysPerYear: Number(editTypeForm.defaultDaysPerYear),
+                      isPaid: editTypeForm.isPaid,
+                      carryForward: editTypeForm.carryForward,
+                    }),
+                  () => {
+                    setEditingLeaveTypeId(null);
+                    leaveTypes.mutate();
+                  },
+                );
+              }}
+            >
+              <div className="space-y-1">
+                <Label className="text-xs">Name</Label>
+                <Input value={editTypeForm.name} onChange={(e) => setEditTypeForm((f) => ({ ...f, name: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Code</Label>
+                <Input className="w-28" value={editTypeForm.code} onChange={(e) => setEditTypeForm((f) => ({ ...f, code: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Default days/year</Label>
+                <Input
+                  type="number"
+                  className="w-32"
+                  value={editTypeForm.defaultDaysPerYear}
+                  onChange={(e) => setEditTypeForm((f) => ({ ...f, defaultDaysPerYear: e.target.value }))}
+                />
+              </div>
+              <label className="flex items-center gap-1 pb-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={editTypeForm.isPaid}
+                  onChange={(e) => setEditTypeForm((f) => ({ ...f, isPaid: e.target.checked }))}
+                />
+                Paid
+              </label>
+              <label className="flex items-center gap-1 pb-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={editTypeForm.carryForward}
+                  onChange={(e) => setEditTypeForm((f) => ({ ...f, carryForward: e.target.checked }))}
+                />
+                Carry forward
+              </label>
+              <Button type="submit" size="sm" disabled={!editTypeForm.name || !editTypeForm.code || !editTypeForm.defaultDaysPerYear}>
+                Save
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setEditingLeaveTypeId(null)}>
+                Cancel
+              </Button>
+            </form>
+          ) : null}
           <Separator />
           <form
             className="flex flex-wrap items-end gap-3"

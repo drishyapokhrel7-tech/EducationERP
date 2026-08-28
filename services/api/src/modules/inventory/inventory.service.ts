@@ -2,7 +2,9 @@ import { ConflictException, Injectable, NotFoundException } from "@nestjs/common
 import { PrismaClient } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateCategoryDto } from "./dto/create-category.dto";
+import { UpdateCategoryDto } from "./dto/update-category.dto";
 import { CreateSupplierDto } from "./dto/create-supplier.dto";
+import { UpdateSupplierDto } from "./dto/update-supplier.dto";
 import { CreateItemDto } from "./dto/create-item.dto";
 import { CreatePurchaseOrderDto } from "./dto/create-purchase-order.dto";
 import { AddPurchaseOrderItemDto } from "./dto/add-purchase-order-item.dto";
@@ -11,6 +13,7 @@ import { CreateStockAdjustmentDto } from "./dto/create-stock-adjustment.dto";
 import { CreateAssetDto } from "./dto/create-asset.dto";
 import { UpdateAssetDto } from "./dto/update-asset.dto";
 import { AssignAssetDto } from "./dto/assign-asset.dto";
+import { assertNoDependents } from "../../common/assert-no-dependents";
 
 /**
  * InventoryItem.currentStock is never a stored column — it's the
@@ -37,6 +40,28 @@ export class InventoryService {
     );
   }
 
+  async updateCategory(organizationId: string, id: string, dto: UpdateCategoryDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadCategory(tx, organizationId, id);
+      return tx.inventoryCategory.update({ where: { id }, data: dto });
+    });
+  }
+
+  async deleteCategory(organizationId: string, id: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadCategory(tx, organizationId, id);
+      await assertNoDependents(
+        [
+          tx.inventoryItem.count({ where: { categoryId: id } }),
+          tx.asset.count({ where: { categoryId: id } }),
+        ],
+        "inventory category",
+      );
+      await tx.inventoryCategory.delete({ where: { id } });
+      return { deleted: true };
+    });
+  }
+
   // ── Suppliers ─────────────────────────────────────────────────────
 
   createSupplier(organizationId: string, dto: CreateSupplierDto) {
@@ -47,6 +72,22 @@ export class InventoryService {
     return this.prisma.withTenant(organizationId, (tx) =>
       tx.supplier.findMany({ where: { organizationId }, orderBy: { name: "asc" } }),
     );
+  }
+
+  async updateSupplier(organizationId: string, id: string, dto: UpdateSupplierDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadSupplier(tx, organizationId, id);
+      return tx.supplier.update({ where: { id }, data: dto });
+    });
+  }
+
+  async deleteSupplier(organizationId: string, id: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadSupplier(tx, organizationId, id);
+      await assertNoDependents([tx.purchaseOrder.count({ where: { supplierId: id } })], "supplier");
+      await tx.supplier.delete({ where: { id } });
+      return { deleted: true };
+    });
   }
 
   // ── Items ─────────────────────────────────────────────────────────

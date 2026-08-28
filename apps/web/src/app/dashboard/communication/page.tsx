@@ -61,6 +61,13 @@ export default function CommunicationPage() {
     subject: "",
     body: "",
   });
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [editTemplateForm, setEditTemplateForm] = useState<{
+    name: string;
+    channel: MessageChannel;
+    subject: string;
+    body: string;
+  }>({ name: "", channel: "EMAIL", subject: "", body: "" });
 
   const [messageForm, setMessageForm] = useState<{
     channel: MessageChannel;
@@ -92,13 +99,103 @@ export default function CommunicationPage() {
           ) : (
             <ul className="divide-y text-sm">
               {templates.data.map((t) => (
-                <li key={t.id} className="py-2">
-                  <span className="font-medium">{t.name}</span> <Badge variant="secondary">{t.channel}</Badge>
-                  {t.subject ? <span className="text-muted-foreground"> — {t.subject}</span> : null}
+                <li key={t.id} className="flex items-center justify-between gap-2 py-2">
+                  <span>
+                    <span className="font-medium">{t.name}</span> <Badge variant="secondary">{t.channel}</Badge>
+                    {t.subject ? <span className="text-muted-foreground"> — {t.subject}</span> : null}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setEditingTemplateId(t.id);
+                        setEditTemplateForm({
+                          name: t.name,
+                          channel: t.channel,
+                          subject: t.subject ?? "",
+                          body: t.body,
+                        });
+                      }}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => submitAction(() => api.deleteMessageTemplate(t.id), () => templates.mutate())}
+                    >
+                      Delete
+                    </Button>
+                  </div>
                 </li>
               ))}
             </ul>
           )}
+          {editingTemplateId ? (
+            <form
+              className="flex flex-wrap items-end gap-3"
+              onSubmit={(e: FormEvent) => {
+                e.preventDefault();
+                submitAction(
+                  () =>
+                    api.updateMessageTemplate(editingTemplateId, {
+                      name: editTemplateForm.name,
+                      channel: editTemplateForm.channel,
+                      subject: editTemplateForm.subject || undefined,
+                      body: editTemplateForm.body,
+                    }),
+                  () => {
+                    setEditingTemplateId(null);
+                    templates.mutate();
+                  },
+                );
+              }}
+            >
+              <div className="space-y-1">
+                <Label className="text-xs">Name</Label>
+                <Input
+                  className="w-40"
+                  value={editTemplateForm.name}
+                  onChange={(e) => setEditTemplateForm((f) => ({ ...f, name: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Channel</Label>
+                <NativeSelect
+                  className="w-32"
+                  placeholder="Channel"
+                  value={editTemplateForm.channel}
+                  onChange={(v) => setEditTemplateForm((f) => ({ ...f, channel: v as MessageChannel }))}
+                  options={CHANNELS}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Subject (optional)</Label>
+                <Input
+                  className="w-48"
+                  value={editTemplateForm.subject}
+                  onChange={(e) => setEditTemplateForm((f) => ({ ...f, subject: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Body</Label>
+                <Textarea
+                  className="w-64"
+                  value={editTemplateForm.body}
+                  onChange={(e) => setEditTemplateForm((f) => ({ ...f, body: e.target.value }))}
+                />
+              </div>
+              <Button type="submit" size="sm" disabled={!editTemplateForm.name || !editTemplateForm.body}>
+                Save
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setEditingTemplateId(null)}>
+                Cancel
+              </Button>
+            </form>
+          ) : null}
           <Separator />
           <form
             className="flex flex-wrap items-end gap-3"

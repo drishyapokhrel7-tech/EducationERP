@@ -14,6 +14,7 @@ import { UpdateComplaintDto } from "./dto/update-complaint.dto";
 import { CreateMaintenanceRequestDto } from "./dto/create-maintenance-request.dto";
 import { UpdateMaintenanceRequestDto } from "./dto/update-maintenance-request.dto";
 import { CreateLookupDto } from "./dto/create-lookup.dto";
+import { UpdateLookupDto } from "./dto/update-lookup.dto";
 import { HostelLookupKind } from "@prisma/client";
 
 const ALLOCATION_INCLUDE = {
@@ -287,6 +288,34 @@ export class HostelService {
     return this.prisma.withTenant(organizationId, (tx) =>
       tx.hostelLookup.findMany({ where: { organizationId, kind }, orderBy: { name: "asc" } }),
     );
+  }
+
+  async updateLookup(organizationId: string, id: string, dto: UpdateLookupDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadLookup(tx, organizationId, id);
+      return tx.hostelLookup.update({ where: { id }, data: dto });
+    });
+  }
+
+  // No assertNoDependents here, deliberately — HostelLookup rows are
+  // referenced only as plain free-text strings by
+  // HostelRoom.roomType/HostelVisitor.relation/HostelComplaint.category
+  // (see the schema.prisma comment on HostelLookup), so there is no
+  // real FK to count against. A lookup being renamed or removed later
+  // never orphans or blocks deleting historical room/visitor/complaint
+  // data.
+  async deleteLookup(organizationId: string, id: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadLookup(tx, organizationId, id);
+      await tx.hostelLookup.delete({ where: { id } });
+      return { deleted: true };
+    });
+  }
+
+  private async loadLookup(tx: PrismaClient, organizationId: string, id: string) {
+    const lookup = await tx.hostelLookup.findUnique({ where: { id } });
+    if (!lookup || lookup.organizationId !== organizationId) throw new NotFoundException("Hostel lookup not found");
+    return lookup;
   }
 
   // ── FK-vs-RLS parent guards ──────────────────────────────────────
