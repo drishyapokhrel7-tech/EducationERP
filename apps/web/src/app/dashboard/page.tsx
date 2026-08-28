@@ -44,26 +44,35 @@ export default function DashboardPage() {
   // backend to seed a default Faculty/Department/Program structure
   // for this campus (see the API's college-structure-defaults.ts) —
   // every other option behaves exactly as before, a bare campus row.
-  // GENERIC reads as "Institution" (not "Campus") in the UI — the
-  // Campus model/API/route names are unchanged, this is display copy
-  // only, same distinction as the School/College/Montessori options
-  // below being UI labels over the same underlying Campus row.
+  // GENERIC reads as "Other" here, deliberately NOT "Institution" —
+  // "Institution" is the umbrella word covering every option in this
+  // list (School, College, Montessori, ...), so listing it as one of
+  // the choices read as circular/confusing. "Other" is the plain,
+  // not-further-classified option; "Institution"/"Institutions" is
+  // reserved for the page-level heading below, never a selectable type.
   const CAMPUS_TYPE_OPTIONS = [
-    { value: "GENERIC", label: "Institution" },
+    { value: "GENERIC", label: "Other" },
     { value: "SCHOOL", label: "School" },
     { value: "COLLEGE", label: "College" },
     { value: "MONTESSORI", label: "Montessori" },
   ] as const;
   const [campusType, setCampusType] = useState<(typeof CAMPUS_TYPE_OPTIONS)[number]["value"]>("GENERIC");
-  const campusTypeLabel = CAMPUS_TYPE_OPTIONS.find((o) => o.value === campusType)?.label ?? "Institution";
-  const campusTypePlural = `${campusTypeLabel}s`;
-  // Once exactly one campus exists, that's a real, known fact — call
-  // it "School" rather than the generic "Institution"/"Institutions"
-  // label, regardless of whatever type is currently selected in the
-  // add-form below (which is about what to add *next*, a separate
-  // concern). At 0 or 2+ campuses there's no single right label to
-  // infer, so this falls back to the existing add-form-driven label.
-  const existingCampusLabel = campuses.length === 1 ? "School" : campusTypePlural;
+  // Only describes what's about to be added (the button text, toast
+  // messages) — never the section heading/count below. Coupling those
+  // to whichever type happens to be selected in the add-form was
+  // itself the confusing bug: picking "College" here used to retitle
+  // the whole list "Colleges" even with zero colleges actually
+  // created. The list's own label is computed separately, below, from
+  // the real data only. GENERIC reads as "Institution" here (not the
+  // dropdown's own "Other" label) — "Add Institution"/"Institution
+  // created" reads naturally as plain action copy, the circularity
+  // problem only existed inside the type list itself.
+  const campusTypeLabel = campusType === "GENERIC" ? "Institution" : CAMPUS_TYPE_OPTIONS.find((o) => o.value === campusType)!.label;
+  // Once exactly one institution exists, that's a real, known fact —
+  // call it "School" (the common single-site case). Otherwise always
+  // the stable, generic "Institutions" — never derived from the
+  // add-form's current selection.
+  const existingCampusLabel = campuses.length === 1 ? "School" : "Institutions";
 
   // Not every institution runs multiple campuses/schools — this
   // shortcut fills the campus form from the organization's own
@@ -122,7 +131,7 @@ export default function DashboardPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           {campuses.length === 0 ? (
-            <p className="text-muted-foreground text-sm">No {campusTypePlural.toLowerCase()} yet.</p>
+            <p className="text-muted-foreground text-sm">No institutions yet.</p>
           ) : (
             <ul className="divide-y">
               {campuses.map((campus) => (
