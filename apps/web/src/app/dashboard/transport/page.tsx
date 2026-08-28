@@ -22,6 +22,11 @@ const LiveTrackingMap = dynamic(
 );
 
 export default function TransportPage() {
+  // Same SWR key dashboard/page.tsx already fetches this under, so
+  // this dedupes against that request instead of firing a second one
+  // — used to compute a driver login's username, which is
+  // deterministic (see handleCreateDriverLogin's own comment below).
+  const organization = useSWR("organization", () => api.getOwnOrganization());
   // Deliberately the unbounded, narrow picker — this is a "pick a
   // staff member" dropdown, not the paginated admin list view (Phase 8
   // performance-optimization slice).
@@ -46,13 +51,19 @@ export default function TransportPage() {
   // Keyed by employeeId, same per-row pattern as the students page's
   // create-login form.
   const [driverLoginPasswordForms, setDriverLoginPasswordForms] = useState<Record<string, string>>({});
-  const [driverCreatedUsernames, setDriverCreatedUsernames] = useState<Record<string, string>>({});
+
+  // The backend derives the username as `${orgSlug}.${employeeCode}`
+  // (StaffService.createLogin) — deterministic from data already on
+  // the record, so it's computed here rather than only shown once from
+  // the create-login response and then lost forever on refresh.
+  function driverUsername(employeeCode: string): string {
+    return organization.data ? `${organization.data.slug}.${employeeCode}` : employeeCode;
+  }
 
   async function handleCreateDriverLogin(employeeId: string) {
     const password = driverLoginPasswordForms[employeeId] ?? "";
     try {
-      const result = await api.createEmployeeLogin(employeeId, { password });
-      setDriverCreatedUsernames((m) => ({ ...m, [employeeId]: result.username }));
+      await api.createEmployeeLogin(employeeId, { password });
       setDriverLoginPasswordForms((f) => ({ ...f, [employeeId]: "" }));
       drivers.mutate();
       employees.mutate();
@@ -194,7 +205,7 @@ export default function TransportPage() {
                   </div>
                   {d.employee.userId ? (
                     <p className="text-muted-foreground mt-1 text-xs">
-                      Driver login: {driverCreatedUsernames[d.employeeId] ?? "created"}
+                      Driver login: {driverUsername(d.employee.employeeCode)}
                     </p>
                   ) : (
                     <form

@@ -62,6 +62,11 @@ const RELATIONSHIP_OPTIONS = [
 ] as const;
 
 export default function StudentsPage() {
+  // Same SWR key dashboard/page.tsx already fetches this under, so
+  // this dedupes against that request instead of firing a second one
+  // — used to compute a portal login's username, which is
+  // deterministic (see handleCreateLogin's own comment below).
+  const organization = useSWR("organization", () => api.getOwnOrganization());
   // Paginated (Phase 8 performance-optimization slice) — studentsPage
   // is part of the SWR key so changing it triggers a fresh fetch of
   // that page, same pattern used by every other paginated list below.
@@ -119,15 +124,19 @@ export default function StudentsPage() {
 
   // Keyed by studentId, same pattern as the exams page's per-row forms.
   const [loginPasswordForms, setLoginPasswordForms] = useState<Record<string, string>>({});
-  // The generated username is only ever visible in the create-login
-  // response — shown here once so the admin can copy it, not persisted.
-  const [createdUsernames, setCreatedUsernames] = useState<Record<string, string>>({});
+
+  // The backend derives the username as `${orgSlug}.${studentCode}`
+  // (StudentsService.createLogin) — deterministic from data already on
+  // the record, so it's computed here rather than only shown once from
+  // the create-login response and then lost forever on refresh.
+  function studentUsername(studentCode: string): string {
+    return organization.data ? `${organization.data.slug}.${studentCode}` : studentCode;
+  }
 
   async function handleCreateLogin(studentId: string) {
     const password = loginPasswordForms[studentId] ?? "";
     try {
-      const result = await api.createStudentLogin(studentId, { password });
-      setCreatedUsernames((m) => ({ ...m, [studentId]: result.username }));
+      await api.createStudentLogin(studentId, { password });
       setLoginPasswordForms((f) => ({ ...f, [studentId]: "" }));
       students.mutate();
       toast.success("Login created");
@@ -304,7 +313,7 @@ export default function StudentsPage() {
             ) : null}
             {s.userId ? (
               <p className="text-muted-foreground mt-1 text-xs">
-                Portal login: {createdUsernames[s.id] ?? "created"}
+                Portal login: {studentUsername(s.studentCode)}
               </p>
             ) : (
               <form

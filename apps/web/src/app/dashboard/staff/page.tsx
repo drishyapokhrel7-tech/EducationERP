@@ -20,6 +20,11 @@ import { submitAction, submitDelete, errorMessage } from "@/lib/submit-action";
 import { ApiError, type Edition } from "@education-erp/api-client";
 
 export default function StaffPage() {
+  // Same SWR key dashboard/page.tsx already fetches this under, so
+  // this dedupes against that request instead of firing a second one
+  // — used to compute a portal login's username, which is
+  // deterministic (see handleCreateLogin's own comment below).
+  const organization = useSWR("organization", () => api.getOwnOrganization());
   const staffTypes = useSWR("staff-types", () => api.listStaffTypes());
   const designations = useSWR("designations", () => api.listDesignations());
   const departments = useSWR("departments", () => api.listDepartments());
@@ -35,13 +40,19 @@ export default function StaffPage() {
   // Keyed by employeeId, same per-row pattern as the students page's
   // create-login form.
   const [loginPasswordForms, setLoginPasswordForms] = useState<Record<string, string>>({});
-  const [createdUsernames, setCreatedUsernames] = useState<Record<string, string>>({});
+
+  // The backend derives the username as `${orgSlug}.${employeeCode}`
+  // (StaffService.createLogin) — deterministic from data already on
+  // the record, so it's computed here rather than only shown once from
+  // the create-login response and then lost forever on refresh.
+  function employeeUsername(employeeCode: string): string {
+    return organization.data ? `${organization.data.slug}.${employeeCode}` : employeeCode;
+  }
 
   async function handleCreateLogin(employeeId: string) {
     const password = loginPasswordForms[employeeId] ?? "";
     try {
-      const result = await api.createEmployeeLogin(employeeId, { password });
-      setCreatedUsernames((m) => ({ ...m, [employeeId]: result.username }));
+      await api.createEmployeeLogin(employeeId, { password });
       setLoginPasswordForms((f) => ({ ...f, [employeeId]: "" }));
       employees.mutate();
       toast.success("Login created");
@@ -354,7 +365,7 @@ export default function StaffPage() {
             </span>
             {e.userId ? (
               <p className="text-muted-foreground mt-1 text-xs">
-                Portal login: {createdUsernames[e.id] ?? "created"}
+                Portal login: {employeeUsername(e.employeeCode)}
               </p>
             ) : (
               <form
