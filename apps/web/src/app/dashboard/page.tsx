@@ -39,6 +39,13 @@ export default function DashboardPage() {
   const CAMPUS_TYPES = ["Campus", "School", "Montessori"] as const;
   const [campusType, setCampusType] = useState<(typeof CAMPUS_TYPES)[number]>("Campus");
   const campusTypePlural = campusType === "Campus" ? "Campuses" : `${campusType}s`;
+  // Once exactly one campus exists, that's a real, known fact — call
+  // it "School" rather than the generic "Campus"/"Campuses" label,
+  // regardless of whatever type is currently selected in the add-form
+  // below (which is about what to add *next*, a separate concern).
+  // At 0 or 2+ campuses there's no single right label to infer, so
+  // this falls back to the existing add-form-driven label.
+  const existingCampusLabel = campuses.length === 1 ? "School" : campusTypePlural;
 
   // Not every institution runs multiple campuses/schools — this
   // shortcut fills the campus form from the organization's own
@@ -77,7 +84,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        <StatCard label="Campuses" value={campuses.length} icon={<Building2 className="size-4" />} />
+        <StatCard label={existingCampusLabel} value={campuses.length} icon={<Building2 className="size-4" />} />
         <StatCard label="Students" value={studentsPage?.total ?? 0} icon={<GraduationCap className="size-4" />} />
         <StatCard label="Staff" value={employeesPage?.total ?? 0} icon={<Users className="size-4" />} />
         <StatCard
@@ -89,7 +96,7 @@ export default function DashboardPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>{campusTypePlural}</CardTitle>
+          <CardTitle>{existingCampusLabel}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           {campuses.length === 0 ? (
