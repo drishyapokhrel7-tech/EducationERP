@@ -13,9 +13,18 @@ import { api } from "@/lib/api";
 export function FileUploadButton({
   onUploaded,
   label = "Upload a file",
+  accept,
+  maxSizeBytes,
 }: {
   onUploaded: (url: string) => void;
   label?: string;
+  // Both optional — every existing caller (course materials, class
+  // materials, assignment submissions, ...) passes neither and keeps
+  // its prior any-file/any-size behavior unchanged. PhotoInput is the
+  // first caller to opt into both, for a reasonable photo-specific
+  // limit.
+  accept?: string;
+  maxSizeBytes?: number;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -25,11 +34,16 @@ export function FileUploadButton({
       <input
         ref={inputRef}
         type="file"
+        accept={accept}
         className="hidden"
         onChange={async (e) => {
           const file = e.target.files?.[0];
           e.target.value = "";
           if (!file) return;
+          if (maxSizeBytes && file.size > maxSizeBytes) {
+            toast.error(`File is too large — max ${Math.round(maxSizeBytes / (1024 * 1024))}MB`);
+            return;
+          }
           setUploading(true);
           try {
             const result = await api.uploadFile(file);

@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { parse } from "csv-parse/sync";
 import * as argon2 from "argon2";
+import { Prisma, PrismaClient } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateStudentDto } from "./dto/create-student.dto";
 import { CreateGuardianDto } from "./dto/create-guardian.dto";
@@ -61,26 +62,56 @@ export class StudentsService {
     });
   }
 
-  createStudent(organizationId: string, dto: CreateStudentDto) {
+  // System-generated, not user-typed — "STU-0001", "STU-0002", ...,
+  // sequential per organization (matches the format already used by
+  // seed-demo.ts's own fixtures). Counts ALL students ever created for
+  // this org, not just active ones (`deletedAt: null` would let a
+  // deleted student's code get reused, which is confusing for anything
+  // that still references the old code historically — e.g. an
+  // invoice). A handful of retries on the (organizationId, studentCode)
+  // unique constraint (schema.prisma) covers the rare concurrent-create
+  // race without needing a real DB sequence for what is, at this
+  // project's real scale, an infrequent admin action.
+  private async nextStudentCode(tx: PrismaClient, organizationId: string): Promise<string> {
+    const count = await tx.student.count({ where: { organizationId } });
+    return `STU-${String(count + 1).padStart(4, "0")}`;
+  }
+
+  async createStudent(organizationId: string, dto: CreateStudentDto) {
     return this.prisma.withTenant(organizationId, async (tx) => {
       await assertUnderEditionLimit(tx, organizationId);
-      return tx.student.create({
-        data: {
-          organizationId,
-          studentCode: dto.studentCode,
-          firstName: dto.firstName,
-          lastName: dto.lastName,
-          dateOfBirth: new Date(dto.dateOfBirth),
-          gender: dto.gender,
-          photoUrl: dto.photoUrl,
-        },
-      });
+      const maxAttempts = 5;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        const studentCode = await this.nextStudentCode(tx, organizationId);
+        try {
+          return await tx.student.create({
+            data: {
+              organizationId,
+              studentCode,
+              firstName: dto.firstName,
+              lastName: dto.lastName,
+              dateOfBirth: new Date(dto.dateOfBirth),
+              gender: dto.gender,
+              photoUrl: dto.photoUrl,
+            },
+          });
+        } catch (err) {
+          const isUniqueViolation = err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
+          if (!isUniqueViolation || attempt === maxAttempts) throw err;
+          // Another concurrent create took this code first — recompute
+          // and try again.
+        }
+      }
+      throw new Error("Could not generate a unique student code — please try again");
     });
   }
 
   listGuardians(organizationId: string) {
     return this.prisma.withTenant(organizationId, (tx) =>
-      tx.guardian.findMany({ where: { organizationId } }),
+      tx.guardian.findMany({
+        where: { organizationId },
+        orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
+      }),
     );
   }
 
@@ -94,6 +125,7 @@ export class StudentsService {
           phone: dto.phone,
           email: dto.email,
           occupation: dto.occupation,
+          photoUrl: dto.photoUrl,
         },
       }),
     );

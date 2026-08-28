@@ -1,4 +1,4 @@
-import { IsEmail, IsOptional, IsString, MinLength } from "class-validator";
+import { IsEmail, IsNotEmpty, IsOptional, IsString, MinLength } from "class-validator";
 
 export class CreateGuardianDto {
   @IsString()
@@ -20,4 +20,11 @@ export class CreateGuardianDto {
   @IsOptional()
   @IsString()
   occupation?: string;
+
+  // Same generic-storage-URL two-step upload flow as
+  // CreateStudentDto.photoUrl — see that field's comment. Mandatory
+  // for the same reason (explicit user request).
+  @IsString()
+  @IsNotEmpty()
+  photoUrl!: string;
 }

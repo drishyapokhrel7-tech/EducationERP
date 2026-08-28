@@ -899,6 +899,11 @@ model Guardian {
   phone          String
   email          String?
   occupation     String?
+  // Same generic-storage-URL field and reasoning as Student.photoUrl —
+  // required at the API/DTO layer, not the DB layer (existing rows
+  // before this field never had one; enforcing NOT NULL here would
+  // need a backfill this project has no real data for).
+  photoUrl       String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

@@ -7,6 +7,12 @@ import { FileUploadButton } from "@/components/file-upload-button";
 import { CameraCapture } from "@/components/camera-capture";
 import { api } from "@/lib/api";
 
+// A reasonable cap for an identification-style photo — generous
+// enough for any real phone/webcam capture, tight enough to block an
+// accidental huge-file upload (a full-res scan, a video misclicked as
+// an image, ...).
+const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
+
 // The Student/Staff entry forms' photo field — an optional
 // identification photo, distinct from Phase 6's consent-gated
 // biometric FaceEnrollment photo (see Student.photoUrl's schema
@@ -32,6 +38,8 @@ export function PhotoInput({ value, onChange }: { value: string | null; onChange
         <div className="flex flex-col gap-1">
           <FileUploadButton
             label={value ? "Replace photo" : "Upload photo"}
+            accept="image/*"
+            maxSizeBytes={MAX_PHOTO_BYTES}
             onUploaded={(url) => {
               onChange(url);
               setShowCamera(false);

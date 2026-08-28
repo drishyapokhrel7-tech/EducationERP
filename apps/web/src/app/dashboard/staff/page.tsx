@@ -15,6 +15,7 @@ import { EditionUpgradeBanner } from "@/components/edition-upgrade-banner";
 import { api } from "@/lib/api";
 import { useHighlightFromSearch } from "@/lib/use-highlight-from-search";
 import { isEditionLimitError } from "@/lib/edition-limit-error";
+import { submitAction } from "@/lib/submit-action";
 import { ApiError, type Edition } from "@education-erp/api-client";
 
 export default function StaffPage() {
@@ -50,6 +51,16 @@ export default function StaffPage() {
 
   const [staffTypeForm, setStaffTypeForm] = useState({ name: "", code: "" });
   const [designationForm, setDesignationForm] = useState({ name: "", code: "" });
+
+  // Edit state, one per catalog entity on this page — a separate,
+  // small inline form (rendered via EntityCard's `footer`) rather
+  // than merging into the always-visible create form above, since
+  // these entities are tiny (name+code) and the create form stays
+  // unconditional either way.
+  const [editingStaffTypeId, setEditingStaffTypeId] = useState<string | null>(null);
+  const [editStaffTypeForm, setEditStaffTypeForm] = useState({ name: "", code: "" });
+  const [editingDesignationId, setEditingDesignationId] = useState<string | null>(null);
+  const [editDesignationForm, setEditDesignationForm] = useState({ name: "", code: "" });
   const [employeeForm, setEmployeeForm] = useState({
     staffTypeId: "",
     designationId: "",
@@ -91,11 +102,75 @@ export default function StaffPage() {
         title="Staff types"
         emptyLabel="No staff types yet."
         items={staffTypes.data}
-        renderItem={(t: { name: string; code: string }) => (
-          <span>
-            {t.name} <span className="text-muted-foreground">{t.code}</span>
-          </span>
+        renderItem={(t: { id: string; name: string; code: string }) => (
+          <div className="flex items-center justify-between gap-2">
+            <span>
+              {t.name} <span className="text-muted-foreground">{t.code}</span>
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setEditingStaffTypeId(t.id);
+                  setEditStaffTypeForm({ name: t.name, code: t.code });
+                }}
+              >
+                Edit
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                onClick={() => submitAction(() => api.deleteStaffType(t.id), () => staffTypes.mutate())}
+              >
+                Delete
+              </Button>
+            </div>
+          </div>
         )}
+        footer={
+          editingStaffTypeId ? (
+            <form
+              className="flex flex-wrap items-end gap-3"
+              onSubmit={(e: FormEvent) => {
+                e.preventDefault();
+                submitAction(
+                  () => api.updateStaffType(editingStaffTypeId, editStaffTypeForm),
+                  () => {
+                    setEditingStaffTypeId(null);
+                    staffTypes.mutate();
+                  },
+                );
+              }}
+            >
+              <div className="space-y-2">
+                <Label>Name</Label>
+                <Input
+                  required
+                  value={editStaffTypeForm.name}
+                  onChange={(e) => setEditStaffTypeForm((f) => ({ ...f, name: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Code</Label>
+                <Input
+                  required
+                  className="w-24"
+                  value={editStaffTypeForm.code}
+                  onChange={(e) => setEditStaffTypeForm((f) => ({ ...f, code: e.target.value }))}
+                />
+              </div>
+              <Button type="submit" size="sm">
+                Save
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setEditingStaffTypeId(null)}>
+                Cancel
+              </Button>
+            </form>
+          ) : null
+        }
       >
         <form
           className="flex flex-wrap items-end gap-3"
@@ -136,11 +211,75 @@ export default function StaffPage() {
         title="Designations"
         emptyLabel="No designations yet."
         items={designations.data}
-        renderItem={(d: { name: string; code: string }) => (
-          <span>
-            {d.name} <span className="text-muted-foreground">{d.code}</span>
-          </span>
+        renderItem={(d: { id: string; name: string; code: string }) => (
+          <div className="flex items-center justify-between gap-2">
+            <span>
+              {d.name} <span className="text-muted-foreground">{d.code}</span>
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setEditingDesignationId(d.id);
+                  setEditDesignationForm({ name: d.name, code: d.code });
+                }}
+              >
+                Edit
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                onClick={() => submitAction(() => api.deleteDesignation(d.id), () => designations.mutate())}
+              >
+                Delete
+              </Button>
+            </div>
+          </div>
         )}
+        footer={
+          editingDesignationId ? (
+            <form
+              className="flex flex-wrap items-end gap-3"
+              onSubmit={(e: FormEvent) => {
+                e.preventDefault();
+                submitAction(
+                  () => api.updateDesignation(editingDesignationId, editDesignationForm),
+                  () => {
+                    setEditingDesignationId(null);
+                    designations.mutate();
+                  },
+                );
+              }}
+            >
+              <div className="space-y-2">
+                <Label>Name</Label>
+                <Input
+                  required
+                  value={editDesignationForm.name}
+                  onChange={(e) => setEditDesignationForm((f) => ({ ...f, name: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Code</Label>
+                <Input
+                  required
+                  className="w-24"
+                  value={editDesignationForm.code}
+                  onChange={(e) => setEditDesignationForm((f) => ({ ...f, code: e.target.value }))}
+                />
+              </div>
+              <Button type="submit" size="sm">
+                Save
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setEditingDesignationId(null)}>
+                Cancel
+              </Button>
+            </form>
+          ) : null
+        }
       >
         <form
           className="flex flex-wrap items-end gap-3"
@@ -250,13 +389,14 @@ export default function StaffPage() {
           className="flex flex-wrap items-end gap-3"
           onSubmit={(ev: FormEvent) => {
             ev.preventDefault();
+            if (!employeePhotoUrl) return;
             submit(
               () =>
                 api.createEmployee({
                   ...employeeForm,
                   departmentId: employeeForm.departmentId || undefined,
                   phone: employeeForm.phone || undefined,
-                  photoUrl: employeePhotoUrl ?? undefined,
+                  photoUrl: employeePhotoUrl,
                 }),
               () => {
                 setEmployeeForm({
@@ -358,10 +498,13 @@ export default function StaffPage() {
             />
           </div>
           <div className="space-y-2">
-            <Label>Photo (optional)</Label>
+            <Label>Photo</Label>
             <PhotoInput value={employeePhotoUrl} onChange={setEmployeePhotoUrl} />
           </div>
-          <Button type="submit" disabled={!employeeForm.staffTypeId || !employeeForm.designationId}>
+          <Button
+            type="submit"
+            disabled={!employeeForm.staffTypeId || !employeeForm.designationId || !employeePhotoUrl}
+          >
             Add
           </Button>
         </form>

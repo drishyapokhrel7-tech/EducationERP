@@ -39,8 +39,9 @@ export default function StudentsPage() {
   const [editionLimitEdition, setEditionLimitEdition] = useState<Edition | null>(null);
   useHighlightFromSearch(Boolean(students.data && guardians.data));
 
+  // studentCode is system-generated (sequential per organization), not
+  // part of this form.
   const [studentForm, setStudentForm] = useState({
-    studentCode: "",
     firstName: "",
     lastName: "",
     dateOfBirth: "",
@@ -53,6 +54,7 @@ export default function StudentsPage() {
     phone: "",
     email: "",
   });
+  const [guardianPhotoUrl, setGuardianPhotoUrl] = useState<string | null>(null);
   const [linkForm, setLinkForm] = useState({
     studentId: "",
     guardianId: "",
@@ -274,15 +276,16 @@ export default function StudentsPage() {
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e: FormEvent) => {
             e.preventDefault();
+            if (!studentPhotoUrl) return;
             submit(
               () =>
                 api.createStudent({
                   ...studentForm,
                   gender: studentForm.gender || undefined,
-                  photoUrl: studentPhotoUrl ?? undefined,
+                  photoUrl: studentPhotoUrl,
                 }),
               () => {
-                setStudentForm({ studentCode: "", firstName: "", lastName: "", dateOfBirth: "", gender: "" });
+                setStudentForm({ firstName: "", lastName: "", dateOfBirth: "", gender: "" });
                 setStudentPhotoUrl(null);
                 setEditionLimitEdition(null);
                 students.mutate();
@@ -291,15 +294,6 @@ export default function StudentsPage() {
             );
           }}
         >
-          <div className="space-y-2">
-            <Label>Student code</Label>
-            <Input
-              required
-              className="w-28"
-              value={studentForm.studentCode}
-              onChange={(e) => setStudentForm((f) => ({ ...f, studentCode: e.target.value }))}
-            />
-          </div>
           <div className="space-y-2">
             <Label>First name</Label>
             <Input
@@ -334,10 +328,12 @@ export default function StudentsPage() {
             />
           </div>
           <div className="space-y-2">
-            <Label>Photo (optional)</Label>
+            <Label>Photo</Label>
             <PhotoInput value={studentPhotoUrl} onChange={setStudentPhotoUrl} />
           </div>
-          <Button type="submit">Add</Button>
+          <Button type="submit" disabled={!studentPhotoUrl}>
+            Add
+          </Button>
         </form>
         {editionLimitEdition ? <EditionUpgradeBanner edition={editionLimitEdition} /> : null}
       </EntityCard>
@@ -346,8 +342,18 @@ export default function StudentsPage() {
         title="Guardians"
         emptyLabel="No guardians yet."
         items={guardians.data}
-        renderItem={(g: { id: string; firstName: string; lastName: string; phone: string }) => (
-          <span id={`guardian-${g.id}`}>
+        renderItem={(g: {
+          id: string;
+          firstName: string;
+          lastName: string;
+          phone: string;
+          photoUrl: string | null;
+        }) => (
+          <span id={`guardian-${g.id}`} className="flex items-center gap-2">
+            {g.photoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element -- external/storage-backend URL
+              <img src={g.photoUrl} alt="" className="bg-muted size-6 rounded-full border object-cover" />
+            ) : null}
             {g.firstName} {g.lastName} <span className="text-muted-foreground">{g.phone}</span>
           </span>
         )}
@@ -356,10 +362,17 @@ export default function StudentsPage() {
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e: FormEvent) => {
             e.preventDefault();
+            if (!guardianPhotoUrl) return;
             submit(
-              () => api.createGuardian({ ...guardianForm, email: guardianForm.email || undefined }),
+              () =>
+                api.createGuardian({
+                  ...guardianForm,
+                  email: guardianForm.email || undefined,
+                  photoUrl: guardianPhotoUrl,
+                }),
               () => {
                 setGuardianForm({ firstName: "", lastName: "", phone: "", email: "" });
+                setGuardianPhotoUrl(null);
                 guardians.mutate();
               },
             );
@@ -397,7 +410,13 @@ export default function StudentsPage() {
               onChange={(e) => setGuardianForm((f) => ({ ...f, email: e.target.value }))}
             />
           </div>
-          <Button type="submit">Add</Button>
+          <div className="space-y-2">
+            <Label>Photo</Label>
+            <PhotoInput value={guardianPhotoUrl} onChange={setGuardianPhotoUrl} />
+          </div>
+          <Button type="submit" disabled={!guardianPhotoUrl}>
+            Add
+          </Button>
         </form>
 
         <Separator />
