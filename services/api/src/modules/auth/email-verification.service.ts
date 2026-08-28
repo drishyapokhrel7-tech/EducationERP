@@ -2,6 +2,7 @@ import { randomInt } from "crypto";
 import { BadRequestException, Injectable } from "@nestjs/common";
 import * as argon2 from "argon2";
 import { PrismaService } from "../../prisma/prisma.service";
+import { DeliveryProvider } from "../communication/delivery-provider";
 
 const TTL_MS = 10 * 60 * 1000; // 10 minutes — longer than Captcha's 2min
 // since the user has to read and re-type a code, not solve an image
@@ -10,14 +11,15 @@ const CODE_LENGTH = 6;
 
 /**
  * Self-verification for a newly-registered account's email address —
- * NOT proof of inbox ownership. This project has no real email
- * provider anywhere (see communication/delivery-provider.ts's own
- * "logged, no email provider configured" stub) and, matching the
- * standing "no external API as a hard dependency" precedent already
- * applied to AI/maps/CAPTCHA, doesn't add one here either: the code is
- * returned directly in the registration response and shown on-screen,
- * not emailed. The UI is explicit about this so it never reads as a
- * real security claim.
+ * still NOT proof of inbox ownership, even now that real email can be
+ * sent. The code is always returned directly in the registration
+ * response and shown on-screen as well — a deliberate fallback/dev
+ * convenience kept unchanged, not replaced, now that
+ * DeliveryProvider.sendEmail can additionally deliver it for real
+ * when EMAIL_DRIVER=gmail is configured (see that file). Without it
+ * configured, this is exactly the prior behavior: nothing is emailed,
+ * only shown on-screen. The UI is explicit about this either way, so
+ * it never reads as a real security claim.
  *
  * Otherwise the exact same shape as CaptchaService: Postgres-backed
  * (this project's serverless deployment path rules out in-memory),
@@ -25,7 +27,10 @@ const CODE_LENGTH = 6;
  */
 @Injectable()
 export class EmailVerificationService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly delivery: DeliveryProvider,
+  ) {}
 
   async generate(userId: string): Promise<{ codeId: string; code: string }> {
     const code = randomDigits(CODE_LENGTH);
@@ -33,6 +38,17 @@ export class EmailVerificationService {
     const row = await this.prisma.emailVerificationCode.create({
       data: { userId, codeHash, expiresAt: new Date(Date.now() + TTL_MS) },
     });
+    // One extra by-PK lookup, negligible cost — DeliveryProvider never
+    // throws (see its own comment), so a delivery hiccup can't break
+    // registration/resend.
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+    if (user) {
+      await this.delivery.sendEmail(
+        user.email,
+        "Verify your email",
+        `Your verification code is ${code}. It expires in 10 minutes.`,
+      );
+    }
     return { codeId: row.id, code };
   }
 

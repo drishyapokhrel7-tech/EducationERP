@@ -8,10 +8,15 @@ import { EmailVerificationService } from "./email-verification.service";
 import { PasswordResetService } from "./password-reset.service";
 import { JwtStrategy } from "../../common/auth/jwt.strategy";
 import { CaptchaModule } from "../captcha/captcha.module";
+import { CommunicationModule } from "../communication/communication.module";
 
 @Module({
   imports: [
     CaptchaModule,
+    // Exports DeliveryProvider — EmailVerificationService and
+    // PasswordResetService inject it to optionally send real email
+    // (see delivery-provider.ts).
+    CommunicationModule,
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],

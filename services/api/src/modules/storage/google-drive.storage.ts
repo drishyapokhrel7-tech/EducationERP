@@ -8,7 +8,8 @@ import { Readable } from "stream";
 // Third storage backend, alongside local disk and S3 (Phase 7h —
 // Documents & Certificates). One Google Drive account, connected
 // once via the OAuth refresh token obtained by
-// scripts/google-drive-get-refresh-token.js, stores every
+// scripts/google-get-refresh-token.js (the same token also covers
+// sending real email — see communication/delivery-provider.ts), stores every
 // organization's documents — files are named
 // "{organizationId}-{uuid}{ext}" for identifiability in the Drive UI
 // itself, since Drive has no real path-prefix concept the way S3's

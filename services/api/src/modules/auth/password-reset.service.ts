@@ -2,20 +2,21 @@ import { randomInt } from "crypto";
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import * as argon2 from "argon2";
 import { PrismaService } from "../../prisma/prisma.service";
+import { DeliveryProvider } from "../communication/delivery-provider";
 
 const TTL_MS = 10 * 60 * 1000; // 10 minutes — same as EmailVerificationCode
 const CODE_LENGTH = 6;
 
 /**
  * Same self-verification shape and honesty as EmailVerificationService:
- * no real email provider exists in this project, so the reset code is
- * returned directly in the response and shown on-screen rather than
- * emailed — matching the standing "no external API as a hard
- * dependency" precedent. This means the person requesting the reset
- * sees the code immediately without proving they own the account's
- * inbox, a real (and deliberate) trade-off given this project's
- * current constraints — the same one the user explicitly chose for
- * email verification.
+ * the reset code is always returned directly in the response and shown
+ * on-screen, whether or not real email is configured (see
+ * DeliveryProvider.sendEmail's EMAIL_DRIVER=gmail branch) — kept as a
+ * fallback/dev convenience, not replaced. This means the person
+ * requesting the reset sees the code immediately without proving they
+ * own the account's inbox, a real (and deliberate) trade-off given
+ * this project's on-screen-first design — the same one the user
+ * explicitly chose for email verification.
  *
  * A different trade-off from EmailVerificationService, though:
  * requestReset() throws NotFoundException for an identifier that
@@ -30,7 +31,10 @@ const CODE_LENGTH = 6;
  */
 @Injectable()
 export class PasswordResetService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly delivery: DeliveryProvider,
+  ) {}
 
   async requestReset(identifier: string): Promise<{ codeId: string; code: string }> {
     const user = await this.prisma.user.findFirst({
@@ -44,6 +48,13 @@ export class PasswordResetService {
     const row = await this.prisma.passwordResetCode.create({
       data: { userId: user.id, codeHash, expiresAt: new Date(Date.now() + TTL_MS) },
     });
+    // DeliveryProvider never throws (see its own comment) — a
+    // delivery hiccup can't turn a valid reset request into a 500.
+    await this.delivery.sendEmail(
+      user.email,
+      "Password reset code",
+      `Your password reset code is ${code}. It expires in 10 minutes.`,
+    );
     return { codeId: row.id, code };
   }
 

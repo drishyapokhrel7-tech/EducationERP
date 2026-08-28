@@ -8,5 +8,10 @@ import { NotificationsModule } from "../notifications/notifications.module";
   imports: [NotificationsModule],
   providers: [CommunicationService, DeliveryProvider],
   controllers: [CommunicationController],
+  // DeliveryProvider is also the seam AuthModule uses to send real
+  // verification/reset-code email (see delivery-provider.ts) — exported
+  // so AuthModule can inject it without duplicating the Gmail-sending
+  // logic.
+  exports: [DeliveryProvider],
 })
 export class CommunicationModule {}
