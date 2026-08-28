@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,15 +25,26 @@ export function CaptchaField({
 }) {
   const [svg, setSvg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // Guards against a stale fetch overwriting a newer one. Real, not
+  // theoretical: React's dev-mode double-invocation of this effect on
+  // mount (StrictMode) fires two /auth/captcha requests back to back
+  // — without this, whichever response happens to arrive LAST wins,
+  // and there's no guarantee that's the second (later-started) one.
+  // A rapid double-click on the manual refresh button below hits the
+  // exact same race. Bumped before every fetch; a response is only
+  // applied if it's still the most recent request in flight.
+  const requestIdRef = useRef(0);
 
   async function load() {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     try {
       const challenge = await api.getCaptcha();
+      if (requestIdRef.current !== requestId) return; // superseded by a newer request
       setSvg(challenge.svg);
       onChange({ captchaId: challenge.captchaId, captchaAnswer: "" });
     } finally {
-      setLoading(false);
+      if (requestIdRef.current === requestId) setLoading(false);
     }
   }
 
