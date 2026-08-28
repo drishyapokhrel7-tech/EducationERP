@@ -11589,4 +11589,86 @@ describe("Tenant isolation (e2e)", () => {
         .expect(400);
     }, 60000);
   });
+
+  describe("Forgot / reset password (main tenant login only, code shown on-screen)", () => {
+    it("resets a password with the returned code, rejects an unknown identifier/wrong/reused code, revokes existing sessions, and the old password stops working", async () => {
+      const suffix = `pwreset${run}`;
+      const email = `pwreset-admin-${suffix}@rls-e2e.test`;
+      const reg = await request(app.getHttpServer())
+        .post("/auth/register-organization")
+        .send({
+          organizationName: `Password Reset Test ${suffix}`,
+          slug: `pwreset-test-${suffix}`,
+          adminEmail: email,
+          adminFirstName: "Reset",
+          adminLastName: "Admin",
+          password: "OriginalPass123!",
+        })
+        .expect(201);
+      const originalRefreshToken: string = reg.body.refreshToken;
+
+      // Unknown identifier — no account, no code, honest 404 (see
+      // PasswordResetService's own comment on why this differs from a
+      // typical email-based flow's enumeration-safe generic response).
+      await request(app.getHttpServer())
+        .post("/auth/forgot-password")
+        .send({ identifier: `nobody-${suffix}@rls-e2e.test`, captchaId: "", captchaAnswer: "" })
+        .expect(404);
+
+      const forgot = await request(app.getHttpServer())
+        .post("/auth/forgot-password")
+        .send({ identifier: email, captchaId: "", captchaAnswer: "" })
+        .expect(201);
+      const { codeId, code } = forgot.body;
+      expect(codeId).toEqual(expect.any(String));
+      expect(code).toEqual(expect.any(String));
+
+      // Wrong code is rejected, and (single-use, same as every other
+      // code in this project) consumes the attempt — the original
+      // correct code no longer works either after a wrong guess.
+      await request(app.getHttpServer())
+        .post("/auth/reset-password")
+        .send({ codeId, code: "000000", newPassword: "NewPass456!" })
+        .expect(400);
+      await request(app.getHttpServer())
+        .post("/auth/reset-password")
+        .send({ codeId, code, newPassword: "NewPass456!" })
+        .expect(400);
+
+      // A fresh code actually resets the password.
+      const fresh = await request(app.getHttpServer())
+        .post("/auth/forgot-password")
+        .send({ identifier: email, captchaId: "", captchaAnswer: "" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post("/auth/reset-password")
+        .send({ codeId: fresh.body.codeId, code: fresh.body.code, newPassword: "NewPass456!" })
+        .expect(201)
+        .expect({ reset: true });
+
+      // Single-use — the same correct code can't be replayed.
+      await request(app.getHttpServer())
+        .post("/auth/reset-password")
+        .send({ codeId: fresh.body.codeId, code: fresh.body.code, newPassword: "AnotherPass789!" })
+        .expect(400);
+
+      // The old password no longer works…
+      await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: email, password: "OriginalPass123!" })
+        .expect(401);
+      // …but the new one does.
+      await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: email, password: "NewPass456!" })
+        .expect(201);
+
+      // The session that existed before the reset was revoked — its
+      // refresh token no longer works.
+      await request(app.getHttpServer())
+        .post("/auth/refresh")
+        .send({ refreshToken: originalRefreshToken })
+        .expect(401);
+    }, 60000);
+  });
 });

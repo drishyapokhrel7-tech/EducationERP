@@ -36,6 +36,14 @@ export interface EmailVerificationChallenge {
   code: string;
 }
 
+// Same "no real email provider, code shown on-screen" shape as
+// EmailVerificationChallenge — see PasswordResetService's own comment
+// for the full reasoning and its trade-offs.
+export interface PasswordResetChallenge {
+  codeId: string;
+  code: string;
+}
+
 // POST auth/me's shape — the JWT payload itself. SafeUser (the object
 // stored in the session) has no roles field, so the user-profile
 // popup fetches this separately to show "Role".

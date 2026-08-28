@@ -13,6 +13,7 @@ import { LoginDto } from "./dto/login.dto";
 import { JwtPayload } from "../../common/auth/jwt-payload";
 import { CaptchaService } from "../captcha/captcha.service";
 import { EmailVerificationService } from "./email-verification.service";
+import { PasswordResetService } from "./password-reset.service";
 
 const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
@@ -30,6 +31,7 @@ export class AuthService {
     private readonly config: ConfigService,
     private readonly captcha: CaptchaService,
     private readonly emailVerification: EmailVerificationService,
+    private readonly passwordReset: PasswordResetService,
   ) {}
 
   async registerOrganization(dto: RegisterOrganizationDto) {
@@ -102,6 +104,18 @@ export class AuthService {
 
   async resendVerificationCode(userId: string) {
     return this.emailVerification.generate(userId);
+  }
+
+  // Unauthenticated by nature (the whole point is the user is locked
+  // out) — captcha-gated the same way login is, since this is also an
+  // unauthenticated endpoint that looks up an account by identifier.
+  async forgotPassword(identifier: string, captchaId: string | undefined, captchaAnswer: string | undefined) {
+    await this.captcha.requireValid(captchaId, captchaAnswer);
+    return this.passwordReset.requestReset(identifier);
+  }
+
+  async resetPassword(codeId: string | undefined, code: string | undefined, newPassword: string) {
+    await this.passwordReset.resetPassword(codeId, code, newPassword);
   }
 
   async login(dto: LoginDto, meta: { ipAddress?: string; userAgent?: string }) {

@@ -441,6 +441,7 @@ model User {
   sessions                   Session[]
   loginEvents                LoginEvent[]
   emailVerificationCodes     EmailVerificationCode[]
+  passwordResetCodes         PasswordResetCode[]
   auditLogs                  AuditLog[]
   employee                   Employee?
   student                    Student?
@@ -578,6 +579,30 @@ model EmailVerificationCode {
 
   @@index([userId])
   @@map("email_verification_codes")
+}
+
+// Deliberately a separate table from EmailVerificationCode, not a
+// shared "purpose" column on one generic OTP table — same "one
+// concern, one table" precedent as Captcha vs this vs that: a leak or
+// bug in one code type can never accidentally become valid for
+// another. Same shape/lifecycle (Postgres-backed, single-use,
+// expiring, argon2-hashed) — see PasswordResetService's own comment
+// for why the code is shown on-screen here too, not emailed. Not
+// RLS-protected — same reasoning as Session/LoginEvent/
+// EmailVerificationCode: this is reached before a tenant context is
+// meaningful (the user isn't logged in yet).
+model PasswordResetCode {
+  id         String    @id @default(uuid())
+  userId     String
+  codeHash   String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("password_reset_codes")
 }
 
 model LoginEvent {

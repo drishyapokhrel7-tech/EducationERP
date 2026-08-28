@@ -5,6 +5,8 @@ import { RegisterOrganizationDto } from "./dto/register-organization.dto";
 import { LoginDto } from "./dto/login.dto";
 import { RefreshDto } from "./dto/refresh.dto";
 import { VerifyEmailDto } from "./dto/verify-email.dto";
+import { ForgotPasswordDto } from "./dto/forgot-password.dto";
+import { ResetPasswordDto } from "./dto/reset-password.dto";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtPayload } from "../../common/auth/jwt-payload";
@@ -64,5 +66,19 @@ export class AuthController {
   @Post("resend-verification-code")
   resendVerificationCode(@CurrentUser() user: JwtPayload) {
     return this.authService.resendVerificationCode(user.sub);
+  }
+
+  // No auth guard — the whole point is the user is locked out.
+  // Main tenant login only (matches the login page's own scope) —
+  // student/staff self-service and /platform/login are unaffected.
+  @Post("forgot-password")
+  forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(dto.identifier, dto.captchaId, dto.captchaAnswer);
+  }
+
+  @Post("reset-password")
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    await this.authService.resetPassword(dto.codeId, dto.code, dto.newPassword);
+    return { reset: true };
   }
 }

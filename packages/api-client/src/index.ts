@@ -229,6 +229,7 @@ import type {
   EmployeePicker,
   CaptchaChallenge,
   EmailVerificationChallenge,
+  PasswordResetChallenge,
   CurrentUserInfo,
   EditionStatus,
   Edition,
@@ -455,6 +456,18 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
     // No auth needed — happens before login. Reused by both the
     // tenant login form and the platform-admin login form.
     getCaptcha: () => request<CaptchaChallenge>("/auth/captcha"),
+
+    // Unauthenticated by nature — main tenant login only.
+    forgotPassword: (input: { identifier: string; captchaId: string; captchaAnswer: string }) =>
+      request<PasswordResetChallenge>("/auth/forgot-password", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    resetPassword: (input: { codeId: string; code: string; newPassword: string }) =>
+      request<{ reset: boolean }>("/auth/reset-password", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
 
     refresh: (refreshToken: string) =>
       request<AuthTokens>("/auth/refresh", {
