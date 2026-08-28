@@ -84,8 +84,8 @@ export default function CommunicationPage() {
         <h1 className="text-2xl font-semibold">Communication</h1>
         <p className="text-muted-foreground text-sm">
           Org-wide broadcast messaging across in-app, email, SMS, and push. Course announcements live under Academics/
-          Syllabus; this is for admin-composed messages to staff, students, or guardians. Email/SMS/push delivery is a
-          log-only stub until a real provider is wired in — every send is recorded, nothing leaves this system yet.
+          Syllabus; this is for admin-composed messages to staff, students, or guardians. Email delivers for real
+          once your organization's email is configured; SMS and push are simulated only until a provider is set up.
         </p>
       </div>
 

@@ -32,8 +32,15 @@ async function submitAction(action: () => Promise<unknown>, onSuccess: () => voi
   }
 }
 
-const STATUS_FILTERS: { value: LeaveRequestStatus | ""; label: string }[] = [
-  { value: "", label: "All" },
+// "ALL" rather than "" — NativeSelect always renders its own
+// `<option value="" disabled>` placeholder first, so an "All" entry
+// that also used "" would collide with it (two options sharing one
+// value, with the browser resolving `select.value = ""` back to
+// whichever one comes first in the DOM — the disabled placeholder,
+// making "All" permanently unselectable once something else had been
+// picked). A distinct sentinel value sidesteps that entirely.
+const STATUS_FILTERS: { value: LeaveRequestStatus | "ALL"; label: string }[] = [
+  { value: "ALL", label: "All" },
   { value: "PENDING", label: "Pending" },
   { value: "APPROVED", label: "Approved" },
   { value: "REJECTED", label: "Rejected" },
@@ -66,9 +73,9 @@ export default function LeavePage() {
   const [allocateForm, setAllocateForm] = useState({ leaveTypeId: "", year: String(new Date().getFullYear()), allocatedDays: "" });
 
   // ── Requests ───────────────────────────────────────────────────────
-  const [statusFilter, setStatusFilter] = useState<LeaveRequestStatus | "">("");
+  const [statusFilter, setStatusFilter] = useState<LeaveRequestStatus | "ALL">("ALL");
   const requests = useSWR(["leave-requests", statusFilter], () =>
-    api.listLeaveRequests(statusFilter ? { status: statusFilter } : {}),
+    api.listLeaveRequests(statusFilter === "ALL" ? {} : { status: statusFilter }),
   );
   const [requestForm, setRequestForm] = useState({ employeeId: "", leaveTypeId: "", startDate: "", endDate: "", reason: "" });
 
@@ -77,7 +84,7 @@ export default function LeavePage() {
       <div>
         <h1 className="text-2xl font-semibold">Leave</h1>
         <p className="text-muted-foreground text-sm">
-          Leave types, balances, and requests for staff. Payroll is a separate, upcoming slice.
+          Leave types, balances, and requests for staff. Unpaid leave here is reflected automatically in Payroll.
         </p>
       </div>
 
@@ -321,12 +328,14 @@ export default function LeavePage() {
         <CardContent className="space-y-3">
           <NativeSelect
             className="w-40"
-            placeholder="All"
+            placeholder="Select status"
             value={statusFilter}
-            onChange={(v) => setStatusFilter(v as LeaveRequestStatus | "")}
-            options={STATUS_FILTERS.filter((s) => s.value).map((s) => ({ value: s.value, label: s.label }))}
+            onChange={(v) => setStatusFilter(v as LeaveRequestStatus | "ALL")}
+            options={STATUS_FILTERS.map((s) => ({ value: s.value, label: s.label }))}
           />
-          {!requests.data || requests.data.length === 0 ? (
+          {requests.data === undefined ? (
+            <p className="text-muted-foreground text-sm">Loading…</p>
+          ) : requests.data.length === 0 ? (
             <p className="text-muted-foreground text-sm">No requests.</p>
           ) : (
             <ul className="divide-y text-sm">

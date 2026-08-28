@@ -120,8 +120,8 @@ export default function CamerasPage() {
       <div>
         <h1 className="text-2xl font-semibold">Cameras</h1>
         <p className="text-muted-foreground text-sm">
-          Phase 6 slice 6c — register a camera, then simulate a capture by uploading a photo (any image posted here
-          exercises the same capture→match pipeline a real camera adapter will later use).
+          Register a camera, then test it by uploading a photo — this runs through the same match
+          pipeline a real camera capture would use.
         </p>
       </div>
 

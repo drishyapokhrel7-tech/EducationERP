@@ -109,8 +109,7 @@ export default function DashboardPage() {
       <div>
         <h1 className="text-2xl font-semibold">{organization?.name ?? "Loading…"}</h1>
         <p className="text-muted-foreground text-sm">
-          Phase 1 foundation — institutions below are scoped to your organization by both the API
-          and Postgres row-level security.
+          Your organization's data is private — nothing here is visible to any other school on this platform.
         </p>
       </div>
 

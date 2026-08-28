@@ -61,8 +61,8 @@ export default function BiometricPolicyPage() {
       <div>
         <h1 className="text-2xl font-semibold">Biometric Policy</h1>
         <p className="text-muted-foreground text-sm">
-          Phase 6 foundation — no face capture or matching exists yet. This is the org-wide enable switch and
-          per-person consent record that has to exist before any of that is built.
+          The organization-wide switch for face-based attendance and its per-person consent record —
+          turn it on here before enrolling anyone under Cameras or Attendance.
         </p>
       </div>
 

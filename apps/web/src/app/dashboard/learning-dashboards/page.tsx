@@ -37,8 +37,7 @@ export default function LearningDashboardsPage() {
         <h1 className="text-2xl font-semibold">Learning Dashboards</h1>
         <p className="text-muted-foreground text-sm">
           Aggregate views over timetable, attendance, syllabus progress, assignments and knowledge
-          checks — an admin-facing look at what a teacher, student or parent would see once their
-          own portals exist.
+          checks — an admin-facing look at what a teacher, student, or parent sees in their own portal.
         </p>
       </div>
 

@@ -153,7 +153,7 @@ export default function LibraryDashboardPage() {
       <div>
         <h1 className="text-2xl font-semibold">Library</h1>
         <p className="text-muted-foreground text-sm">
-          Catalog, circulation, fines, reservations, and reports from the integrated Library System (~/librarysystem).
+          Catalog, circulation, fines, reservations, and reports from the connected Library System.
         </p>
       </div>
 

@@ -70,8 +70,7 @@ export default function ExamSetupPage() {
       <div>
         <h1 className="text-2xl font-semibold">Exam Setup</h1>
         <p className="text-muted-foreground text-sm">
-          Phase 4 foundation — exam types, grading schemes and question banks that exams (a later
-          slice) will draw on.
+          Exam types, grading schemes, and question banks — set these up first, then create exams under Exams.
         </p>
       </div>
 

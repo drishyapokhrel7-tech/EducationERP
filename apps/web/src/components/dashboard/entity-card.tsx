@@ -32,7 +32,15 @@ export function EntityCard({
         {titleExtra}
       </CardHeader>
       <CardContent className="space-y-4">
-        {!items || items.length === 0 ? (
+        {items === undefined ? (
+          // Distinct from "genuinely empty" below — items is undefined
+          // only while the initial fetch is still in flight (SWR's own
+          // convention), so a still-loading list never claims to be
+          // empty. Matters most on this project's own documented
+          // ambient DB latency, where a real fetch can visibly take a
+          // beat.
+          <p className="text-muted-foreground text-sm">Loading…</p>
+        ) : items.length === 0 ? (
           <p className="text-muted-foreground text-sm">{emptyLabel}</p>
         ) : (
           <ul className="divide-y">
