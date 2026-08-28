@@ -576,6 +576,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: "Hopper",
           email: "grace@staff-e2e.test",
           dateOfJoining: "2026-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
       expect(employee.body.organizationId).toBe(orgAId);
@@ -639,6 +640,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: "Employee",
           email: "sneaky@staff-e2e.test",
           dateOfJoining: "2026-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(404);
     });
@@ -808,14 +810,14 @@ describe("Tenant isolation (e2e)", () => {
       const student = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: "STU-001", firstName: "Ada", lastName: "Lovelace", dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Ada", lastName: "Lovelace", dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       expect(student.body.organizationId).toBe(orgAId);
 
       const guardian = await request(app.getHttpServer())
         .post("/organizations/me/guardians")
         .set(...auth(tokenA))
-        .send({ firstName: "Grace", lastName: "Hopper", phone: "555-0100" })
+        .send({ firstName: "Grace", lastName: "Hopper", phone: "555-0100", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
 
       await request(app.getHttpServer())
@@ -858,7 +860,7 @@ describe("Tenant isolation (e2e)", () => {
       const studentB = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenB))
-        .send({ studentCode: "SNEAK-001", firstName: "Sneaky", lastName: "Student", dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Sneaky", lastName: "Student", dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
 
       await request(app.getHttpServer())
@@ -870,7 +872,7 @@ describe("Tenant isolation (e2e)", () => {
       const guardianA = await request(app.getHttpServer())
         .post("/organizations/me/guardians")
         .set(...auth(tokenA))
-        .send({ firstName: "Guard", lastName: "Ian", phone: "555-0199" })
+        .send({ firstName: "Guard", lastName: "Ian", phone: "555-0199", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
 
       await request(app.getHttpServer())
@@ -1211,6 +1213,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: `Teacher${suffix}`,
           email: `ttteacher-${suffix}-${run}@rls-e2e.test`,
           dateOfJoining: "2026-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
       const subject = await request(app.getHttpServer())
@@ -1390,6 +1393,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: `Teacher${suffix}`,
           email: `atteacher-${suffix}-${run}@rls-e2e.test`,
           dateOfJoining: "2026-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
       const subject = await request(app.getHttpServer())
@@ -1424,10 +1428,10 @@ describe("Tenant isolation (e2e)", () => {
           .post("/organizations/me/students")
           .set(...auth(token))
           .send({
-            studentCode: `AT-STU-${suffix}-${n}`,
             firstName: `Student${n}`,
             lastName: suffix,
             dateOfBirth: "2015-01-01",
+            photoUrl: "https://example.com/photo.jpg",
           })
           .expect(201);
         await request(app.getHttpServer())
@@ -1668,6 +1672,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: `Teacher${suffix}`,
           email: `syteacher-${suffix}-${run}@rls-e2e.test`,
           dateOfJoining: "2026-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
       const assignment = await request(app.getHttpServer())
@@ -1923,6 +1928,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: `Teacher${suffix}`,
           email: `csteacher-${suffix}-${run}@rls-e2e.test`,
           dateOfJoining: "2026-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
       const room = await request(app.getHttpServer())
@@ -2124,6 +2130,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: `Teacher${suffix}`,
           email: `asteacher-${suffix}-${run}@rls-e2e.test`,
           dateOfJoining: "2026-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
       const assignment = await request(app.getHttpServer())
@@ -2134,7 +2141,7 @@ describe("Tenant isolation (e2e)", () => {
       const student = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(token))
-        .send({ studentCode: `AS-STU-${suffix}`, firstName: "Assign", lastName: `Student${suffix}`, dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Assign", lastName: `Student${suffix}`, dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
 
       return { teachingAssignmentId: assignment.body.id, studentId: student.body.id };
@@ -2389,6 +2396,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: `Teacher${suffix}`,
           email: `dateacher-${suffix}-${run}@rls-e2e.test`,
           dateOfJoining: "2026-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
       const teachingAssignment = await request(app.getHttpServer())
@@ -2415,7 +2423,7 @@ describe("Tenant isolation (e2e)", () => {
       const student = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(token))
-        .send({ studentCode: `DA-STU-${suffix}`, firstName: "Dash", lastName: `Student${suffix}`, dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Dash", lastName: `Student${suffix}`, dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       await request(app.getHttpServer())
         .post(`/organizations/me/students/${student.body.id}/enrollments`)
@@ -2426,7 +2434,7 @@ describe("Tenant isolation (e2e)", () => {
       const guardian = await request(app.getHttpServer())
         .post("/organizations/me/guardians")
         .set(...auth(token))
-        .send({ firstName: "Dash", lastName: `Guardian${suffix}`, phone: "555-0100" })
+        .send({ firstName: "Dash", lastName: `Guardian${suffix}`, phone: "555-0100", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       await request(app.getHttpServer())
         .post(`/organizations/me/students/${student.body.id}/guardians`)
@@ -2524,7 +2532,7 @@ describe("Tenant isolation (e2e)", () => {
       const otherStudent = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: "DA-STU-OTHER", firstName: "Other", lastName: "Student", dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Other", lastName: "Student", dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
 
       const teacher = await request(app.getHttpServer())
@@ -3064,12 +3072,12 @@ describe("Tenant isolation (e2e)", () => {
       const studentA = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(token))
-        .send({ studentCode: `EVSTU-A-${suffix}`, firstName: "Aarav", lastName: "Sharma", dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Aarav", lastName: "Sharma", dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       const studentB = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(token))
-        .send({ studentCode: `EVSTU-B-${suffix}`, firstName: "Sita", lastName: "Gurung", dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Sita", lastName: "Gurung", dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
 
       return { examSubjectId: examSubject.body.id, studentAId: studentA.body.id, studentBId: studentB.body.id };
@@ -3294,12 +3302,12 @@ describe("Tenant isolation (e2e)", () => {
       const student = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(token))
-        .send({ studentCode: `EGSTU-${suffix}`, firstName: "Aarav", lastName: "Sharma", dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Aarav", lastName: "Sharma", dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       const otherStudent = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(token))
-        .send({ studentCode: `EGSTU2-${suffix}`, firstName: "Sita", lastName: "Gurung", dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Sita", lastName: "Gurung", dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
 
       return {
@@ -3455,12 +3463,12 @@ describe("Tenant isolation (e2e)", () => {
       const studentA = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: `PORTAL-A-${run}`, firstName: "Aarav", lastName: "Sharma", dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Aarav", lastName: "Sharma", dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       const studentB = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: `PORTAL-B-${run}`, firstName: "Sita", lastName: "Gurung", dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Sita", lastName: "Gurung", dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
 
       const loginA = await request(app.getHttpServer())
@@ -3468,7 +3476,7 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(tokenA))
         .send({ password: "StudentPass123" })
         .expect(201);
-      expect(loginA.body.username).toBe(`${orgASlug}.PORTAL-A-${run}`);
+      expect(loginA.body.username).toBe(`${orgASlug}.${studentA.body.studentCode}`);
       expect(loginA.body).not.toHaveProperty("passwordHash");
 
       // A student can't get a second login.
@@ -3521,7 +3529,7 @@ describe("Tenant isolation (e2e)", () => {
       const student = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: `PORTAL-X-${run}`, firstName: "Rohan", lastName: "Thapa", dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Rohan", lastName: "Thapa", dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
 
       await request(app.getHttpServer())
@@ -3671,12 +3679,12 @@ describe("Tenant isolation (e2e)", () => {
       const studentA = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(token))
-        .send({ studentCode: `OE-A-${suffix}`, firstName: "Aarav", lastName: "Sharma", dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Aarav", lastName: "Sharma", dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       const studentB = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(token))
-        .send({ studentCode: `OE-B-${suffix}`, firstName: "Sita", lastName: "Gurung", dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Sita", lastName: "Gurung", dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
 
       const loginA = await request(app.getHttpServer())
@@ -3865,7 +3873,7 @@ describe("Tenant isolation (e2e)", () => {
       const student = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: `BIO-STU-${run}`, firstName: "Bina", lastName: "Rai", dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Bina", lastName: "Rai", dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
 
       // No consent can be recorded while the org hasn't enabled biometrics.
@@ -3904,6 +3912,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: "Shrestha",
           email: `bikash-${run}@bio-e2e.test`,
           dateOfJoining: "2026-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
 
@@ -3969,7 +3978,7 @@ describe("Tenant isolation (e2e)", () => {
       const studentA = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: `BIO-X-${run}`, firstName: "Rohan", lastName: "Thapa", dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Rohan", lastName: "Thapa", dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       const enrollment = await request(app.getHttpServer())
         .post("/organizations/me/biometric/enrollments")
@@ -4020,7 +4029,7 @@ describe("Tenant isolation (e2e)", () => {
       const student = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: `CAM-STU-${run}`, firstName: "Cami", lastName: "Rai", dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Cami", lastName: "Rai", dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       const enrollment = await request(app.getHttpServer())
         .post("/organizations/me/biometric/enrollments")
@@ -4231,6 +4240,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: `Teacher${suffix}`,
           email: `rcteacher-${suffix}-${run}@rls-e2e.test`,
           dateOfJoining: "2020-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
       const subject = await request(app.getHttpServer())
@@ -4282,7 +4292,7 @@ describe("Tenant isolation (e2e)", () => {
       const student1 = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: `REC-STU1-${run}`, firstName: "Reko", lastName: "Nissi", dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Reko", lastName: "Nissi", dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       await request(app.getHttpServer())
         .post(`/organizations/me/students/${student1.body.id}/enrollments`)
@@ -4354,7 +4364,7 @@ describe("Tenant isolation (e2e)", () => {
       const student2 = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: `REC-STU2-${run}`, firstName: "Reko", lastName: "Dossi", dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Reko", lastName: "Dossi", dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       await request(app.getHttpServer())
         .post(`/organizations/me/students/${student2.body.id}/enrollments`)
@@ -4535,10 +4545,10 @@ describe("Tenant isolation (e2e)", () => {
           .post("/organizations/me/students")
           .set(...auth(token))
           .send({
-            studentCode: `FN-STU-${suffix}-${n}`,
             firstName: `Fin${n}`,
             lastName: suffix,
             dateOfBirth: "2015-01-01",
+            photoUrl: "https://example.com/photo.jpg",
           })
           .expect(201);
         const enrollment = await request(app.getHttpServer())
@@ -4849,7 +4859,7 @@ describe("Tenant isolation (e2e)", () => {
       const student = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(token))
-        .send({ studentCode: `ES-STU-${suffix}`, firstName: "Esewa", lastName: suffix, dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Esewa", lastName: suffix, dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       const enrollment = await request(app.getHttpServer())
         .post(`/organizations/me/students/${student.body.id}/enrollments`)
@@ -5056,7 +5066,7 @@ describe("Tenant isolation (e2e)", () => {
       const student = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: `RBAC-STU-${run}`, firstName: "Rbac", lastName: "Test", dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Rbac", lastName: "Test", dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       const login = await request(app.getHttpServer())
         .post(`/organizations/me/students/${student.body.id}/create-login`)
@@ -5200,6 +5210,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: suffix,
           email: `leave-${suffix}@staff-e2e.test`,
           dateOfJoining: "2026-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
       return employee.body.id as string;
@@ -5369,6 +5380,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: suffix,
           email: `payroll-${suffix}@staff-e2e.test`,
           dateOfJoining: "2026-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
       return employee.body.id as string;
@@ -5596,6 +5608,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: suffix,
           email: `transport-${suffix}@staff-e2e.test`,
           dateOfJoining: "2026-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
       return employee.body.id as string;
@@ -5647,7 +5660,7 @@ describe("Tenant isolation (e2e)", () => {
       const student = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(token))
-        .send({ studentCode: `TR-STU-${suffix}`, firstName: "Transport", lastName: suffix, dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Transport", lastName: suffix, dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       const enrollment = await request(app.getHttpServer())
         .post(`/organizations/me/students/${student.body.id}/enrollments`)
@@ -5803,6 +5816,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: suffix,
           email: `driver-${suffix}@staff-e2e.test`,
           dateOfJoining: "2026-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
       return employee.body.id as string;
@@ -6022,6 +6036,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: suffix,
           email: `teacher-${suffix}-${run}@rls-e2e.test`,
           dateOfJoining: "2026-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
       return employee.body.id as string;
@@ -6234,6 +6249,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: "Teacher",
           email: `mod-teacher-${suffix}-${run}@rls-e2e.test`,
           dateOfJoining: "2026-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
       const otherTeacher = await request(app.getHttpServer())
@@ -6247,6 +6263,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: "Teacher",
           email: `mod-teacher2-${suffix}-${run}@rls-e2e.test`,
           dateOfJoining: "2026-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
 
@@ -6323,7 +6340,7 @@ describe("Tenant isolation (e2e)", () => {
       const student = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: `MOD-STU-${suffix}`, firstName: "Module", lastName: "Student", dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Module", lastName: "Student", dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       await request(app.getHttpServer())
         .post(`/organizations/me/students/${student.body.id}/enrollments`)
@@ -6387,7 +6404,7 @@ describe("Tenant isolation (e2e)", () => {
       const otherStudent = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: `MOD-STU2-${suffix}`, firstName: "Outside", lastName: "Student", dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Outside", lastName: "Student", dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       const otherStudentLogin = await request(app.getHttpServer())
         .post(`/organizations/me/students/${otherStudent.body.id}/create-login`)
@@ -6488,6 +6505,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: "Teacher",
           email: `as-teacher-${suffix}-${run}@rls-e2e.test`,
           dateOfJoining: "2026-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
       const otherTeacher = await request(app.getHttpServer())
@@ -6501,6 +6519,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: "AssignTeacher",
           email: `as-teacher2-${suffix}-${run}@rls-e2e.test`,
           dateOfJoining: "2026-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
 
@@ -6556,7 +6575,7 @@ describe("Tenant isolation (e2e)", () => {
       const student = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: `AS-STU-${suffix}`, firstName: "Assign", lastName: "Student", dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Assign", lastName: "Student", dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       await request(app.getHttpServer())
         .post(`/organizations/me/students/${student.body.id}/enrollments`)
@@ -6577,7 +6596,7 @@ describe("Tenant isolation (e2e)", () => {
       const otherStudent = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: `AS-STU2-${suffix}`, firstName: "Outside", lastName: "AssignStudent", dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Outside", lastName: "AssignStudent", dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       const otherStudentLogin = await request(app.getHttpServer())
         .post(`/organizations/me/students/${otherStudent.body.id}/create-login`)
@@ -6762,6 +6781,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: "Teacher",
           email: `qz-teacher-${suffix}-${run}@rls-e2e.test`,
           dateOfJoining: "2026-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
       const otherTeacher = await request(app.getHttpServer())
@@ -6775,6 +6795,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: "QuizTeacher",
           email: `qz-teacher2-${suffix}-${run}@rls-e2e.test`,
           dateOfJoining: "2026-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
 
@@ -6855,7 +6876,7 @@ describe("Tenant isolation (e2e)", () => {
       const student = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: `QZ-STU-${suffix}`, firstName: "Quiz", lastName: "Student", dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Quiz", lastName: "Student", dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       await request(app.getHttpServer())
         .post(`/organizations/me/students/${student.body.id}/enrollments`)
@@ -6876,7 +6897,7 @@ describe("Tenant isolation (e2e)", () => {
       const otherStudent = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: `QZ-STU2-${suffix}`, firstName: "Outside", lastName: "QuizStudent", dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Outside", lastName: "QuizStudent", dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       const otherStudentLogin = await request(app.getHttpServer())
         .post(`/organizations/me/students/${otherStudent.body.id}/create-login`)
@@ -7096,6 +7117,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: "Teacher",
           email: `an-teacher-${suffix}-${run}@rls-e2e.test`,
           dateOfJoining: "2026-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
       const otherTeacher = await request(app.getHttpServer())
@@ -7109,6 +7131,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: "AnnounceTeacher",
           email: `an-teacher2-${suffix}-${run}@rls-e2e.test`,
           dateOfJoining: "2026-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
 
@@ -7158,7 +7181,7 @@ describe("Tenant isolation (e2e)", () => {
       const student = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: `AN-STU-${suffix}`, firstName: "Announce", lastName: "Student", dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Announce", lastName: "Student", dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       await request(app.getHttpServer())
         .post(`/organizations/me/students/${student.body.id}/enrollments`)
@@ -7179,7 +7202,7 @@ describe("Tenant isolation (e2e)", () => {
       const otherStudent = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: `AN-STU2-${suffix}`, firstName: "Outside", lastName: "AnnounceStudent", dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Outside", lastName: "AnnounceStudent", dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       const otherStudentLogin = await request(app.getHttpServer())
         .post(`/organizations/me/students/${otherStudent.body.id}/create-login`)
@@ -7327,6 +7350,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: "Teacher",
           email: `di-teacher-${suffix}-${run}@rls-e2e.test`,
           dateOfJoining: "2026-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
       const otherTeacher = await request(app.getHttpServer())
@@ -7340,6 +7364,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: "DiscussTeacher",
           email: `di-teacher2-${suffix}-${run}@rls-e2e.test`,
           dateOfJoining: "2026-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
 
@@ -7406,7 +7431,7 @@ describe("Tenant isolation (e2e)", () => {
       const student = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: `DI-STU-${suffix}`, firstName: "Discuss", lastName: "Student", dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Discuss", lastName: "Student", dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       await request(app.getHttpServer())
         .post(`/organizations/me/students/${student.body.id}/enrollments`)
@@ -7427,7 +7452,7 @@ describe("Tenant isolation (e2e)", () => {
       const otherStudent = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: `DI-STU2-${suffix}`, firstName: "Outside", lastName: "DiscussStudent", dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Outside", lastName: "DiscussStudent", dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       const otherStudentLogin = await request(app.getHttpServer())
         .post(`/organizations/me/students/${otherStudent.body.id}/create-login`)
@@ -7609,6 +7634,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: "Teacher",
           email: `gb-teacher-${suffix}-${run}@rls-e2e.test`,
           dateOfJoining: "2026-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
       const otherTeacher = await request(app.getHttpServer())
@@ -7622,6 +7648,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: "GradebookTeacher",
           email: `gb-teacher2-${suffix}-${run}@rls-e2e.test`,
           dateOfJoining: "2026-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
 
@@ -7657,7 +7684,7 @@ describe("Tenant isolation (e2e)", () => {
       const student1 = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: `GB-STU1-${suffix}`, firstName: "Aabha", lastName: "GradebookStudent", dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Aabha", lastName: "GradebookStudent", dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       await request(app.getHttpServer())
         .post(`/organizations/me/students/${student1.body.id}/enrollments`)
@@ -7667,7 +7694,7 @@ describe("Tenant isolation (e2e)", () => {
       const student2 = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: `GB-STU2-${suffix}`, firstName: "Zubin", lastName: "GradebookStudent", dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Zubin", lastName: "GradebookStudent", dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       await request(app.getHttpServer())
         .post(`/organizations/me/students/${student2.body.id}/enrollments`)
@@ -7677,7 +7704,7 @@ describe("Tenant isolation (e2e)", () => {
       const outsideStudent = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: `GB-STU3-${suffix}`, firstName: "Outside", lastName: "GradebookStudent", dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Outside", lastName: "GradebookStudent", dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
 
       // A different teacher can't read the roster of someone else's
@@ -7779,6 +7806,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: "Teacher",
           email: `nt-teacher-${suffix}-${run}@rls-e2e.test`,
           dateOfJoining: "2026-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
       const teachingAssignment = await request(app.getHttpServer())
@@ -7803,7 +7831,7 @@ describe("Tenant isolation (e2e)", () => {
       const student1 = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: `NT-STU1-${suffix}`, firstName: "Notify", lastName: "StudentOne", dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Notify", lastName: "StudentOne", dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       await request(app.getHttpServer())
         .post(`/organizations/me/students/${student1.body.id}/enrollments`)
@@ -7824,7 +7852,7 @@ describe("Tenant isolation (e2e)", () => {
       const student2 = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: `NT-STU2-${suffix}`, firstName: "Notify", lastName: "StudentTwo", dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Notify", lastName: "StudentTwo", dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       await request(app.getHttpServer())
         .post(`/organizations/me/students/${student2.body.id}/enrollments`)
@@ -7845,7 +7873,7 @@ describe("Tenant isolation (e2e)", () => {
       const outsideStudent = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: `NT-STU3-${suffix}`, firstName: "Outside", lastName: "NotifyStudent", dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Outside", lastName: "NotifyStudent", dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       const outsideStudentLogin = await request(app.getHttpServer())
         .post(`/organizations/me/students/${outsideStudent.body.id}/create-login`)
@@ -8173,6 +8201,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: "Teacher",
           email: `fs-teacher-${suffix}-${run}@rls-e2e.test`,
           dateOfJoining: "2026-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
       const teachingAssignment = await request(app.getHttpServer())
@@ -8254,7 +8283,7 @@ describe("Tenant isolation (e2e)", () => {
       const student = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(token))
-        .send({ studentCode: `HS-STU-${suffix}`, firstName: "Hostel", lastName: suffix, dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Hostel", lastName: suffix, dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       const enrollment = await request(app.getHttpServer())
         .post(`/organizations/me/students/${student.body.id}/enrollments`)
@@ -8536,6 +8565,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: suffix,
           email: `inventory-${suffix}@staff-e2e.test`,
           dateOfJoining: "2026-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
       return employee.body.id as string;
@@ -8788,6 +8818,7 @@ describe("Tenant isolation (e2e)", () => {
           email: `comms-${suffix}@staff-e2e.test`,
           phone: "9800000000",
           dateOfJoining: "2026-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
       const login = await request(app.getHttpServer())
@@ -8971,6 +9002,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: suffix,
           email: `docs-${suffix}@staff-e2e.test`,
           dateOfJoining: "2026-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
       return employee.body.id as string;
@@ -8982,7 +9014,7 @@ describe("Tenant isolation (e2e)", () => {
       const student = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: `DOC-STU-${suffix}`, firstName: "Rita", lastName: suffix, dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Rita", lastName: suffix, dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       const employeeId = await buildEmployee(tokenA, suffix);
 
@@ -9124,7 +9156,7 @@ describe("Tenant isolation (e2e)", () => {
       const student2 = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: `DOC-STU2-${suffix}`, firstName: "Second", lastName: suffix, dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Second", lastName: suffix, dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       const login2 = await request(app.getHttpServer())
         .post(`/organizations/me/students/${student2.body.id}/create-login`)
@@ -9177,7 +9209,7 @@ describe("Tenant isolation (e2e)", () => {
       const activeStudent = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: `ALM-ACTIVE-${suffix}`, firstName: "Active", lastName: suffix, dateOfBirth: "2000-01-01" })
+        .send({ firstName: "Active", lastName: suffix, dateOfBirth: "2000-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
 
       // A profile can't be created for a student who hasn't graduated.
@@ -9190,7 +9222,7 @@ describe("Tenant isolation (e2e)", () => {
       const student = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: `ALM-STU-${suffix}`, firstName: "Grad", lastName: suffix, dateOfBirth: "2000-01-01" })
+        .send({ firstName: "Grad", lastName: suffix, dateOfBirth: "2000-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       await request(app.getHttpServer())
         .put(`/organizations/me/students/${student.body.id}/status`)
@@ -9375,7 +9407,7 @@ describe("Tenant isolation (e2e)", () => {
       const mentorStudent = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: `ALME-MENTOR-${suffix}`, firstName: "Mentor", lastName: suffix, dateOfBirth: "1999-01-01" })
+        .send({ firstName: "Mentor", lastName: suffix, dateOfBirth: "1999-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       await request(app.getHttpServer())
         .put(`/organizations/me/students/${mentorStudent.body.id}/status`)
@@ -9391,7 +9423,7 @@ describe("Tenant isolation (e2e)", () => {
       const menteeStudent = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: `ALME-MENTEE-${suffix}`, firstName: "Mentee", lastName: suffix, dateOfBirth: "2005-01-01" })
+        .send({ firstName: "Mentee", lastName: suffix, dateOfBirth: "2005-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
 
       // ── Surveys: DRAFT → edit → PUBLISHED → response → CLOSED.
@@ -9552,7 +9584,7 @@ describe("Tenant isolation (e2e)", () => {
       const otherStudent = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: `ALME-OTHER-${suffix}`, firstName: "Other", lastName: suffix, dateOfBirth: "1998-01-01" })
+        .send({ firstName: "Other", lastName: suffix, dateOfBirth: "1998-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       await request(app.getHttpServer())
         .put(`/organizations/me/students/${otherStudent.body.id}/status`)
@@ -9658,7 +9690,7 @@ describe("Tenant isolation (e2e)", () => {
       const alumnusStudent = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: `CSVC-ALUM-${suffix}`, firstName: "Poster", lastName: suffix, dateOfBirth: "1998-01-01" })
+        .send({ firstName: "Poster", lastName: suffix, dateOfBirth: "1998-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       await request(app.getHttpServer())
         .put(`/organizations/me/students/${alumnusStudent.body.id}/status`)
@@ -9741,7 +9773,7 @@ describe("Tenant isolation (e2e)", () => {
       const applicantStudent = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: `CSVC-APPLICANT-${suffix}`, firstName: "Applicant", lastName: suffix, dateOfBirth: "2005-01-01" })
+        .send({ firstName: "Applicant", lastName: suffix, dateOfBirth: "2005-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       const applicantLogin = await request(app.getHttpServer())
         .post(`/organizations/me/students/${applicantStudent.body.id}/create-login`)
@@ -10023,6 +10055,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: `Teacher${suffix}`,
           email: `anteacher-${suffix}-${run}@rls-e2e.test`,
           dateOfJoining: "2026-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
       const subject = await request(app.getHttpServer())
@@ -10068,7 +10101,7 @@ describe("Tenant isolation (e2e)", () => {
         const student = await request(app.getHttpServer())
           .post("/organizations/me/students")
           .set(...auth(tokenA))
-          .send({ studentCode: `AN-STU-${suffix}-${n}`, firstName: `Student${n}`, lastName: suffix, dateOfBirth: "2015-01-01" })
+          .send({ firstName: `Student${n}`, lastName: suffix, dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
           .expect(201);
         const enrollment = await request(app.getHttpServer())
           .post(`/organizations/me/students/${student.body.id}/enrollments`)
@@ -10424,6 +10457,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: `Teacher${suffix}`,
           email: `an2teacher-${suffix}-${run}@rls-e2e.test`,
           dateOfJoining: "2026-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
       const subject = await request(app.getHttpServer())
@@ -10451,7 +10485,7 @@ describe("Tenant isolation (e2e)", () => {
       const student1 = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: `AN2-STU-${suffix}-1`, firstName: "Student1", lastName: suffix, dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Student1", lastName: suffix, dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       const enrollment1 = await request(app.getHttpServer())
         .post(`/organizations/me/students/${student1.body.id}/enrollments`)
@@ -10461,7 +10495,7 @@ describe("Tenant isolation (e2e)", () => {
       const student2 = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
-        .send({ studentCode: `AN2-STU-${suffix}-2`, firstName: "Student2", lastName: suffix, dateOfBirth: "2015-01-01" })
+        .send({ firstName: "Student2", lastName: suffix, dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       await request(app.getHttpServer())
         .post(`/organizations/me/students/${student2.body.id}/enrollments`)
@@ -10727,10 +10761,10 @@ describe("Tenant isolation (e2e)", () => {
         .post("/organizations/me/students")
         .set(...auth(tokenA))
         .send({
-          studentCode: `SEARCH-STU-${suffix}`,
           firstName: "Searchable",
           lastName: `Student${suffix}`,
           dateOfBirth: "2012-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
 
@@ -10755,13 +10789,14 @@ describe("Tenant isolation (e2e)", () => {
           lastName: `Employee${suffix}`,
           email: `searchable.employee.${suffix}@rls-e2e.test`,
           dateOfJoining: "2024-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
 
       const guardian = await request(app.getHttpServer())
         .post("/organizations/me/guardians")
         .set(...auth(tokenA))
-        .send({ firstName: "Searchable", lastName: `Guardian${suffix}`, phone: `98${suffix}` })
+        .send({ firstName: "Searchable", lastName: `Guardian${suffix}`, phone: `98${suffix}`, photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
 
       // ── A query under 2 characters is a no-op, not a full scan ──
@@ -10813,7 +10848,7 @@ describe("Tenant isolation (e2e)", () => {
       expect(byStudentLastName.body.guardians).toEqual([]);
 
       const byStudentCode = await request(app.getHttpServer())
-        .get(`/organizations/me/search?q=SEARCH-STU-${suffix}`)
+        .get(`/organizations/me/search?q=${student.body.studentCode}`)
         .set(...auth(tokenA))
         .expect(200);
       expect(byStudentCode.body.students.map((s: { id: string }) => s.id)).toEqual([student.body.id]);
@@ -10868,6 +10903,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: "Searcher",
           email: `restricted.searcher.${suffix}@rls-e2e.test`,
           dateOfJoining: "2024-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
       const restrictedLogin = await request(app.getHttpServer())
@@ -11033,6 +11069,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: "Searcher",
           email: `restricted2.searcher.${suffix}@rls-e2e.test`,
           dateOfJoining: "2024-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
       const restrictedLogin = await request(app.getHttpServer())
@@ -11138,7 +11175,7 @@ describe("Tenant isolation (e2e)", () => {
       await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(editionToken))
-        .send({ studentCode: "E-49", firstName: "Boundary", lastName: "Fifty", dateOfBirth: "2010-01-01" })
+        .send({ firstName: "Boundary", lastName: "Fifty", dateOfBirth: "2010-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
 
       const statusAt50 = await request(app.getHttpServer())
@@ -11153,7 +11190,7 @@ describe("Tenant isolation (e2e)", () => {
       const rejected = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(editionToken))
-        .send({ studentCode: "E-50", firstName: "Over", lastName: "Limit", dateOfBirth: "2010-01-01" })
+        .send({ firstName: "Over", lastName: "Limit", dateOfBirth: "2010-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(403);
       expect(rejected.body).toEqual({ error: "EDITION_LIMIT_EXCEEDED", edition: "FREE", limit: 50 });
 
@@ -11180,6 +11217,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: "Limit",
           email: `over-limit-${suffix}@rls-e2e.test`,
           dateOfJoining: "2024-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(403);
       expect(employeeRejected.body.error).toBe("EDITION_LIMIT_EXCEEDED");
@@ -11191,7 +11229,7 @@ describe("Tenant isolation (e2e)", () => {
       await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(editionToken))
-        .send({ studentCode: "E-51", firstName: "After", lastName: "Upgrade", dateOfBirth: "2010-01-01" })
+        .send({ firstName: "After", lastName: "Upgrade", dateOfBirth: "2010-01-01", photoUrl: "https://example.com/photo.jpg" })
         .expect(201);
       const employeeAfterUpgrade = await request(app.getHttpServer())
         .post("/organizations/me/employees")
@@ -11204,6 +11242,7 @@ describe("Tenant isolation (e2e)", () => {
           lastName: "Upgrade",
           email: `after-upgrade-${suffix}@rls-e2e.test`,
           dateOfJoining: "2024-01-01",
+          photoUrl: "https://example.com/photo.jpg",
         })
         .expect(201);
       expect(employeeAfterUpgrade.body.employeeCode).toBe("EMP-AFTER");
@@ -11411,6 +11450,7 @@ describe("Tenant isolation (e2e)", () => {
             lastName: `E${i}`,
             email: `filler-e${i}-${suffix}@rls-e2e.test`,
             dateOfJoining: "2020-01-01",
+            photoUrl: "https://example.com/photo.jpg",
           })
           .expect(201);
       }
@@ -11669,6 +11709,247 @@ describe("Tenant isolation (e2e)", () => {
         .post("/auth/refresh")
         .send({ refreshToken: originalRefreshToken })
         .expect(401);
+    }, 60000);
+  });
+
+  // Represents the 22-entity edit/delete slice, not every entity
+  // individually (see docs/plan) — a cross-section covering: a split-
+  // permission entity with a required FK dependent (StaffType), an
+  // entity with no dependency guard by design (HostelLookup), a
+  // coarse-permission entity with a nullable dependent (MessageTemplate),
+  // an entity folded under a different resource's permissions with a
+  // nullable dependent (Driver, under `route`), cross-tenant isolation,
+  // and permission enforcement (403 without the right grant).
+  describe("Universal edit/delete for reference/setup entities (RBAC-gated, dependency-guarded delete)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    it("StaffType: creates, updates, blocks delete while an employee references it, and stays tenant-scoped", async () => {
+      const st = await request(app.getHttpServer())
+        .post("/organizations/me/staff-types")
+        .set(...auth(tokenA))
+        .send({ name: `Temp Type ${run}`, code: `TT${run}` })
+        .expect(201);
+
+      const updated = await request(app.getHttpServer())
+        .patch(`/organizations/me/staff-types/${st.body.id}`)
+        .set(...auth(tokenA))
+        .send({ name: `Temp Type Renamed ${run}` })
+        .expect(200);
+      expect(updated.body.name).toBe(`Temp Type Renamed ${run}`);
+
+      const desig = await request(app.getHttpServer())
+        .post("/organizations/me/designations")
+        .set(...auth(tokenA))
+        .send({ name: `Temp Desig ${run}`, code: `TD${run}` })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(tokenA))
+        .send({
+          staffTypeId: st.body.id,
+          designationId: desig.body.id,
+          employeeCode: `TMP-${run}`,
+          firstName: "Temp",
+          lastName: "Employee",
+          email: `temp-employee-${run}@rls-e2e.test`,
+          dateOfJoining: "2020-01-01",
+          photoUrl: "https://example.com/photo.jpg",
+        })
+        .expect(201);
+
+      const blocked = await request(app.getHttpServer())
+        .delete(`/organizations/me/staff-types/${st.body.id}`)
+        .set(...auth(tokenA))
+        .expect(409);
+      expect(blocked.body.message).toMatch(/referenced by 1 other record/);
+
+      // Cross-tenant — org B can't update or delete org A's row (404,
+      // not a silent success or a 403 that would confirm existence).
+      await request(app.getHttpServer())
+        .patch(`/organizations/me/staff-types/${st.body.id}`)
+        .set(...auth(tokenB))
+        .send({ name: "Hijacked" })
+        .expect(404);
+      await request(app.getHttpServer())
+        .delete(`/organizations/me/staff-types/${st.body.id}`)
+        .set(...auth(tokenB))
+        .expect(404);
+    }, 60000);
+
+    it("HostelLookup: creates, updates, and deletes freely — no dependency guard, by design", async () => {
+      const lookup = await request(app.getHttpServer())
+        .post("/organizations/me/hostel-lookups")
+        .set(...auth(tokenA))
+        .send({ kind: "ROOM_TYPE", name: `Deluxe ${run}` })
+        .expect(201);
+
+      const updated = await request(app.getHttpServer())
+        .patch(`/organizations/me/hostel-lookups/${lookup.body.id}`)
+        .set(...auth(tokenA))
+        .send({ name: `Deluxe Renamed ${run}` })
+        .expect(200);
+      expect(updated.body.name).toBe(`Deluxe Renamed ${run}`);
+
+      await request(app.getHttpServer())
+        .delete(`/organizations/me/hostel-lookups/${lookup.body.id}`)
+        .set(...auth(tokenA))
+        .expect(200);
+    }, 60000);
+
+    it("MessageTemplate: creates, updates, and deletes (nullable dependent, coarse communication:manage gating)", async () => {
+      const tpl = await request(app.getHttpServer())
+        .post("/organizations/me/message-templates")
+        .set(...auth(tokenA))
+        .send({ name: `Temp Template ${run}`, channel: "EMAIL", body: "Hello" })
+        .expect(201);
+
+      const updated = await request(app.getHttpServer())
+        .patch(`/organizations/me/message-templates/${tpl.body.id}`)
+        .set(...auth(tokenA))
+        .send({ body: "Updated body" })
+        .expect(200);
+      expect(updated.body.body).toBe("Updated body");
+
+      await request(app.getHttpServer())
+        .delete(`/organizations/me/message-templates/${tpl.body.id}`)
+        .set(...auth(tokenA))
+        .expect(200);
+    }, 60000);
+
+    it("Driver: creates, updates, blocks delete while a route references it (folded under the route resource)", async () => {
+      const desig2 = await request(app.getHttpServer())
+        .post("/organizations/me/designations")
+        .set(...auth(tokenA))
+        .send({ name: `Driver Desig ${run}`, code: `DD${run}` })
+        .expect(201);
+      const staffType2 = await request(app.getHttpServer())
+        .post("/organizations/me/staff-types")
+        .set(...auth(tokenA))
+        .send({ name: `Driver Type ${run}`, code: `DRT${run}` })
+        .expect(201);
+      const driverEmp = await request(app.getHttpServer())
+        .post("/organizations/me/employees")
+        .set(...auth(tokenA))
+        .send({
+          staffTypeId: staffType2.body.id,
+          designationId: desig2.body.id,
+          employeeCode: `DRV-${run}`,
+          firstName: "Driver",
+          lastName: "Person",
+          email: `driver-${run}@rls-e2e.test`,
+          dateOfJoining: "2020-01-01",
+          photoUrl: "https://example.com/photo.jpg",
+        })
+        .expect(201);
+
+      const driver = await request(app.getHttpServer())
+        .post("/organizations/me/drivers")
+        .set(...auth(tokenA))
+        .send({ employeeId: driverEmp.body.id, licenseNumber: `LIC-${run}`, licenseExpiry: "2030-01-01" })
+        .expect(201);
+
+      const updated = await request(app.getHttpServer())
+        .patch(`/organizations/me/drivers/${driver.body.id}`)
+        .set(...auth(tokenA))
+        .send({ licenseNumber: `LIC-UPDATED-${run}` })
+        .expect(200);
+      expect(updated.body.licenseNumber).toBe(`LIC-UPDATED-${run}`);
+
+      const vehicle = await request(app.getHttpServer())
+        .post("/organizations/me/vehicles")
+        .set(...auth(tokenA))
+        .send({ registrationNumber: `VEH-${run}`, type: "Bus", capacity: 30 })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post("/organizations/me/routes")
+        .set(...auth(tokenA))
+        .send({
+          name: `Test Route ${run}`,
+          code: `RT${run}`,
+          vehicleId: vehicle.body.id,
+          // Route.driverId is keyed by Employee.id, not Driver.id — see
+          // TransportService.assertIsDriver / the Driver delete guard's
+          // own comment for why.
+          driverId: driverEmp.body.id,
+        })
+        .expect(201);
+
+      const blocked = await request(app.getHttpServer())
+        .delete(`/organizations/me/drivers/${driver.body.id}`)
+        .set(...auth(tokenA))
+        .expect(409);
+      expect(blocked.body.message).toMatch(/referenced by 1 other record/);
+    }, 60000);
+
+    it("rejects update/delete on these entities without the right permission (403)", async () => {
+      const student = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({
+          firstName: "Perm",
+          lastName: "Test",
+          dateOfBirth: "2015-01-01",
+          photoUrl: "https://example.com/photo.jpg",
+        })
+        .expect(201);
+      const login = await request(app.getHttpServer())
+        .post(`/organizations/me/students/${student.body.id}/create-login`)
+        .set(...auth(tokenA))
+        .send({ password: "PermTest123!" })
+        .expect(201);
+      const usersList = await request(app.getHttpServer())
+        .get("/organizations/me/users")
+        .set(...auth(tokenA))
+        .expect(200);
+      const newUser = usersList.body.find((u: { username: string }) => u.username === login.body.username);
+      const studentRoleAssignment = newUser.userRoles.find(
+        (ur: { role: { name: string } }) => ur.role.name === "Student",
+      );
+
+      const permissions = await request(app.getHttpServer())
+        .get("/organizations/me/permissions")
+        .set(...auth(tokenA))
+        .expect(200);
+      const staffTypeView = permissions.body.find(
+        (p: { resource: string; action: string }) => p.resource === "staff_type" && p.action === "VIEW",
+      );
+      const role = await request(app.getHttpServer())
+        .post("/organizations/me/roles")
+        .set(...auth(tokenA))
+        .send({ name: `Staff Type Viewer Only ${run}`, permissionIds: [staffTypeView.id] })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .delete(`/organizations/me/users/${newUser.id}/roles/${studentRoleAssignment.roleId}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/users/${newUser.id}/roles`)
+        .set(...auth(tokenA))
+        .send({ roleId: role.body.id })
+        .expect(201);
+
+      const session = await request(app.getHttpServer())
+        .post("/auth/login")
+        .send({ identifier: login.body.username, password: "PermTest123!" })
+        .expect(201);
+
+      const st3 = await request(app.getHttpServer())
+        .post("/organizations/me/staff-types")
+        .set(...auth(tokenA))
+        .send({ name: `Perm Check Type ${run}`, code: `PCT${run}` })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .patch(`/organizations/me/staff-types/${st3.body.id}`)
+        .set(...auth(session.body.accessToken))
+        .send({ name: "Should not work" })
+        .expect(403);
+      await request(app.getHttpServer())
+        .delete(`/organizations/me/staff-types/${st3.body.id}`)
+        .set(...auth(session.body.accessToken))
+        .expect(403);
     }, 60000);
   });
 });
