@@ -29,28 +29,34 @@ export default function SsoBridgePage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const hash = window.location.hash;
-    const match = hash.match(/[#&]s=([^&]+)/);
-    if (!match) {
-      setError("Missing sign-in token.");
-      return;
+    // Deferred so the setState calls below don't run synchronously
+    // within the effect body — same precedent as camera-capture.tsx's
+    // mount effect.
+    function run() {
+      const hash = window.location.hash;
+      const match = hash.match(/[#&]s=([^&]+)/);
+      if (!match) {
+        setError("Missing sign-in token.");
+        return;
+      }
+
+      try {
+        const b64 = match[1].replace(/-/g, "+").replace(/_/g, "/");
+        const json = atob(b64.padEnd(b64.length + ((4 - (b64.length % 4)) % 4), "="));
+        const result = JSON.parse(json) as AuthTokens & { user: SafeUser };
+
+        setStoredSession({ tokens: result, user: result.user });
+        // Clear the fragment immediately — it's already consumed, no
+        // reason for the token to linger in history/back-navigation.
+        window.history.replaceState(null, "", "/sso");
+
+        const roles = decodeJwtRoles(result.accessToken);
+        router.replace(roles.includes("Student") ? "/portal" : "/dashboard");
+      } catch {
+        setError("Sign-in failed. Please try logging in again.");
+      }
     }
-
-    try {
-      const b64 = match[1].replace(/-/g, "+").replace(/_/g, "/");
-      const json = atob(b64.padEnd(b64.length + ((4 - (b64.length % 4)) % 4), "="));
-      const result = JSON.parse(json) as AuthTokens & { user: SafeUser };
-
-      setStoredSession({ tokens: result, user: result.user });
-      // Clear the fragment immediately — it's already consumed, no
-      // reason for the token to linger in history/back-navigation.
-      window.history.replaceState(null, "", "/sso");
-
-      const roles = decodeJwtRoles(result.accessToken);
-      router.replace(roles.includes("Student") ? "/portal" : "/dashboard");
-    } catch {
-      setError("Sign-in failed. Please try logging in again.");
-    }
+    void Promise.resolve().then(run);
   }, [router]);
 
   return (

@@ -756,14 +756,15 @@ export default function StudentsPage() {
                   isPrimaryContact: linkForm.isPrimaryContact,
                 }),
               () => {
-                setLinkForm((f) => ({ ...f, relationship: "" }));
+                setLinkForm((f) => ({ ...f, relationship: "", isPrimaryContact: true }));
                 students.mutate();
               },
             );
           }}
         >
+          <p className="w-full text-sm font-medium">Link guardian to student</p>
           <div className="space-y-2">
-            <Label>Link guardian to student</Label>
+            <Label>Student</Label>
             <NativeSelect
               className="w-40"
               placeholder="Select student"
@@ -798,6 +799,14 @@ export default function StudentsPage() {
               options={RELATIONSHIP_OPTIONS.map((r) => ({ value: r.label, label: `${r.label} (${r.nepali})` }))}
             />
           </div>
+          <label className="flex items-center gap-2 pb-2 text-sm">
+            <input
+              type="checkbox"
+              checked={linkForm.isPrimaryContact}
+              onChange={(e) => setLinkForm((f) => ({ ...f, isPrimaryContact: e.target.checked }))}
+            />
+            Primary contact
+          </label>
           <Button type="submit" disabled={!linkForm.studentId || !linkForm.guardianId || !linkForm.relationship}>
             Link
           </Button>

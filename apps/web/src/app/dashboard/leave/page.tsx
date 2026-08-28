@@ -37,7 +37,7 @@ export default function LeavePage() {
   const leaveTypes = useSWR("leave-types", () => api.listLeaveTypes());
 
   // ── Leave types ────────────────────────────────────────────────────
-  const [typeForm, setTypeForm] = useState({ name: "", code: "", defaultDaysPerYear: "" });
+  const [typeForm, setTypeForm] = useState({ name: "", code: "", defaultDaysPerYear: "", isPaid: true, carryForward: false });
   const [editingLeaveTypeId, setEditingLeaveTypeId] = useState<string | null>(null);
   const [editTypeForm, setEditTypeForm] = useState({
     name: "",
@@ -188,9 +188,11 @@ export default function LeavePage() {
                     name: typeForm.name,
                     code: typeForm.code,
                     defaultDaysPerYear: Number(typeForm.defaultDaysPerYear),
+                    isPaid: typeForm.isPaid,
+                    carryForward: typeForm.carryForward,
                   }),
                 () => {
-                  setTypeForm({ name: "", code: "", defaultDaysPerYear: "" });
+                  setTypeForm({ name: "", code: "", defaultDaysPerYear: "", isPaid: true, carryForward: false });
                   leaveTypes.mutate();
                 },
               );
@@ -213,6 +215,22 @@ export default function LeavePage() {
                 onChange={(e) => setTypeForm((f) => ({ ...f, defaultDaysPerYear: e.target.value }))}
               />
             </div>
+            <label className="flex items-center gap-1 pb-2 text-xs">
+              <input
+                type="checkbox"
+                checked={typeForm.isPaid}
+                onChange={(e) => setTypeForm((f) => ({ ...f, isPaid: e.target.checked }))}
+              />
+              Paid
+            </label>
+            <label className="flex items-center gap-1 pb-2 text-xs">
+              <input
+                type="checkbox"
+                checked={typeForm.carryForward}
+                onChange={(e) => setTypeForm((f) => ({ ...f, carryForward: e.target.checked }))}
+              />
+              Carry forward
+            </label>
             <Button type="submit" size="sm" disabled={!typeForm.name || !typeForm.code || !typeForm.defaultDaysPerYear}>
               Add leave type
             </Button>

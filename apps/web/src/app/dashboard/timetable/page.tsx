@@ -10,14 +10,19 @@ import { EntityCard } from "@/components/dashboard/entity-card";
 import { api } from "@/lib/api";
 import { submitAction, submitDelete } from "@/lib/submit-action";
 
+// Listed Sunday-first (the Nepali school week's first day), not
+// Monday-first — this only reorders the dropdown's own option list,
+// the underlying dayOfWeek values (1=Monday...7=Sunday) are unchanged
+// and still match every other reference to this numbering elsewhere
+// in the app (e.g. attendance/page.tsx's own indexed DAYS lookup).
 const DAYS = [
+  { value: 7, label: "Sunday" },
   { value: 1, label: "Monday" },
   { value: 2, label: "Tuesday" },
   { value: 3, label: "Wednesday" },
   { value: 4, label: "Thursday" },
   { value: 5, label: "Friday" },
   { value: 6, label: "Saturday" },
-  { value: 7, label: "Sunday" },
 ];
 
 export default function TimetablePage() {

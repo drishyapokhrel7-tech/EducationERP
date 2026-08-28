@@ -207,16 +207,21 @@ export default function LoginPage() {
       setResetCodeInput("");
       setNewPassword("");
     } catch (err) {
-      toast.error(errorMessage(err, "Incorrect code"));
       // Single-use, same as this project's CAPTCHA/email-verification
       // codes — a wrong attempt consumes it, so a fresh one is needed.
+      // Minted silently in the background, but the toast has to say so
+      // explicitly — otherwise the admin has no way to know the code
+      // they're about to retype from the first email is already dead,
+      // and a new one just landed in their inbox.
       try {
         const fresh = await api.forgotPassword({ identifier: resetIdentifier, ...resetCaptcha });
         setResetChallenge(fresh);
+        toast.error(`${errorMessage(err, "Incorrect code")} — a new code has been sent, check your email`);
       } catch {
         // Couldn't silently mint a fresh code (e.g. stale captcha) —
         // send them back to the request step rather than leaving a
         // dead code on screen.
+        toast.error(errorMessage(err, "Incorrect code"));
         setMode("forgot");
         setResetChallenge(null);
       }

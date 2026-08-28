@@ -90,16 +90,19 @@ export default function RegisterPage() {
       <main className="flex flex-1 items-center justify-center p-6">
         <Card className="w-full max-w-md">
           <CardHeader>
-            <CardTitle>Please Type Your Verification Code to Proceed.</CardTitle>
+            <CardTitle>Verify your email</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            <p className="text-muted-foreground text-sm">
+              We&apos;ve sent a verification code to your email. Can&apos;t find it? Here it is for now:
+            </p>
             <div className="bg-muted rounded-lg border p-4 text-center">
-              <p className="text-muted-foreground text-xs">Your verification code</p>
+              <p className="text-muted-foreground text-xs">Verification code</p>
               <p className="font-mono text-2xl tracking-widest">{verification.code}</p>
             </div>
             <form onSubmit={onVerify} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="code">Enter the code above</Label>
+                <Label htmlFor="code">Enter the code</Label>
                 <Input
                   id="code"
                   required
