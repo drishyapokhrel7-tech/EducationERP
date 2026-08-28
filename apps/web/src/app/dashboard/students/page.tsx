@@ -540,12 +540,17 @@ export default function StudentsPage() {
             />
           </div>
           <div className="space-y-2">
-            <Label>Photo</Label>
+            <Label>Photo (required)</Label>
             <PhotoInput value={studentPhoto} onChange={setStudentPhoto} />
           </div>
-          <Button type="submit" disabled={!hasPhoto(studentPhoto)}>
-            Add
-          </Button>
+          <div className="flex flex-col items-start gap-1">
+            <Button type="submit" disabled={!hasPhoto(studentPhoto)}>
+              Add
+            </Button>
+            {!hasPhoto(studentPhoto) ? (
+              <p className="text-muted-foreground text-xs">A photo is required before this can be added.</p>
+            ) : null}
+          </div>
         </form>
         {editionLimitEdition ? <EditionUpgradeBanner edition={editionLimitEdition} /> : null}
       </EntityCard>
@@ -734,12 +739,17 @@ export default function StudentsPage() {
             />
           </div>
           <div className="space-y-2">
-            <Label>Photo</Label>
+            <Label>Photo (required)</Label>
             <PhotoInput value={guardianPhoto} onChange={setGuardianPhoto} />
           </div>
-          <Button type="submit" disabled={!hasPhoto(guardianPhoto)}>
-            Add
-          </Button>
+          <div className="flex flex-col items-start gap-1">
+            <Button type="submit" disabled={!hasPhoto(guardianPhoto)}>
+              Add
+            </Button>
+            {!hasPhoto(guardianPhoto) ? (
+              <p className="text-muted-foreground text-xs">A photo is required before this can be added.</p>
+            ) : null}
+          </div>
         </form>
 
         <Separator />

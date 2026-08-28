@@ -16,7 +16,7 @@ import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
 import { submitEsewaForm } from "@/lib/esewa";
 import { submitAction, submitDelete, errorMessage } from "@/lib/submit-action";
-import type { PaymentMethod, StudentEnrollment } from "@education-erp/api-client";
+import type { InvoiceStatus, PaymentMethod, StudentEnrollment } from "@education-erp/api-client";
 
 function formatMoney(amount: string) {
   return `NPR ${Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -27,6 +27,16 @@ const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
   { value: "BANK_TRANSFER", label: "Bank transfer" },
   { value: "CHEQUE", label: "Cheque" },
 ];
+
+// Most InvoiceStatus values already read fine as-is (PENDING, PAID,
+// CANCELLED); PARTIALLY_PAID is the one that reads like a raw enum —
+// this map covers all four so nothing is left inconsistent.
+const INVOICE_STATUS_LABELS: Record<InvoiceStatus, string> = {
+  PENDING: "Pending",
+  PARTIALLY_PAID: "Partially paid",
+  PAID: "Paid",
+  CANCELLED: "Cancelled",
+};
 
 export default function FinancePage() {
   const feeCategories = useSWR("fee-categories", () => api.listFeeCategories());
@@ -662,7 +672,7 @@ export default function FinancePage() {
                         — {formatMoney(inv.totalAmount)} · due {new Date(inv.dueDate).toLocaleDateString()}
                       </span>
                     </button>
-                    <Badge variant={statusVariant(inv.status)}>{inv.status}</Badge>
+                    <Badge variant={statusVariant(inv.status)}>{INVOICE_STATUS_LABELS[inv.status]}</Badge>
                   </li>
                 ))}
               </ul>
@@ -682,7 +692,7 @@ export default function FinancePage() {
                   {activeInvoice.data.student.firstName} {activeInvoice.data.student.lastName} —{" "}
                   {formatMoney(activeInvoice.data.totalAmount)}
                 </p>
-                <Badge variant={statusVariant(activeInvoice.data.status)}>{activeInvoice.data.status}</Badge>
+                <Badge variant={statusVariant(activeInvoice.data.status)}>{INVOICE_STATUS_LABELS[activeInvoice.data.status]}</Badge>
               </div>
               <ul className="text-muted-foreground pl-4 text-xs">
                 {activeInvoice.data.items.map((i) => (

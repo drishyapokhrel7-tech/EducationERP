@@ -10,6 +10,12 @@ import { EntityCard } from "@/components/dashboard/entity-card";
 import { api } from "@/lib/api";
 import { submitAction, submitDelete } from "@/lib/submit-action";
 
+// Shown under a disabled "Add" submit so the missing prerequisite is
+// visible instead of the button just silently refusing to do anything.
+function RequiredHint({ text }: { text: string }) {
+  return <p className="text-muted-foreground text-xs">{text}</p>;
+}
+
 export default function OrgStructurePage() {
   const campuses = useSWR("campuses", () => api.listCampuses());
   const faculties = useSWR("faculties", () => api.listFaculties());
@@ -21,7 +27,15 @@ export default function OrgStructurePage() {
 
   const [facultyForm, setFacultyForm] = useState({ campusId: "", name: "", code: "" });
   const [departmentForm, setDepartmentForm] = useState({ facultyId: "", name: "", code: "" });
-  const [programForm, setProgramForm] = useState({ departmentId: "", name: "", code: "", level: "" });
+  const [programForm, setProgramForm] = useState({
+    departmentId: "",
+    name: "",
+    code: "",
+    level: "",
+    durationSemesters: "",
+    creditHours: "",
+    entranceExam: "",
+  });
   const [yearForm, setYearForm] = useState({ name: "", startDate: "", endDate: "" });
   const [termForm, setTermForm] = useState({
     academicYearId: "",
@@ -47,7 +61,15 @@ export default function OrgStructurePage() {
   const [editingDepartmentId, setEditingDepartmentId] = useState<string | null>(null);
   const [editDepartmentForm, setEditDepartmentForm] = useState({ facultyId: "", name: "", code: "" });
   const [editingProgramId, setEditingProgramId] = useState<string | null>(null);
-  const [editProgramForm, setEditProgramForm] = useState({ departmentId: "", name: "", code: "", level: "" });
+  const [editProgramForm, setEditProgramForm] = useState({
+    departmentId: "",
+    name: "",
+    code: "",
+    level: "",
+    durationSemesters: "",
+    creditHours: "",
+    entranceExam: "",
+  });
   const [editingYearId, setEditingYearId] = useState<string | null>(null);
   const [editYearForm, setEditYearForm] = useState({ name: "", startDate: "", endDate: "" });
   const [editingTermId, setEditingTermId] = useState<string | null>(null);
@@ -86,6 +108,10 @@ export default function OrgStructurePage() {
           <div className="flex items-center justify-between gap-2">
             <span>
               {f.name} <span className="text-muted-foreground">{f.code}</span>
+              <span className="text-muted-foreground">
+                {" "}
+                · {campuses.data?.find((c) => c.id === f.campusId)?.name ?? "Unknown institution"}
+              </span>
             </span>
             <div className="flex items-center gap-2">
               <Button
@@ -176,7 +202,7 @@ export default function OrgStructurePage() {
           }}
         >
           <div className="space-y-2">
-            <Label>Institution</Label>
+            <Label>Institution (required)</Label>
             <NativeSelect
               className="w-40"
               placeholder="Select institution"
@@ -204,9 +230,12 @@ export default function OrgStructurePage() {
               onChange={(e) => setFacultyForm((f) => ({ ...f, code: e.target.value }))}
             />
           </div>
-          <Button type="submit" disabled={!facultyForm.campusId}>
-            Add
-          </Button>
+          <div className="flex flex-col items-start gap-1">
+            <Button type="submit" disabled={!facultyForm.campusId}>
+              Add
+            </Button>
+            {!facultyForm.campusId ? <RequiredHint text="Select an institution first." /> : null}
+          </div>
         </form>
       </EntityCard>
 
@@ -218,6 +247,10 @@ export default function OrgStructurePage() {
           <div className="flex items-center justify-between gap-2">
             <span>
               {d.name} <span className="text-muted-foreground">{d.code}</span>
+              <span className="text-muted-foreground">
+                {" "}
+                · {faculties.data?.find((f) => f.id === d.facultyId)?.name ?? "Unknown faculty"}
+              </span>
             </span>
             <div className="flex items-center gap-2">
               <Button
@@ -308,7 +341,7 @@ export default function OrgStructurePage() {
           }}
         >
           <div className="space-y-2">
-            <Label>Faculty</Label>
+            <Label>Faculty (required)</Label>
             <NativeSelect
               className="w-40"
               placeholder="Select faculty"
@@ -334,9 +367,12 @@ export default function OrgStructurePage() {
               onChange={(e) => setDepartmentForm((f) => ({ ...f, code: e.target.value }))}
             />
           </div>
-          <Button type="submit" disabled={!departmentForm.facultyId}>
-            Add
-          </Button>
+          <div className="flex flex-col items-start gap-1">
+            <Button type="submit" disabled={!departmentForm.facultyId}>
+              Add
+            </Button>
+            {!departmentForm.facultyId ? <RequiredHint text="Select a faculty first." /> : null}
+          </div>
         </form>
       </EntityCard>
 
@@ -380,6 +416,9 @@ export default function OrgStructurePage() {
                     name: p.name,
                     code: p.code,
                     level: p.level ?? "",
+                    durationSemesters: p.durationSemesters != null ? String(p.durationSemesters) : "",
+                    creditHours: p.creditHours != null ? String(p.creditHours) : "",
+                    entranceExam: p.entranceExam ?? "",
                   });
                 }}
               >
@@ -405,8 +444,15 @@ export default function OrgStructurePage() {
                 submitAction(
                   () =>
                     api.updateProgram(editingProgramId, {
-                      ...editProgramForm,
+                      departmentId: editProgramForm.departmentId,
+                      name: editProgramForm.name,
+                      code: editProgramForm.code,
                       level: editProgramForm.level || undefined,
+                      durationSemesters: editProgramForm.durationSemesters
+                        ? Number(editProgramForm.durationSemesters)
+                        : undefined,
+                      creditHours: editProgramForm.creditHours ? Number(editProgramForm.creditHours) : undefined,
+                      entranceExam: editProgramForm.entranceExam || undefined,
                     }),
                   () => {
                     setEditingProgramId(null);
@@ -450,6 +496,35 @@ export default function OrgStructurePage() {
                   onChange={(e) => setEditProgramForm((f) => ({ ...f, level: e.target.value }))}
                 />
               </div>
+              <div className="space-y-2">
+                <Label>Duration in semesters (optional)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  className="w-28"
+                  value={editProgramForm.durationSemesters}
+                  onChange={(e) => setEditProgramForm((f) => ({ ...f, durationSemesters: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Credit hours (optional)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  className="w-28"
+                  value={editProgramForm.creditHours}
+                  onChange={(e) => setEditProgramForm((f) => ({ ...f, creditHours: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Entrance exam (optional)</Label>
+                <Input
+                  placeholder="e.g. IOST, CMAT, None"
+                  className="w-32"
+                  value={editProgramForm.entranceExam}
+                  onChange={(e) => setEditProgramForm((f) => ({ ...f, entranceExam: e.target.value }))}
+                />
+              </div>
               <Button type="submit" size="sm">
                 Save
               </Button>
@@ -467,18 +542,31 @@ export default function OrgStructurePage() {
             submitAction(
               () =>
                 api.createProgram({
-                  ...programForm,
+                  departmentId: programForm.departmentId,
+                  name: programForm.name,
+                  code: programForm.code,
                   level: programForm.level || undefined,
+                  durationSemesters: programForm.durationSemesters ? Number(programForm.durationSemesters) : undefined,
+                  creditHours: programForm.creditHours ? Number(programForm.creditHours) : undefined,
+                  entranceExam: programForm.entranceExam || undefined,
                 }),
               () => {
-                setProgramForm({ departmentId: "", name: "", code: "", level: "" });
+                setProgramForm({
+                  departmentId: "",
+                  name: "",
+                  code: "",
+                  level: "",
+                  durationSemesters: "",
+                  creditHours: "",
+                  entranceExam: "",
+                });
                 programs.mutate();
               },
             );
           }}
         >
           <div className="space-y-2">
-            <Label>Department</Label>
+            <Label>Department (required)</Label>
             <NativeSelect
               className="w-40"
               placeholder="Select department"
@@ -512,9 +600,41 @@ export default function OrgStructurePage() {
               onChange={(e) => setProgramForm((f) => ({ ...f, level: e.target.value }))}
             />
           </div>
-          <Button type="submit" disabled={!programForm.departmentId}>
-            Add
-          </Button>
+          <div className="space-y-2">
+            <Label>Duration in semesters (optional)</Label>
+            <Input
+              type="number"
+              min="0"
+              className="w-28"
+              value={programForm.durationSemesters}
+              onChange={(e) => setProgramForm((f) => ({ ...f, durationSemesters: e.target.value }))}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Credit hours (optional)</Label>
+            <Input
+              type="number"
+              min="0"
+              className="w-28"
+              value={programForm.creditHours}
+              onChange={(e) => setProgramForm((f) => ({ ...f, creditHours: e.target.value }))}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Entrance exam (optional)</Label>
+            <Input
+              placeholder="e.g. IOST, CMAT, None"
+              className="w-32"
+              value={programForm.entranceExam}
+              onChange={(e) => setProgramForm((f) => ({ ...f, entranceExam: e.target.value }))}
+            />
+          </div>
+          <div className="flex flex-col items-start gap-1">
+            <Button type="submit" disabled={!programForm.departmentId}>
+              Add
+            </Button>
+            {!programForm.departmentId ? <RequiredHint text="Select a department first." /> : null}
+          </div>
         </form>
       </EntityCard>
 
@@ -805,7 +925,7 @@ export default function OrgStructurePage() {
           }}
         >
           <div className="space-y-2">
-            <Label>Academic year</Label>
+            <Label>Academic year (required)</Label>
             <NativeSelect
               className="w-40"
               placeholder="Select year"
@@ -861,9 +981,12 @@ export default function OrgStructurePage() {
               onChange={(e) => setTermForm((f) => ({ ...f, endDate: e.target.value }))}
             />
           </div>
-          <Button type="submit" disabled={!termForm.academicYearId}>
-            Add
-          </Button>
+          <div className="flex flex-col items-start gap-1">
+            <Button type="submit" disabled={!termForm.academicYearId}>
+              Add
+            </Button>
+            {!termForm.academicYearId ? <RequiredHint text="Select an academic year first." /> : null}
+          </div>
         </form>
       </EntityCard>
 
@@ -882,6 +1005,11 @@ export default function OrgStructurePage() {
           <div className="flex items-center justify-between gap-2">
             <span>
               {s.name} <span className="text-muted-foreground">{s.code}</span>
+              <span className="text-muted-foreground">
+                {" "}
+                · {programs.data?.find((p) => p.id === s.programId)?.name ?? "Unknown program"} ·{" "}
+                {terms.data?.find((t) => t.id === s.termId)?.name ?? "Unknown term"}
+              </span>
               {s.capacity ? (
                 <span className="text-muted-foreground"> · capacity {s.capacity}</span>
               ) : null}
@@ -1009,7 +1137,7 @@ export default function OrgStructurePage() {
           }}
         >
           <div className="space-y-2">
-            <Label>Program</Label>
+            <Label>Program (required)</Label>
             <NativeSelect
               className="w-40"
               placeholder="Select program"
@@ -1019,7 +1147,7 @@ export default function OrgStructurePage() {
             />
           </div>
           <div className="space-y-2">
-            <Label>Term</Label>
+            <Label>Term (required)</Label>
             <NativeSelect
               className="w-40"
               placeholder="Select term"
@@ -1055,9 +1183,16 @@ export default function OrgStructurePage() {
               onChange={(e) => setSectionForm((f) => ({ ...f, capacity: e.target.value }))}
             />
           </div>
-          <Button type="submit" disabled={!sectionForm.programId || !sectionForm.termId}>
-            Add
-          </Button>
+          <div className="flex flex-col items-start gap-1">
+            <Button type="submit" disabled={!sectionForm.programId || !sectionForm.termId}>
+              Add
+            </Button>
+            {!sectionForm.programId || !sectionForm.termId ? (
+              <RequiredHint
+                text={`Select a ${[!sectionForm.programId ? "program" : null, !sectionForm.termId ? "term" : null].filter(Boolean).join(" and ")} first.`}
+              />
+            ) : null}
+          </div>
         </form>
       </EntityCard>
     </div>

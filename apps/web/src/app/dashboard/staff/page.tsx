@@ -602,7 +602,7 @@ export default function StaffPage() {
           }}
         >
           <div className="space-y-2">
-            <Label>Staff type</Label>
+            <Label>Staff type (required)</Label>
             <NativeSelect
               className="w-36"
               placeholder="Select type"
@@ -612,7 +612,7 @@ export default function StaffPage() {
             />
           </div>
           <div className="space-y-2">
-            <Label>Designation</Label>
+            <Label>Designation (required)</Label>
             <NativeSelect
               className="w-36"
               placeholder="Select designation"
@@ -689,15 +689,30 @@ export default function StaffPage() {
             />
           </div>
           <div className="space-y-2">
-            <Label>Photo</Label>
+            <Label>Photo (required)</Label>
             <PhotoInput value={employeePhoto} onChange={setEmployeePhoto} />
           </div>
-          <Button
-            type="submit"
-            disabled={!employeeForm.staffTypeId || !employeeForm.designationId || !hasPhoto(employeePhoto)}
-          >
-            Add
-          </Button>
+          <div className="flex flex-col items-start gap-1">
+            <Button
+              type="submit"
+              disabled={!employeeForm.staffTypeId || !employeeForm.designationId || !hasPhoto(employeePhoto)}
+            >
+              Add
+            </Button>
+            {!employeeForm.staffTypeId || !employeeForm.designationId || !hasPhoto(employeePhoto) ? (
+              <p className="text-muted-foreground text-xs">
+                Needs{" "}
+                {[
+                  !employeeForm.staffTypeId ? "staff type" : null,
+                  !employeeForm.designationId ? "designation" : null,
+                  !hasPhoto(employeePhoto) ? "a photo" : null,
+                ]
+                  .filter(Boolean)
+                  .join(", ")}{" "}
+                before this can be added.
+              </p>
+            ) : null}
+          </div>
         </form>
         {editionLimitEdition ? <EditionUpgradeBanner edition={editionLimitEdition} /> : null}
       </EntityCard>
