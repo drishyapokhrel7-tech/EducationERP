@@ -14,6 +14,7 @@ import { JwtPayload } from "../../common/auth/jwt-payload";
 import { CaptchaService } from "../captcha/captcha.service";
 import { EmailVerificationService } from "./email-verification.service";
 import { PasswordResetService } from "./password-reset.service";
+import { DEFAULT_STAFF_TYPES, DEFAULT_DESIGNATIONS } from "../staff/staff.service";
 
 const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
@@ -84,6 +85,16 @@ export class AuthService {
           resource: "organization",
           resourceId: organization.id,
         },
+      });
+      // Starting-point catalog data, not a fixed set — the admin can
+      // rename/remove/add to these freely afterward (StaffType/
+      // Designation are both fully editable, see StaffService). See
+      // DEFAULT_STAFF_TYPES/DEFAULT_DESIGNATIONS' own comments.
+      await tx.staffType.createMany({
+        data: DEFAULT_STAFF_TYPES.map((t) => ({ ...t, organizationId: organization.id })),
+      });
+      await tx.designation.createMany({
+        data: DEFAULT_DESIGNATIONS.map((d) => ({ ...d, organizationId: organization.id })),
       });
       return { user, organization };
     });

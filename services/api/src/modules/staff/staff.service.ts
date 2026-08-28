@@ -15,6 +15,39 @@ import { assertUnderEditionLimit } from "../organizations/edition-limits";
 import { paginate } from "../../common/pagination";
 import { assertNoDependents } from "../../common/assert-no-dependents";
 
+// Seeded once per organization — at registration for a new org
+// (AuthService.registerOrganization, same transaction as the org
+// itself), and via a one-off backfill for orgs that already existed
+// before this was added. Just a starting point, not a fixed/closed
+// set — StaffType is fully editable/deletable (see updateStaffType/
+// deleteStaffType below) so an admin can rename, remove, or add to
+// this list freely once the org exists.
+export const DEFAULT_STAFF_TYPES: { name: string; code: string }[] = [
+  { name: "Guard", code: "GD" },
+  { name: "Teacher", code: "TR" },
+  { name: "Coordinator", code: "CR" },
+  { name: "Principal", code: "PR" },
+  { name: "Receptionist", code: "RC" },
+  { name: "Driver", code: "DR" },
+  { name: "Cantin", code: "CN" },
+];
+
+// Same seeding pattern as DEFAULT_STAFF_TYPES above, just for the
+// Designation catalog — common school job-title hierarchy, not a
+// closed set (fully editable/deletable afterward).
+export const DEFAULT_DESIGNATIONS: { name: string; code: string }[] = [
+  { name: "Principal", code: "PR" },
+  { name: "Vice Principal", code: "VP" },
+  { name: "Head Teacher", code: "HT" },
+  { name: "Senior Teacher", code: "ST" },
+  { name: "Teacher", code: "TR" },
+  { name: "Coordinator", code: "CR" },
+  { name: "Administrator", code: "AD" },
+  { name: "Accountant", code: "AC" },
+  { name: "Librarian", code: "LB" },
+  { name: "Office Assistant", code: "OA" },
+];
+
 /**
  * Same load-bearing pattern as org-structure.service.ts: every create*
  * that takes a parent/reference id (departmentId, staffTypeId,
