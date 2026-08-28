@@ -74,11 +74,14 @@ export interface EditionStatus {
   atLimit: boolean;
 }
 
+export type CampusType = "GENERIC" | "SCHOOL" | "COLLEGE" | "MONTESSORI";
+
 export interface Campus {
   id: string;
   organizationId: string;
   name: string;
   code: string;
+  type: CampusType;
   createdAt: string;
   updatedAt: string;
 }
@@ -104,6 +107,10 @@ export interface LoginInput {
 export interface CreateCampusInput {
   name: string;
   code: string;
+  // Omit for a plain (GENERIC) campus. COLLEGE seeds a default
+  // Faculty/Department/Program structure — see the API's
+  // college-structure-defaults.ts.
+  type?: CampusType;
 }
 
 export interface Faculty {

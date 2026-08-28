@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateCampusDto } from "./dto/create-campus.dto";
 import { editionStatus } from "./edition-limits";
+import { seedCollegeStructure } from "../org-structure/college-structure-defaults";
 
 @Injectable()
 export class OrganizationsService {
@@ -25,10 +26,20 @@ export class OrganizationsService {
     );
   }
 
+  // A COLLEGE-type campus gets a real default Faculty/Department/
+  // Program structure seeded immediately — see
+  // college-structure-defaults.ts for what and why. Every other type
+  // behaves exactly as before (a bare campus row, nothing else).
   createCampus(organizationId: string, dto: CreateCampusDto) {
-    return this.prisma.withTenant(organizationId, (tx) =>
-      tx.campus.create({ data: { organizationId, name: dto.name, code: dto.code } }),
-    );
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const campus = await tx.campus.create({
+        data: { organizationId, name: dto.name, code: dto.code, type: dto.type ?? "GENERIC" },
+      });
+      if (campus.type === "COLLEGE") {
+        await seedCollegeStructure(tx, organizationId, campus.id);
+      }
+      return campus;
+    });
   }
 
   // Powers the "N of 50 used" badge on Students/Staff and is reused

@@ -30,15 +30,21 @@ export default function DashboardPage() {
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({ name: "", code: "" });
 
-  // The Campus model itself has no "type" column — this is purely a
-  // label picker so the section reads naturally for a school, a
-  // college, or a Montessori-style site, not a stored/filterable
-  // property. If that ever needs to be real, queryable data, this is
-  // the signal to add a real Campus.type field instead of stretching
-  // this further.
-  const CAMPUS_TYPES = ["Campus", "School", "Montessori"] as const;
-  const [campusType, setCampusType] = useState<(typeof CAMPUS_TYPES)[number]>("Campus");
-  const campusTypePlural = campusType === "Campus" ? "Campuses" : `${campusType}s`;
+  // A real, persisted Campus.type now backs this picker (previously a
+  // client-only cosmetic label with no stored column — see the git
+  // history for that former comment). Selecting "College" causes the
+  // backend to seed a default Faculty/Department/Program structure
+  // for this campus (see the API's college-structure-defaults.ts) —
+  // every other option behaves exactly as before, a bare campus row.
+  const CAMPUS_TYPE_OPTIONS = [
+    { value: "GENERIC", label: "Campus" },
+    { value: "SCHOOL", label: "School" },
+    { value: "COLLEGE", label: "College" },
+    { value: "MONTESSORI", label: "Montessori" },
+  ] as const;
+  const [campusType, setCampusType] = useState<(typeof CAMPUS_TYPE_OPTIONS)[number]["value"]>("GENERIC");
+  const campusTypeLabel = CAMPUS_TYPE_OPTIONS.find((o) => o.value === campusType)?.label ?? "Campus";
+  const campusTypePlural = campusTypeLabel === "Campus" ? "Campuses" : `${campusTypeLabel}s`;
   // Once exactly one campus exists, that's a real, known fact — call
   // it "School" rather than the generic "Campus"/"Campuses" label,
   // regardless of whatever type is currently selected in the add-form
@@ -62,9 +68,13 @@ export default function DashboardPage() {
     e.preventDefault();
     setCreating(true);
     try {
-      const campus = await api.createCampus(form);
+      const campus = await api.createCampus({ ...form, type: campusType });
       setForm({ name: "", code: "" });
-      toast.success("Campus created");
+      toast.success(
+        campusType === "COLLEGE"
+          ? "College created with a default Faculty/Department/Program structure — edit it anytime under Org Structure."
+          : "Campus created",
+      );
       mutateCampuses([...campuses, campus], { revalidate: false });
     } catch {
       toast.error("Failed to create campus");
@@ -117,7 +127,7 @@ export default function DashboardPage() {
           {campuses.length === 0 ? (
             <div className="flex items-center justify-between gap-3">
               <p className="text-muted-foreground text-xs">
-                Only one {campusType.toLowerCase()}? Skip typing it in yourself.
+                Only one {campusTypeLabel.toLowerCase()}? Skip typing it in yourself.
               </p>
               <Button type="button" variant="outline" size="sm" onClick={onSingleInstitution} disabled={!organization}>
                 I have only one institution
@@ -132,8 +142,8 @@ export default function DashboardPage() {
                 className="w-32"
                 placeholder="Select type"
                 value={campusType}
-                onChange={(v) => setCampusType(v as (typeof CAMPUS_TYPES)[number])}
-                options={CAMPUS_TYPES.map((t) => ({ value: t, label: t }))}
+                onChange={(v) => setCampusType(v as (typeof CAMPUS_TYPE_OPTIONS)[number]["value"])}
+                options={CAMPUS_TYPE_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
               />
             </div>
             <div className="space-y-2">
@@ -156,7 +166,7 @@ export default function DashboardPage() {
               />
             </div>
             <Button type="submit" disabled={creating}>
-              {creating ? "Adding…" : `Add ${campusType}`}
+              {creating ? "Adding…" : `Add ${campusTypeLabel}`}
             </Button>
           </form>
         </CardContent>

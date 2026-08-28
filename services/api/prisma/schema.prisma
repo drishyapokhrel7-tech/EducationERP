@@ -177,13 +177,29 @@ model Organization {
   @@map("organizations")
 }
 
+// A closed, platform-defined classification (unlike Program.level or
+// Vehicle.type, which are open institution-named vocabularies stored
+// as plain strings) — this drives real branching behavior (COLLEGE
+// triggers OrgStructureService's default-structure seeding), not just
+// a display label, so it's a real enum rather than free text. Was
+// previously a client-only cosmetic label with no stored column (see
+// the dashboard page's own former comment) until that became real,
+// queryable, behavior-driving data.
+enum CampusType {
+  GENERIC
+  SCHOOL
+  COLLEGE
+  MONTESSORI
+}
+
 model Campus {
-  id             String    @id @default(uuid())
+  id             String     @id @default(uuid())
   organizationId String
   name           String
   code           String
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  type           CampusType @default(GENERIC)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
   deletedAt      DateTime?
 
   organization Organization @relation(fields: [organizationId], references: [id])
