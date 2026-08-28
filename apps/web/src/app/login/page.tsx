@@ -4,9 +4,9 @@ import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
+import { Building2, CheckCircle2, Eye, EyeOff } from "lucide-react";
 import { ApiError, type PasswordResetChallenge } from "@education-erp/api-client";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/auth-context";
@@ -37,12 +37,76 @@ function errorMessage(err: unknown, fallback: string): string {
   return typeof message === "string" ? message : fallback;
 }
 
+// Left brand panel — purely visual, no auth logic. Hidden below `lg`
+// so small screens just get the plain form, full width. The floating
+// card is a stand-in for what this product actually does (attendance,
+// not the generic "payment" mockup this layout was adapted from) —
+// static/illustrative, not wired to real data.
+function BrandPanel() {
+  return (
+    <div className="from-primary via-primary relative hidden overflow-hidden bg-gradient-to-br to-[oklch(0.5_0.15_290)] p-10 lg:flex lg:w-1/2 lg:flex-col lg:justify-between">
+      <div
+        className="absolute inset-0 opacity-[0.07]"
+        style={{
+          backgroundImage:
+            "linear-gradient(white 1px, transparent 1px), linear-gradient(90deg, white 1px, transparent 1px)",
+          backgroundSize: "42px 42px",
+        }}
+      />
+      <div className="relative flex items-center gap-2">
+        <div className="flex size-9 items-center justify-center rounded-lg bg-white/15 backdrop-blur">
+          <Building2 className="size-5 text-white" />
+        </div>
+        <span className="font-heading text-lg font-semibold text-white">Education ERP</span>
+      </div>
+
+      <div className="relative flex flex-1 items-center justify-center py-10">
+        <div className="w-full max-w-xs rounded-2xl bg-white/95 p-5 shadow-2xl">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-muted-foreground text-xs">Today&apos;s attendance</p>
+              <p className="text-2xl font-semibold">42 / 45</p>
+            </div>
+            <div className="flex size-9 items-center justify-center rounded-full bg-emerald-100">
+              <CheckCircle2 className="size-5 text-emerald-600" />
+            </div>
+          </div>
+          <div className="bg-muted mt-4 h-2 w-full overflow-hidden rounded-full">
+            <div className="h-full w-[93%] rounded-full bg-emerald-500" />
+          </div>
+          <p className="text-muted-foreground mt-2 text-xs">Class 10 · Section A · marked at 9:15 AM</p>
+        </div>
+      </div>
+
+      <p className="relative text-sm text-white/80">
+        One platform for admissions, attendance, exams, fees, and everything else your
+        institution runs on.
+      </p>
+    </div>
+  );
+}
+
+// Shared shell for all three modes — plain (no Card border) to match
+// the two-panel layout; each mode supplies its own heading/subtitle/
+// body.
+function AuthShell({ children }: { children: React.ReactNode }) {
+  return (
+    <main className="flex min-h-screen">
+      <BrandPanel />
+      <div className="flex flex-1 items-center justify-center p-6 lg:p-10">
+        <div className="w-full max-w-sm">{children}</div>
+      </div>
+    </main>
+  );
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const { login } = useAuth();
   const [submitting, setSubmitting] = useState(false);
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [captcha, setCaptcha] = useState({ captchaId: "", captchaAnswer: "" });
   const [captchaRefresh, setCaptchaRefresh] = useState(0);
 
@@ -58,6 +122,7 @@ export default function LoginPage() {
   const [resetChallenge, setResetChallenge] = useState<PasswordResetChallenge | null>(null);
   const [resetCodeInput, setResetCodeInput] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -150,161 +215,169 @@ export default function LoginPage() {
     }
   }
 
+  const inputClassName = "h-11 rounded-xl px-4";
+
   if (mode === "forgot") {
     return (
-      <main className="flex flex-1 items-center justify-center p-6">
-        <Card className="w-full max-w-sm">
-          <CardHeader>
-            <CardTitle>Reset your password</CardTitle>
-            <CardDescription>
-              Enter your User Id and, if we find a matching account, we&apos;ll email you a
-              reset code.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={onForgotPassword} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="reset-identifier">User Id</Label>
-                <Input
-                  id="reset-identifier"
-                  required
-                  placeholder="you@example.com or org.STU001"
-                  value={resetIdentifier}
-                  onChange={(e) => setResetIdentifier(e.target.value)}
-                />
-              </div>
-              <CaptchaField value={resetCaptcha} onChange={setResetCaptcha} refreshSignal={resetCaptchaRefresh} />
-              <Button type="submit" className="w-full" disabled={submitting}>
-                {submitting ? "Sending…" : "Send reset code"}
-              </Button>
-            </form>
-            <button
-              type="button"
-              className="text-muted-foreground hover:text-foreground mt-4 block text-center text-sm underline underline-offset-4"
-              onClick={() => setMode("login")}
-            >
-              Back to sign in
-            </button>
-          </CardContent>
-        </Card>
-      </main>
+      <AuthShell>
+        <h1 className="font-heading text-2xl font-semibold">Reset your password</h1>
+        <p className="text-muted-foreground mt-2 text-sm">
+          Enter your User Id and, if we find a matching account, we&apos;ll email you a reset
+          code.
+        </p>
+        <form onSubmit={onForgotPassword} className="mt-6 space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="reset-identifier">User Id</Label>
+            <Input
+              id="reset-identifier"
+              required
+              className={inputClassName}
+              placeholder="you@example.com or org.STU001"
+              value={resetIdentifier}
+              onChange={(e) => setResetIdentifier(e.target.value)}
+            />
+          </div>
+          <CaptchaField value={resetCaptcha} onChange={setResetCaptcha} refreshSignal={resetCaptchaRefresh} />
+          <Button type="submit" className="h-11 w-full rounded-xl" disabled={submitting}>
+            {submitting ? "Sending…" : "Send reset code"}
+          </Button>
+        </form>
+        <button
+          type="button"
+          className="text-muted-foreground hover:text-foreground mt-6 block text-center text-sm underline underline-offset-4"
+          onClick={() => setMode("login")}
+        >
+          Back to sign in
+        </button>
+      </AuthShell>
     );
   }
 
   if (mode === "reset" && resetChallenge) {
     return (
-      <main className="flex flex-1 items-center justify-center p-6">
-        <Card className="w-full max-w-sm">
-          <CardHeader>
-            <CardTitle>Please Type Your Reset Code to Proceed.</CardTitle>
-            <CardDescription>
-              Check your email — we&apos;ve sent a 6-digit reset code to the address on your
-              account. Enter it below along with your new password.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <form onSubmit={onResetPassword} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="reset-code">Reset code from your email</Label>
-                <Input
-                  id="reset-code"
-                  required
-                  autoFocus
-                  inputMode="numeric"
-                  placeholder="6-digit code"
-                  value={resetCodeInput}
-                  onChange={(e) => setResetCodeInput(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="new-password">New password</Label>
-                <Input
-                  id="new-password"
-                  type="password"
-                  required
-                  minLength={8}
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                />
-              </div>
-              <Button type="submit" className="w-full" disabled={submitting}>
-                {submitting ? "Resetting…" : "Reset password"}
-              </Button>
-            </form>
-            <button
-              type="button"
-              className="text-muted-foreground hover:text-foreground mt-4 block text-center text-sm underline underline-offset-4"
-              onClick={() => {
-                setMode("login");
-                setResetChallenge(null);
-                setResetIdentifier("");
-                setResetCodeInput("");
-                setNewPassword("");
-              }}
-            >
-              Back to sign in
-            </button>
-          </CardContent>
-        </Card>
-      </main>
+      <AuthShell>
+        <h1 className="font-heading text-2xl font-semibold">Please Type Your Reset Code to Proceed.</h1>
+        <p className="text-muted-foreground mt-2 text-sm">
+          Check your email — we&apos;ve sent a 6-digit reset code to the address on your account.
+          Enter it below along with your new password.
+        </p>
+        <form onSubmit={onResetPassword} className="mt-6 space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="reset-code">Reset code from your email</Label>
+            <Input
+              id="reset-code"
+              required
+              autoFocus
+              inputMode="numeric"
+              className={inputClassName}
+              placeholder="6-digit code"
+              value={resetCodeInput}
+              onChange={(e) => setResetCodeInput(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="new-password">New password</Label>
+            <div className="relative">
+              <Input
+                id="new-password"
+                type={showNewPassword ? "text" : "password"}
+                required
+                minLength={8}
+                className={`${inputClassName} pr-10`}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+              />
+              <button
+                type="button"
+                className="text-muted-foreground hover:text-foreground absolute top-1/2 right-3 -translate-y-1/2"
+                onClick={() => setShowNewPassword((v) => !v)}
+                aria-label={showNewPassword ? "Hide password" : "Show password"}
+              >
+                {showNewPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+              </button>
+            </div>
+          </div>
+          <Button type="submit" className="h-11 w-full rounded-xl" disabled={submitting}>
+            {submitting ? "Resetting…" : "Reset password"}
+          </Button>
+        </form>
+        <button
+          type="button"
+          className="text-muted-foreground hover:text-foreground mt-6 block text-center text-sm underline underline-offset-4"
+          onClick={() => {
+            setMode("login");
+            setResetChallenge(null);
+            setResetIdentifier("");
+            setResetCodeInput("");
+            setNewPassword("");
+          }}
+        >
+          Back to sign in
+        </button>
+      </AuthShell>
     );
   }
 
   return (
-    <main className="flex flex-1 items-center justify-center p-6">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle>Sign in</CardTitle>
-          <CardDescription>Education ERP administration</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={onSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="identifier">User Id</Label>
-              <Input
-                id="identifier"
-                type="text"
-                required
-                placeholder="you@example.com or org.STU001"
-                value={identifier}
-                onChange={(e) => setIdentifier(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="password">Password</Label>
-                <button
-                  type="button"
-                  className="text-muted-foreground hover:text-foreground text-xs underline underline-offset-4"
-                  onClick={() => {
-                    setMode("forgot");
-                    setResetIdentifier(identifier);
-                  }}
-                >
-                  Forgot password?
-                </button>
-              </div>
-              <Input
-                id="password"
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </div>
-            <CaptchaField value={captcha} onChange={setCaptcha} refreshSignal={captchaRefresh} />
-            <Button type="submit" className="w-full" disabled={submitting}>
-              {submitting ? "Signing in…" : "Sign in"}
-            </Button>
-          </form>
-          <p className="text-muted-foreground mt-4 text-center text-sm">
-            No institution yet?{" "}
-            <Link href="/register" className="underline underline-offset-4">
-              Register one
-            </Link>
-          </p>
-        </CardContent>
-      </Card>
-    </main>
+    <AuthShell>
+      <h1 className="font-heading text-2xl font-semibold">Welcome to Education ERP</h1>
+      <p className="text-muted-foreground mt-2 text-sm">
+        No institution yet?{" "}
+        <Link href="/register" className="text-primary font-medium underline underline-offset-4">
+          Register now
+        </Link>
+      </p>
+      <form onSubmit={onSubmit} className="mt-6 space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="identifier">User Id</Label>
+          <Input
+            id="identifier"
+            type="text"
+            required
+            className={inputClassName}
+            placeholder="you@example.com or org.STU001"
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
+          />
+        </div>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="password">Password</Label>
+            <button
+              type="button"
+              className="text-muted-foreground hover:text-foreground text-xs underline underline-offset-4"
+              onClick={() => {
+                setMode("forgot");
+                setResetIdentifier(identifier);
+              }}
+            >
+              Forgot password?
+            </button>
+          </div>
+          <div className="relative">
+            <Input
+              id="password"
+              type={showPassword ? "text" : "password"}
+              required
+              className={`${inputClassName} pr-10`}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            <button
+              type="button"
+              className="text-muted-foreground hover:text-foreground absolute top-1/2 right-3 -translate-y-1/2"
+              onClick={() => setShowPassword((v) => !v)}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+            >
+              {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+            </button>
+          </div>
+        </div>
+        <CaptchaField value={captcha} onChange={setCaptcha} refreshSignal={captchaRefresh} />
+        <Button type="submit" className="h-11 w-full rounded-xl" disabled={submitting}>
+          {submitting ? "Signing in…" : "Sign in"}
+        </Button>
+      </form>
+    </AuthShell>
   );
 }
