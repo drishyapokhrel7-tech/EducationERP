@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { StatCard } from "@/components/ui/stat-card";
 import { api } from "@/lib/api";
@@ -28,6 +29,27 @@ export default function DashboardPage() {
   );
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({ name: "", code: "" });
+
+  // The Campus model itself has no "type" column — this is purely a
+  // label picker so the section reads naturally for a school, a
+  // college, or a Montessori-style site, not a stored/filterable
+  // property. If that ever needs to be real, queryable data, this is
+  // the signal to add a real Campus.type field instead of stretching
+  // this further.
+  const CAMPUS_TYPES = ["Campus", "School", "Montessori"] as const;
+  const [campusType, setCampusType] = useState<(typeof CAMPUS_TYPES)[number]>("Campus");
+  const campusTypePlural = campusType === "Campus" ? "Campuses" : `${campusType}s`;
+
+  // Not every institution runs multiple campuses/schools — this
+  // shortcut fills the campus form from the organization's own
+  // already-validated name/slug (slug is @MinLength(2) at registration,
+  // well over the campus code's @MinLength(1), so this always passes
+  // validation) instead of making a single-site admin retype it.
+  function onSingleInstitution() {
+    if (!organization) return;
+    setForm({ name: organization.name, code: organization.slug });
+    toast.success("Okay No Problem Now you can click Add Campus button below to make this institution official.");
+  }
 
   async function onCreateCampus(e: FormEvent) {
     e.preventDefault();
@@ -67,11 +89,11 @@ export default function DashboardPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Campuses</CardTitle>
+          <CardTitle>{campusTypePlural}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           {campuses.length === 0 ? (
-            <p className="text-muted-foreground text-sm">No campuses yet.</p>
+            <p className="text-muted-foreground text-sm">No {campusTypePlural.toLowerCase()} yet.</p>
           ) : (
             <ul className="divide-y">
               {campuses.map((campus) => (
@@ -85,7 +107,28 @@ export default function DashboardPage() {
 
           <Separator />
 
+          {campuses.length === 0 ? (
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-muted-foreground text-xs">
+                Only one {campusType.toLowerCase()}? Skip typing it in yourself.
+              </p>
+              <Button type="button" variant="outline" size="sm" onClick={onSingleInstitution} disabled={!organization}>
+                I have only one institution
+              </Button>
+            </div>
+          ) : null}
+
           <form onSubmit={onCreateCampus} className="flex items-end gap-3">
+            <div className="space-y-2">
+              <Label>Type</Label>
+              <NativeSelect
+                className="w-32"
+                placeholder="Select type"
+                value={campusType}
+                onChange={(v) => setCampusType(v as (typeof CAMPUS_TYPES)[number])}
+                options={CAMPUS_TYPES.map((t) => ({ value: t, label: t }))}
+              />
+            </div>
             <div className="space-y-2">
               <Label htmlFor="campus-name">Name</Label>
               <Input
@@ -106,7 +149,7 @@ export default function DashboardPage() {
               />
             </div>
             <Button type="submit" disabled={creating}>
-              {creating ? "Adding…" : "Add campus"}
+              {creating ? "Adding…" : `Add ${campusType}`}
             </Button>
           </form>
         </CardContent>

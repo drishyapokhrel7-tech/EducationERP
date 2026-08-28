@@ -386,6 +386,11 @@ describe("Tenant isolation (e2e)", () => {
       await prisma.role.deleteMany({ where: { organizationId: { in: [orgAId, orgBId] } } });
       await prisma.session.deleteMany({ where: { user: { organizationId: { in: [orgAId, orgBId] } } } });
       await prisma.loginEvent.deleteMany({ where: { organizationId: { in: [orgAId, orgBId] } } });
+      // registerOrganization now always creates one of these for the
+      // new admin (Phase 8-adjacent email-verification feature) — orgA/
+      // orgB's own admins get one too, same FK-before-parent-delete
+      // requirement as session/loginEvent above.
+      await prisma.emailVerificationCode.deleteMany({ where: { user: { organizationId: { in: [orgAId, orgBId] } } } });
       await prisma.user.deleteMany({ where: { organizationId: { in: [orgAId, orgBId] } } });
       await prisma.organization.deleteMany({ where: { id: { in: [orgAId, orgBId] } } });
     }
@@ -11504,6 +11509,84 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(tokenB))
         .expect(200);
       expect(crossTenant.body.data.every((s: { id: string }) => !page1Ids.has(s.id) && !page2Ids.has(s.id))).toBe(true);
+    }, 60000);
+  });
+
+  describe("Registration email verification (non-blocking, code shown on-screen)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    it("registers with an active account immediately, verifies with the returned code, rejects reuse/wrong-user/wrong-code, and resend issues a fresh code", async () => {
+      const suffix = `verify${run}`;
+      const reg = await request(app.getHttpServer())
+        .post("/auth/register-organization")
+        .send({
+          organizationName: `Verify Test ${suffix}`,
+          slug: `verify-test-${suffix}`,
+          adminEmail: `verify-admin-${suffix}@rls-e2e.test`,
+          adminFirstName: "Verify",
+          adminLastName: "Admin",
+          password: "VerifyTest123!",
+        })
+        .expect(201);
+
+      // Account is fully active immediately — not gated on verification.
+      expect(reg.body.user.status).toBe("ACTIVE");
+      expect(reg.body.user.emailVerifiedAt).toBeNull();
+      expect(reg.body.emailVerification).toMatchObject({ codeId: expect.any(String), code: expect.any(String) });
+      const verifyToken: string = reg.body.accessToken;
+      const { codeId, code } = reg.body.emailVerification;
+
+      // A second org's admin can't use org A's code — cross-user reject.
+      const regB = await request(app.getHttpServer())
+        .post("/auth/register-organization")
+        .send({
+          organizationName: `Verify Test B ${suffix}`,
+          slug: `verify-test-b-${suffix}`,
+          adminEmail: `verify-admin-b-${suffix}@rls-e2e.test`,
+          adminFirstName: "Verify",
+          adminLastName: "AdminB",
+          password: "VerifyTest123!",
+        })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post("/auth/verify-email")
+        .set(...auth(regB.body.accessToken))
+        .send({ codeId, code })
+        .expect(400);
+
+      // Wrong code is rejected, and (single-use, same as Captcha)
+      // consumes the attempt — the original correct code no longer
+      // works either after a wrong guess.
+      await request(app.getHttpServer())
+        .post("/auth/verify-email")
+        .set(...auth(verifyToken))
+        .send({ codeId, code: "000000" })
+        .expect(400);
+      await request(app.getHttpServer())
+        .post("/auth/verify-email")
+        .set(...auth(verifyToken))
+        .send({ codeId, code })
+        .expect(400);
+
+      // Resend issues a genuinely fresh, working code.
+      const resent = await request(app.getHttpServer())
+        .post("/auth/resend-verification-code")
+        .set(...auth(verifyToken))
+        .expect(201);
+      expect(resent.body.codeId).not.toBe(codeId);
+      await request(app.getHttpServer())
+        .post("/auth/verify-email")
+        .set(...auth(verifyToken))
+        .send({ codeId: resent.body.codeId, code: resent.body.code })
+        .expect(201)
+        .expect({ verified: true });
+
+      // Single-use — the same correct code can't be replayed.
+      await request(app.getHttpServer())
+        .post("/auth/verify-email")
+        .set(...auth(verifyToken))
+        .send({ codeId: resent.body.codeId, code: resent.body.code })
+        .expect(400);
     }, 60000);
   });
 });

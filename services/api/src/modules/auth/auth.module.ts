@@ -4,6 +4,7 @@ import { JwtModule } from "@nestjs/jwt";
 import { PassportModule } from "@nestjs/passport";
 import { AuthService } from "./auth.service";
 import { AuthController } from "./auth.controller";
+import { EmailVerificationService } from "./email-verification.service";
 import { JwtStrategy } from "../../common/auth/jwt.strategy";
 import { CaptchaModule } from "../captcha/captcha.module";
 
@@ -20,7 +21,7 @@ import { CaptchaModule } from "../captcha/captcha.module";
       }),
     }),
   ],
-  providers: [AuthService, JwtStrategy],
+  providers: [AuthService, JwtStrategy, EmailVerificationService],
   controllers: [AuthController],
   exports: [AuthService],
 })

@@ -4,6 +4,7 @@ import { AuthService } from "./auth.service";
 import { RegisterOrganizationDto } from "./dto/register-organization.dto";
 import { LoginDto } from "./dto/login.dto";
 import { RefreshDto } from "./dto/refresh.dto";
+import { VerifyEmailDto } from "./dto/verify-email.dto";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtPayload } from "../../common/auth/jwt-payload";
@@ -50,5 +51,18 @@ export class AuthController {
   @Post("me")
   me(@CurrentUser() user: JwtPayload) {
     return user;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post("verify-email")
+  async verifyEmail(@CurrentUser() user: JwtPayload, @Body() dto: VerifyEmailDto) {
+    await this.authService.verifyEmail(user.sub, dto.codeId, dto.code);
+    return { verified: true };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post("resend-verification-code")
+  resendVerificationCode(@CurrentUser() user: JwtPayload) {
+    return this.authService.resendVerificationCode(user.sub);
   }
 }

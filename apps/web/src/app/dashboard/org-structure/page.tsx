@@ -96,6 +96,8 @@ export default function OrgStructurePage() {
             <Label>Name</Label>
             <Input
               required
+              placeholder="e.g. Faculty of Science"
+              title="A broad academic division (e.g. Faculty of Science, Faculty of Management) that Departments and Programs belong to."
               value={facultyForm.name}
               onChange={(e) => setFacultyForm((f) => ({ ...f, name: e.target.value }))}
             />

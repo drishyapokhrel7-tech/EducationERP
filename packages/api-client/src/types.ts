@@ -13,8 +13,20 @@ export interface SafeUser {
   firstName: string;
   lastName: string;
   status: UserStatus;
+  // Null = not verified. A non-blocking, after-the-fact confirmation,
+  // not a login gate — see RegisterOrganizationResult.emailVerification.
+  emailVerifiedAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+// No real email provider exists in this project — the code is
+// returned directly here and shown on-screen, not emailed. Confirming
+// it back only proves the user can read what's already on their own
+// screen, not that they own the email address.
+export interface EmailVerificationChallenge {
+  codeId: string;
+  code: string;
 }
 
 export type Edition = "FREE" | "PROFESSIONAL" | "ULTRA";

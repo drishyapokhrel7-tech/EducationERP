@@ -228,6 +228,7 @@ import type {
   StudentPicker,
   EmployeePicker,
   CaptchaChallenge,
+  EmailVerificationChallenge,
   EditionStatus,
   Edition,
   PlatformAdminUser,
@@ -426,10 +427,19 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
 
   return {
     registerOrganization: (input: RegisterOrganizationInput) =>
-      request<{ organization: Organization; user: SafeUser } & AuthTokens>(
+      request<{ organization: Organization; user: SafeUser; emailVerification: EmailVerificationChallenge } & AuthTokens>(
         "/auth/register-organization",
         { method: "POST", body: JSON.stringify(input) },
       ),
+
+    verifyEmail: (input: { codeId: string; code: string }) =>
+      request<{ verified: boolean }>("/auth/verify-email", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+
+    resendVerificationCode: () =>
+      request<EmailVerificationChallenge>("/auth/resend-verification-code", { method: "POST" }),
 
     login: (input: LoginInput) =>
       request<{ user: SafeUser } & AuthTokens>("/auth/login", {

@@ -1,7 +1,12 @@
 "use client";
 
 import { createContext, useContext, useSyncExternalStore, type ReactNode } from "react";
-import type { LoginInput, RegisterOrganizationInput, SafeUser } from "@education-erp/api-client";
+import type {
+  EmailVerificationChallenge,
+  LoginInput,
+  RegisterOrganizationInput,
+  SafeUser,
+} from "@education-erp/api-client";
 import { api } from "./api";
 import {
   getStoredSession,
@@ -14,7 +19,10 @@ import {
 interface AuthContextValue {
   user: SafeUser | null;
   login: (input: LoginInput) => Promise<void>;
-  registerOrganization: (input: RegisterOrganizationInput) => Promise<void>;
+  // Account is fully active + logged-in as soon as this resolves — the
+  // returned challenge is only for the caller to optionally show a
+  // "verify your email" prompt, not a login gate.
+  registerOrganization: (input: RegisterOrganizationInput) => Promise<EmailVerificationChallenge>;
   logout: () => Promise<void>;
 }
 
@@ -31,6 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function registerOrganization(input: RegisterOrganizationInput) {
     const result = await api.registerOrganization(input);
     setStoredSession({ tokens: result, user: result.user });
+    return result.emailVerification;
   }
 
   async function logout() {

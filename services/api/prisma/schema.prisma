@@ -416,26 +416,31 @@ enum UserStatus {
 }
 
 model User {
-  id             String     @id @default(uuid())
-  organizationId String
-  email          String     @unique
+  id              String     @id @default(uuid())
+  organizationId  String
+  email           String     @unique
   // Set for self-service logins that aren't email-based (students log in
   // by student code, not email) — `{organizationSlug}.{studentCode}`,
   // globally unique the same way email is, so login can look up either
   // column with one identifier field.
-  username       String?    @unique
-  passwordHash   String
-  firstName      String
-  lastName       String
-  status         UserStatus @default(INVITED)
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
-  deletedAt      DateTime?
+  username        String?    @unique
+  passwordHash    String
+  firstName       String
+  lastName        String
+  status          UserStatus @default(INVITED)
+  // Null = not verified. Registration creates the account ACTIVE
+  // immediately (unchanged) — this is a non-blocking, after-the-fact
+  // confirmation, not a login gate. See EmailVerificationCode.
+  emailVerifiedAt DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  deletedAt       DateTime?
 
-  organization               Organization           @relation(fields: [organizationId], references: [id])
+  organization               Organization            @relation(fields: [organizationId], references: [id])
   userRoles                  UserRole[]
   sessions                   Session[]
   loginEvents                LoginEvent[]
+  emailVerificationCodes     EmailVerificationCode[]
   auditLogs                  AuditLog[]
   employee                   Employee?
   student                    Student?
@@ -448,12 +453,12 @@ model User {
   leaveRequestsReviewed      LeaveRequest[]
   payrollsFinalized          Payroll[]
   notifications              Notification[]
-  messagesCreated            Message[]              @relation("MessagesCreated")
-  messagesReceivedDirectly   Message[]              @relation("MessagesToSpecificUser")
-  pushNotificationLogs       PushNotificationLog[]  @relation("PushLogsToUser")
-  studentDocumentsReviewed   StudentDocument[]      @relation("StudentDocumentsReviewed")
-  staffDocumentsReviewed     StaffDocument[]        @relation("StaffDocumentsReviewed")
-  certificatesIssued         Certificate[]          @relation("CertificatesIssued")
+  messagesCreated            Message[]               @relation("MessagesCreated")
+  messagesReceivedDirectly   Message[]               @relation("MessagesToSpecificUser")
+  pushNotificationLogs       PushNotificationLog[]   @relation("PushLogsToUser")
+  studentDocumentsReviewed   StudentDocument[]       @relation("StudentDocumentsReviewed")
+  staffDocumentsReviewed     StaffDocument[]         @relation("StaffDocumentsReviewed")
+  certificatesIssued         Certificate[]           @relation("CertificatesIssued")
 
   @@index([organizationId])
   @@map("users")
@@ -551,6 +556,28 @@ model Session {
 
   @@index([userId])
   @@map("sessions")
+}
+
+// No real email provider exists in this project (see
+// EmailVerificationService's own comment) — the code is shown
+// directly in the UI, not sent, so this is a self-verification step
+// confirming the user can read a code back, not proof of inbox
+// ownership. Same single-use/expiring/hashed shape as Captcha, keyed
+// by userId instead of being anonymous/global. Not RLS-protected —
+// same reasoning as Session/LoginEvent (auth-adjacent, reached before
+// a tenant context is meaningful for this kind of lookup).
+model EmailVerificationCode {
+  id         String    @id @default(uuid())
+  userId     String
+  codeHash   String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("email_verification_codes")
 }
 
 model LoginEvent {

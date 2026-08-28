@@ -12,6 +12,7 @@ import { RegisterOrganizationDto } from "./dto/register-organization.dto";
 import { LoginDto } from "./dto/login.dto";
 import { JwtPayload } from "../../common/auth/jwt-payload";
 import { CaptchaService } from "../captcha/captcha.service";
+import { EmailVerificationService } from "./email-verification.service";
 
 const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
@@ -28,6 +29,7 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     private readonly captcha: CaptchaService,
+    private readonly emailVerification: EmailVerificationService,
   ) {}
 
   async registerOrganization(dto: RegisterOrganizationDto) {
@@ -85,7 +87,21 @@ export class AuthService {
     });
 
     const tokens = await this.issueTokens(user.id, organization.id);
-    return { organization, user: this.toSafeUser(user), ...tokens };
+    // Account is fully active immediately — verification is a
+    // non-blocking, after-the-fact step, not a login gate. No real
+    // email provider exists in this project (see
+    // EmailVerificationService's own comment), so the code is
+    // returned directly here and shown on-screen rather than sent.
+    const emailVerification = await this.emailVerification.generate(user.id);
+    return { organization, user: this.toSafeUser(user), ...tokens, emailVerification };
+  }
+
+  async verifyEmail(userId: string, codeId: string | undefined, code: string | undefined) {
+    await this.emailVerification.verify(userId, codeId, code);
+  }
+
+  async resendVerificationCode(userId: string) {
+    return this.emailVerification.generate(userId);
   }
 
   async login(dto: LoginDto, meta: { ipAddress?: string; userAgent?: string }) {
