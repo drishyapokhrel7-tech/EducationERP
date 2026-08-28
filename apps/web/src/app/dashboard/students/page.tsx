@@ -12,7 +12,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { EntityCard } from "@/components/dashboard/entity-card";
 import { ListPager } from "@/components/dashboard/list-pager";
-import { PhotoInput } from "@/components/photo-input";
+import { PhotoInput, EMPTY_PHOTO, hasPhoto, resolvePhotoUrl, type PhotoValue } from "@/components/photo-input";
 import { Avatar } from "@/components/avatar";
 import { EditionUsageBadge } from "@/components/edition-usage-badge";
 import { EditionUpgradeBanner } from "@/components/edition-upgrade-banner";
@@ -93,7 +93,7 @@ export default function StudentsPage() {
     dateOfBirth: "",
     gender: "",
   });
-  const [studentPhotoUrl, setStudentPhotoUrl] = useState<string | null>(null);
+  const [studentPhoto, setStudentPhoto] = useState<PhotoValue>(EMPTY_PHOTO);
   const [guardianForm, setGuardianForm] = useState({
     firstName: "",
     middleName: "",
@@ -101,7 +101,7 @@ export default function StudentsPage() {
     phone: "",
     email: "",
   });
-  const [guardianPhotoUrl, setGuardianPhotoUrl] = useState<string | null>(null);
+  const [guardianPhoto, setGuardianPhoto] = useState<PhotoValue>(EMPTY_PHOTO);
   const [linkForm, setLinkForm] = useState({
     studentId: "",
     guardianId: "",
@@ -348,18 +348,24 @@ export default function StudentsPage() {
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e: FormEvent) => {
             e.preventDefault();
-            if (!studentPhotoUrl) return;
+            if (!hasPhoto(studentPhoto)) return;
             submit(
-              () =>
-                api.createStudent({
+              // A captured-but-not-yet-uploaded photo is uploaded right
+              // here, as part of this same Add click — resolvePhotoUrl
+              // is a no-op if the photo already has a real URL (picked
+              // via the file button, which uploads immediately).
+              async () => {
+                const photoUrl = await resolvePhotoUrl(studentPhoto);
+                return api.createStudent({
                   ...studentForm,
                   middleName: studentForm.middleName || undefined,
                   gender: studentForm.gender || undefined,
-                  photoUrl: studentPhotoUrl,
-                }),
+                  photoUrl,
+                });
+              },
               () => {
                 setStudentForm({ firstName: "", middleName: "", lastName: "", dateOfBirth: "", gender: "" });
-                setStudentPhotoUrl(null);
+                setStudentPhoto(EMPTY_PHOTO);
                 setEditionLimitEdition(null);
                 students.mutate();
                 studentsPicker.mutate();
@@ -411,9 +417,9 @@ export default function StudentsPage() {
           </div>
           <div className="space-y-2">
             <Label>Photo</Label>
-            <PhotoInput value={studentPhotoUrl} onChange={setStudentPhotoUrl} />
+            <PhotoInput value={studentPhoto} onChange={setStudentPhoto} />
           </div>
-          <Button type="submit" disabled={!studentPhotoUrl}>
+          <Button type="submit" disabled={!hasPhoto(studentPhoto)}>
             Add
           </Button>
         </form>
@@ -443,18 +449,20 @@ export default function StudentsPage() {
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e: FormEvent) => {
             e.preventDefault();
-            if (!guardianPhotoUrl) return;
+            if (!hasPhoto(guardianPhoto)) return;
             submit(
-              () =>
-                api.createGuardian({
+              async () => {
+                const photoUrl = await resolvePhotoUrl(guardianPhoto);
+                return api.createGuardian({
                   ...guardianForm,
                   middleName: guardianForm.middleName || undefined,
                   email: guardianForm.email || undefined,
-                  photoUrl: guardianPhotoUrl,
-                }),
+                  photoUrl,
+                });
+              },
               () => {
                 setGuardianForm({ firstName: "", middleName: "", lastName: "", phone: "", email: "" });
-                setGuardianPhotoUrl(null);
+                setGuardianPhoto(EMPTY_PHOTO);
                 guardians.mutate();
               },
             );
@@ -501,9 +509,9 @@ export default function StudentsPage() {
           </div>
           <div className="space-y-2">
             <Label>Photo</Label>
-            <PhotoInput value={guardianPhotoUrl} onChange={setGuardianPhotoUrl} />
+            <PhotoInput value={guardianPhoto} onChange={setGuardianPhoto} />
           </div>
-          <Button type="submit" disabled={!guardianPhotoUrl}>
+          <Button type="submit" disabled={!hasPhoto(guardianPhoto)}>
             Add
           </Button>
         </form>

@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { EntityCard } from "@/components/dashboard/entity-card";
 import { ListPager } from "@/components/dashboard/list-pager";
-import { PhotoInput } from "@/components/photo-input";
+import { PhotoInput, EMPTY_PHOTO, hasPhoto, resolvePhotoUrl, type PhotoValue } from "@/components/photo-input";
 import { Avatar } from "@/components/avatar";
 import { EditionUsageBadge } from "@/components/edition-usage-badge";
 import { EditionUpgradeBanner } from "@/components/edition-upgrade-banner";
@@ -85,7 +85,7 @@ export default function StaffPage() {
     phone: "",
     dateOfJoining: "",
   });
-  const [employeePhotoUrl, setEmployeePhotoUrl] = useState<string | null>(null);
+  const [employeePhoto, setEmployeePhoto] = useState<PhotoValue>(EMPTY_PHOTO);
 
   async function submit(action: () => Promise<unknown>, onSuccess: () => void) {
     try {
@@ -400,16 +400,20 @@ export default function StaffPage() {
           className="flex flex-wrap items-end gap-3"
           onSubmit={(ev: FormEvent) => {
             ev.preventDefault();
-            if (!employeePhotoUrl) return;
+            if (!hasPhoto(employeePhoto)) return;
             submit(
-              () =>
-                api.createEmployee({
+              // A captured-but-not-yet-uploaded photo is uploaded right
+              // here, as part of this same Add click.
+              async () => {
+                const photoUrl = await resolvePhotoUrl(employeePhoto);
+                return api.createEmployee({
                   ...employeeForm,
                   departmentId: employeeForm.departmentId || undefined,
                   middleName: employeeForm.middleName || undefined,
                   phone: employeeForm.phone || undefined,
-                  photoUrl: employeePhotoUrl,
-                }),
+                  photoUrl,
+                });
+              },
               () => {
                 setEmployeeForm({
                   staffTypeId: "",
@@ -423,7 +427,7 @@ export default function StaffPage() {
                   phone: "",
                   dateOfJoining: "",
                 });
-                setEmployeePhotoUrl(null);
+                setEmployeePhoto(EMPTY_PHOTO);
                 setEditionLimitEdition(null);
                 employees.mutate();
               },
@@ -519,11 +523,11 @@ export default function StaffPage() {
           </div>
           <div className="space-y-2">
             <Label>Photo</Label>
-            <PhotoInput value={employeePhotoUrl} onChange={setEmployeePhotoUrl} />
+            <PhotoInput value={employeePhoto} onChange={setEmployeePhoto} />
           </div>
           <Button
             type="submit"
-            disabled={!employeeForm.staffTypeId || !employeeForm.designationId || !employeePhotoUrl}
+            disabled={!employeeForm.staffTypeId || !employeeForm.designationId || !hasPhoto(employeePhoto)}
           >
             Add
           </Button>
