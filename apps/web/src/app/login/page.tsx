@@ -48,10 +48,9 @@ export default function LoginPage() {
 
   // Password reset — main tenant login only, matches this page's own
   // scope. "forgot" collects the identifier + captcha; on success the
-  // API returns the code directly (this project has no real email
-  // provider — same on-screen pattern as registration's email
-  // verification), moving to "reset" to collect it back plus a new
-  // password.
+  // API sends the code to the account's real email address (no
+  // on-screen fallback anymore — see PasswordResetService), moving to
+  // "reset" to collect it back plus a new password.
   const [mode, setMode] = useState<"login" | "forgot" | "reset">("login");
   const [resetIdentifier, setResetIdentifier] = useState("");
   const [resetCaptcha, setResetCaptcha] = useState({ captchaId: "", captchaAnswer: "" });
@@ -158,8 +157,8 @@ export default function LoginPage() {
           <CardHeader>
             <CardTitle>Reset your password</CardTitle>
             <CardDescription>
-              This project doesn&apos;t send real email yet, so your reset code will be shown right
-              here instead of in your inbox.
+              Enter your User Id and, if we find a matching account, we&apos;ll email you a
+              reset code.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -198,20 +197,21 @@ export default function LoginPage() {
         <Card className="w-full max-w-sm">
           <CardHeader>
             <CardTitle>Please Type Your Reset Code to Proceed.</CardTitle>
+            <CardDescription>
+              Check your email — we&apos;ve sent a 6-digit reset code to the address on your
+              account. Enter it below along with your new password.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="bg-muted rounded-lg border p-4 text-center">
-              <p className="text-muted-foreground text-xs">Your reset code</p>
-              <p className="font-mono text-2xl tracking-widest">{resetChallenge.code}</p>
-            </div>
             <form onSubmit={onResetPassword} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="reset-code">Enter the code above</Label>
+                <Label htmlFor="reset-code">Reset code from your email</Label>
                 <Input
                   id="reset-code"
                   required
                   autoFocus
                   inputMode="numeric"
+                  placeholder="6-digit code"
                   value={resetCodeInput}
                   onChange={(e) => setResetCodeInput(e.target.value)}
                 />

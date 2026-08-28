@@ -1,5 +1,5 @@
 import { randomInt } from "crypto";
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from "@nestjs/common";
 import * as argon2 from "argon2";
 import { PrismaService } from "../../prisma/prisma.service";
 import { DeliveryProvider } from "../communication/delivery-provider";
@@ -8,26 +8,28 @@ const TTL_MS = 10 * 60 * 1000; // 10 minutes — same as EmailVerificationCode
 const CODE_LENGTH = 6;
 
 /**
- * Same self-verification shape and honesty as EmailVerificationService:
- * the reset code is always returned directly in the response and shown
- * on-screen, whether or not real email is configured (see
- * DeliveryProvider.sendEmail's EMAIL_DRIVER=gmail branch) — kept as a
- * fallback/dev convenience, not replaced. This means the person
- * requesting the reset sees the code immediately without proving they
- * own the account's inbox, a real (and deliberate) trade-off given
- * this project's on-screen-first design — the same one the user
- * explicitly chose for email verification.
+ * Email-only now that real Gmail delivery exists (see
+ * DeliveryProvider.sendEmail's EMAIL_DRIVER=gmail branch) — a
+ * deliberate change from this service's earlier on-screen-code
+ * design. requestReset() no longer returns the raw code to the
+ * caller in real use; it's only ever delivered by email now, which
+ * actually proves inbox ownership. The one exception is
+ * NODE_ENV=test: the e2e suite can't check a real inbox, so the code
+ * is still returned there — same escape-hatch precedent as
+ * CaptchaService/DeliveryProvider's own test bypass.
  *
- * A different trade-off from EmailVerificationService, though:
- * requestReset() throws NotFoundException for an identifier that
- * matches no account, rather than returning a generic "if an account
- * exists..." response. A traditional email-based flow hides this to
- * prevent account enumeration; that only works because the code is
- * invisible to the requester unless they own the inbox. Here the code
- * is shown directly regardless, so pretending success for a
- * nonexistent account would just be a confusing dead end, not a real
- * privacy protection. The forgot-password request itself is
- * captcha-gated (see AuthController) as the actual abuse control.
+ * Because there's no on-screen fallback anymore, a delivery that
+ * didn't actually go out (EMAIL_DRIVER isn't "gmail", or the send
+ * itself failed) is a real dead end for the requester — this throws
+ * loudly in that case instead of returning a silent "success" no one
+ * can act on.
+ *
+ * Still keeps its own trade-off from before: requestReset() throws
+ * NotFoundException for an identifier that matches no account, rather
+ * than a generic "if an account exists..." response. That's a
+ * deliberate, separate call (the forgot-password request itself is
+ * captcha-gated — see AuthController — as the actual abuse control),
+ * unrelated to the email-only change above.
  */
 @Injectable()
 export class PasswordResetService {
@@ -36,7 +38,7 @@ export class PasswordResetService {
     private readonly delivery: DeliveryProvider,
   ) {}
 
-  async requestReset(identifier: string): Promise<{ codeId: string; code: string }> {
+  async requestReset(identifier: string): Promise<{ codeId: string; code?: string }> {
     const user = await this.prisma.user.findFirst({
       where: { OR: [{ email: identifier }, { username: identifier }] },
     });
@@ -48,14 +50,28 @@ export class PasswordResetService {
     const row = await this.prisma.passwordResetCode.create({
       data: { userId: user.id, codeHash, expiresAt: new Date(Date.now() + TTL_MS) },
     });
-    // DeliveryProvider never throws (see its own comment) — a
-    // delivery hiccup can't turn a valid reset request into a 500.
-    await this.delivery.sendEmail(
+
+    // Test suite can't read a real inbox — same NODE_ENV=test bypass
+    // precedent as Captcha/DeliveryProvider. Every other caller only
+    // gets the code via email from here on.
+    if (process.env.NODE_ENV === "test") {
+      return { codeId: row.id, code };
+    }
+
+    const result = await this.delivery.sendEmail(
       user.email,
       "Password reset code",
       `Your password reset code is ${code}. It expires in 10 minutes.`,
     );
-    return { codeId: row.id, code };
+    if (process.env.EMAIL_DRIVER !== "gmail" || result.status === "FAILED") {
+      // Doesn't leak account existence — the 404 above already
+      // settled that boundary. This is purely "delivery didn't
+      // happen," surfaced loudly instead of a dead-end 200.
+      throw new InternalServerErrorException(
+        "Couldn't send the reset email — please try again shortly, or contact your administrator.",
+      );
+    }
+    return { codeId: row.id };
   }
 
   async resetPassword(codeId: string | undefined, code: string | undefined, newPassword: string): Promise<void> {

@@ -36,12 +36,13 @@ export interface EmailVerificationChallenge {
   code: string;
 }
 
-// Same "no real email provider, code shown on-screen" shape as
-// EmailVerificationChallenge — see PasswordResetService's own comment
-// for the full reasoning and its trade-offs.
+// Email-only now — `code` is only ever populated under NODE_ENV=test
+// (the e2e suite's own escape hatch); real callers get `codeId` alone
+// and must check their email. See PasswordResetService's own comment
+// for the full reasoning.
 export interface PasswordResetChallenge {
   codeId: string;
-  code: string;
+  code?: string;
 }
 
 // POST auth/me's shape — the JWT payload itself. SafeUser (the object
