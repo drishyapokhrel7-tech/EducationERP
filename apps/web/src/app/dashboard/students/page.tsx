@@ -21,6 +21,13 @@ import { useHighlightFromSearch } from "@/lib/use-highlight-from-search";
 import { isEditionLimitError } from "@/lib/edition-limit-error";
 import { ApiError, type Edition, type ImportResult } from "@education-erp/api-client";
 
+// Matches the backend's GENDER_OPTIONS
+// (services/api/src/modules/students/students.service.ts) exactly —
+// the same list the CSV/Excel import validates against and the
+// import template's dropdown offers, so a record created here is
+// never rejected on re-import. Update both places together.
+const GENDER_OPTIONS = ["Male", "Female", "Other"] as const;
+
 export default function StudentsPage() {
   // Paginated (Phase 8 performance-optimization slice) — studentsPage
   // is part of the SWR key so changing it triggers a fresh fetch of
@@ -73,6 +80,7 @@ export default function StudentsPage() {
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
 
   // Keyed by studentId, same pattern as the exams page's per-row forms.
   const [loginPasswordForms, setLoginPasswordForms] = useState<Record<string, string>>({});
@@ -128,6 +136,23 @@ export default function StudentsPage() {
     }
   }
 
+  async function handleDownloadTemplate() {
+    setDownloadingTemplate(true);
+    try {
+      const blob = await api.downloadStudentImportTemplate();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "students-import-template.xlsx";
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Could not download the template");
+    } finally {
+      setDownloadingTemplate(false);
+    }
+  }
+
   async function submit(action: () => Promise<unknown>, onSuccess: () => void) {
     try {
       await action();
@@ -160,23 +185,28 @@ export default function StudentsPage() {
         <CardContent className="space-y-4">
           <div className="flex flex-wrap items-end gap-3">
             <div className="space-y-2">
-              <Label>Import students (CSV)</Label>
+              <Label>Import students (Excel template or CSV)</Label>
               <Input
                 ref={importFileRef}
                 type="file"
-                accept=".csv,text/csv"
+                accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 className="w-64"
               />
             </div>
             <Button type="button" disabled={importing} onClick={handleImport}>
               {importing ? "Importing..." : "Import"}
             </Button>
+            <Button type="button" variant="outline" disabled={downloadingTemplate} onClick={handleDownloadTemplate}>
+              {downloadingTemplate ? "Downloading..." : "Download template"}
+            </Button>
             <Button type="button" variant="outline" disabled={exporting} onClick={handleExport}>
               {exporting ? "Exporting..." : "Export CSV"}
             </Button>
           </div>
           <p className="text-muted-foreground text-xs">
-            CSV columns: studentCode, firstName, lastName, dateOfBirth, gender (optional)
+            Columns: studentCode, firstName, lastName, dateOfBirth, gender (optional — Male, Female
+            or Other). The Excel template includes a dropdown for gender so entries stay
+            standardized; CSV works too if you already have one.
           </p>
           {importResult ? (
             <div className="text-sm">
@@ -321,10 +351,12 @@ export default function StudentsPage() {
           </div>
           <div className="space-y-2">
             <Label>Gender (optional)</Label>
-            <Input
+            <NativeSelect
               className="w-28"
+              placeholder="Select"
               value={studentForm.gender}
-              onChange={(e) => setStudentForm((f) => ({ ...f, gender: e.target.value }))}
+              onChange={(v) => setStudentForm((f) => ({ ...f, gender: v }))}
+              options={GENDER_OPTIONS.map((g) => ({ value: g, label: g }))}
             />
           </div>
           <div className="space-y-2">

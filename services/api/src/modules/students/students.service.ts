@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { parse } from "csv-parse/sync";
 import * as argon2 from "argon2";
+import * as ExcelJS from "exceljs";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateStudentDto } from "./dto/create-student.dto";
@@ -12,6 +13,16 @@ import { CreateStudentLoginDto } from "./dto/create-student-login.dto";
 import { ImportResult, ImportRowError } from "./dto/import-result.dto";
 import { assertUnderEditionLimit, editionLimit } from "../organizations/edition-limits";
 import { paginate } from "../../common/pagination";
+
+// Canonical gender values — shown as an Excel dropdown in the import
+// template and enforced on import (both CSV and .xlsx), so the
+// standardization the template exists for is actually held to.
+// Deliberately still a free `String` column at the DB layer (not a
+// Prisma enum, per Student.gender's own schema comment: categories
+// vary by institution/jurisdiction) — this list can change without a
+// migration, just edit it here and in the frontend's matching
+// dropdown (apps/web/src/app/dashboard/students/page.tsx).
+const GENDER_OPTIONS = ["Male", "Female", "Other"] as const;
 
 /** Same load-bearing parent-guard pattern as every prior slice's service. */
 @Injectable()
@@ -273,19 +284,31 @@ export class StudentsService {
    * to the whole batch — "rollback where practical" (plan §19) applied
    * per-row, since each row is a single independent insert.
    */
-  async importStudents(organizationId: string, csvBuffer: Buffer): Promise<ImportResult> {
+  async importStudents(organizationId: string, fileBuffer: Buffer, originalName: string): Promise<ImportResult> {
+    // Accepts the .xlsx template (download it via generateImportTemplate)
+    // as well as plain CSV — decided by extension, not content-sniffing,
+    // since a valid CSV can't be told apart from garbage by trying to
+    // parse it as xlsx first. Both paths converge on the same
+    // Record<string,string>[] shape the row-validation loop below
+    // already expects, so nothing past this point needs to know which
+    // format the file came in as.
     let records: Record<string, string>[];
-    try {
-      // csv-parse's `parse()` return type is untyped `any` regardless of
-      // input (checked the .d.ts — no generic support in this version);
-      // the cast documents the shape `columns: true` actually produces.
-      records = parse(csvBuffer, {
-        columns: true,
-        skip_empty_lines: true,
-        trim: true,
-      }) as Record<string, string>[];
-    } catch (err) {
-      throw new BadRequestException(`Could not parse CSV: ${(err as Error).message}`);
+    if (/\.xlsx$/i.test(originalName)) {
+      records = await this.parseXlsxRows(fileBuffer);
+    } else {
+      try {
+        // csv-parse's `parse()` return type is untyped `any` regardless
+        // of input (checked the .d.ts — no generic support in this
+        // version); the cast documents the shape `columns: true`
+        // actually produces.
+        records = parse(fileBuffer, {
+          columns: true,
+          skip_empty_lines: true,
+          trim: true,
+        }) as Record<string, string>[];
+      } catch (err) {
+        throw new BadRequestException(`Could not parse CSV: ${(err as Error).message}`);
+      }
     }
 
     const errors: ImportRowError[] = [];
@@ -343,6 +366,13 @@ export class StudentsService {
           errors.push({ row: rowNumber, message: `Invalid dateOfBirth "${dateOfBirthRaw}"` });
           continue;
         }
+        if (gender && !(GENDER_OPTIONS as readonly string[]).includes(gender)) {
+          errors.push({
+            row: rowNumber,
+            message: `Invalid gender "${gender}" — must be one of ${GENDER_OPTIONS.join(", ")}`,
+          });
+          continue;
+        }
         if (seenCodes.has(studentCode)) {
           errors.push({ row: rowNumber, message: `Duplicate studentCode "${studentCode}" within this file` });
           continue;
@@ -371,6 +401,98 @@ export class StudentsService {
     return { totalRows: records.length, created, errors };
   }
 
+  // Reads the first worksheet's header row as column names (same
+  // `columns: true` shape csv-parse already produces), so the row-
+  // validation loop above needs no branching for where its input came
+  // from. Blank trailing rows (common when a template's unused rows
+  // still carry the gender dropdown's data-validation formatting)
+  // are skipped, not treated as empty records.
+  private async parseXlsxRows(buffer: Buffer): Promise<Record<string, string>[]> {
+    const workbook = new ExcelJS.Workbook();
+    try {
+      // exceljs's .d.ts wants a plain Buffer; the generic parameter TS
+      // infers for a Multer-sourced buffer doesn't structurally match
+      // even though it's a real Buffer at runtime — same class of
+      // @types/node generic mismatch already worked around elsewhere
+      // in this codebase (pdfkit/argon2 imports), not a real type
+      // error.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument -- see comment above
+      await workbook.xlsx.load(buffer as any);
+    } catch (err) {
+      throw new BadRequestException(`Could not parse Excel file: ${(err as Error).message}`);
+    }
+    const sheet = workbook.worksheets[0];
+    if (!sheet) throw new BadRequestException("The uploaded workbook has no sheets");
+
+    const headerRow = sheet.getRow(1);
+    const columns: string[] = [];
+    headerRow.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+      columns[colNumber] = cellValueToString(cell.value).trim();
+    });
+
+    const records: Record<string, string>[] = [];
+    for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber++) {
+      const row = sheet.getRow(rowNumber);
+      const record: Record<string, string> = {};
+      let hasAnyValue = false;
+      row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+        const key = columns[colNumber];
+        if (!key) return;
+        const raw = cell.value;
+        // Excel stores a real Date object for date-formatted cells,
+        // not a string — normalize to the same YYYY-MM-DD the CSV
+        // path and CreateStudentDto's @IsDateString both expect.
+        const value = raw instanceof Date ? raw.toISOString().slice(0, 10) : cellValueToString(raw).trim();
+        if (value) hasAnyValue = true;
+        record[key] = value;
+      });
+      if (hasAnyValue) records.push(record);
+    }
+    return records;
+  }
+
+  // Downloadable starting point for a bulk import — same columns
+  // importStudents expects, a Gender column constrained to
+  // GENDER_OPTIONS via Excel's native in-cell dropdown (Data
+  // Validation), so data entered against the template already matches
+  // what the server will accept instead of failing per-row after the
+  // fact. Applied to a generous 500 data rows, not just the visible
+  // ones, so pasting/filling further down still gets the dropdown.
+  async generateImportTemplate(): Promise<Buffer> {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("Students");
+    const headers = ["studentCode", "firstName", "lastName", "dateOfBirth", "gender"];
+    sheet.addRow(headers);
+    sheet.getRow(1).font = { bold: true };
+    sheet.columns = [
+      { width: 16 }, // studentCode
+      { width: 18 }, // firstName
+      { width: 18 }, // lastName
+      { width: 16 }, // dateOfBirth
+      { width: 12 }, // gender
+    ];
+    sheet.getCell("D1").note = "Format: YYYY-MM-DD (e.g. 2015-06-30)";
+    sheet.getCell("E1").note = `Pick one from the dropdown: ${GENDER_OPTIONS.join(", ")}`;
+
+    const genderColumn = 5; // "E"
+    const firstDataRow = 2;
+    const lastDataRow = 501;
+    for (let rowNumber = firstDataRow; rowNumber <= lastDataRow; rowNumber++) {
+      sheet.getCell(rowNumber, genderColumn).dataValidation = {
+        type: "list",
+        allowBlank: true,
+        formulae: [`"${GENDER_OPTIONS.join(",")}"`],
+        showErrorMessage: true,
+        errorStyle: "error",
+        errorTitle: "Invalid gender",
+        error: `Please pick one of: ${GENDER_OPTIONS.join(", ")}`,
+      };
+    }
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    return Buffer.from(buffer);
+  }
+
   async exportStudentsCsv(organizationId: string): Promise<string> {
     const students = await this.prisma.withTenant(organizationId, (tx) =>
       tx.student.findMany({ where: { organizationId, deletedAt: null }, orderBy: { studentCode: "asc" } }),
@@ -397,4 +519,22 @@ function csvEscape(field: string): string {
     return `"${field.replace(/"/g, '""')}"`;
   }
   return field;
+}
+
+// ExcelJS.CellValue is a union that includes rich-text/formula/
+// hyperlink object shapes alongside plain string/number/boolean/Date
+// — a naive String(value) on one of those objects would silently
+// stringify to "[object Object]". The import template only ever puts
+// plain text/dates in its cells, so this only needs to handle the
+// common cases honestly and fall back to "" for anything else, rather
+// than risk that silent garbage value reaching a student record.
+function cellValueToString(value: ExcelJS.CellValue): string {
+  if (value === null || value === undefined) return "";
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (typeof value === "object" && "text" in value && typeof value.text === "string") return value.text;
+  if (typeof value === "object" && "result" in value && typeof value.result === "string") return value.result;
+  return "";
 }

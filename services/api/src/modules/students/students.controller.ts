@@ -8,11 +8,13 @@ import {
   Post,
   Put,
   Query,
+  Res,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
+import type { Response } from "express";
 import { StudentsService } from "./students.service";
 import { CreateStudentDto } from "./dto/create-student.dto";
 import { CreateGuardianDto } from "./dto/create-guardian.dto";
@@ -120,7 +122,9 @@ export class StudentsController {
   // No storage config → multer's default (memory only, never written to
   // disk) — deliberate: object storage for real document uploads is
   // still an open decision, this endpoint only ever needs the file
-  // transiently to parse it.
+  // transiently to parse it. Accepts both the .xlsx import template
+  // (StudentsService.parseXlsxRows) and plain CSV — decided by the
+  // uploaded filename's extension.
   @Post("students/import")
   @RequirePermissions("student:create")
   @UseInterceptors(FileInterceptor("file"))
@@ -131,7 +135,23 @@ export class StudentsController {
     if (!file) {
       throw new BadRequestException("No file uploaded (expected a multipart field named 'file')");
     }
-    return this.students.importStudents(user.organizationId, file.buffer);
+    return this.students.importStudents(user.organizationId, file.buffer, file.originalname);
+  }
+
+  // Same permission as the import it feeds — generating the template
+  // is part of that workflow, not a separate capability. Uses @Res()
+  // + res.send(buffer) directly rather than a plain `return` +
+  // @Header — Nest's default response handling JSON-serializes a
+  // returned Buffer instead of writing its raw bytes (silently
+  // corrupts the file), the same reason the Analytics module's own
+  // xlsx export already bypasses it (see AnalyticsController.sendTable).
+  @Get("students/import-template")
+  @RequirePermissions("student:create")
+  async downloadImportTemplate(@Res() res: Response) {
+    const buffer = await this.students.generateImportTemplate();
+    res.set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.set("Content-Disposition", 'attachment; filename="students-import-template.xlsx"');
+    res.send(buffer);
   }
 
   @Get("students/export")

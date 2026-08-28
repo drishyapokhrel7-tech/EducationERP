@@ -733,6 +733,7 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       form.append("file", file);
       return requestForm<ImportResult>("/organizations/me/students/import", form);
     },
+    downloadStudentImportTemplate: () => requestBlob("/organizations/me/students/import-template"),
     exportStudents: () => requestBlob("/organizations/me/students/export"),
 
     listRooms: () => request<Room[]>("/organizations/me/rooms"),
