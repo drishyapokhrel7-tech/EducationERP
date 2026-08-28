@@ -2,7 +2,6 @@
 
 import { useState, type FormEvent } from "react";
 import useSWR from "swr";
-import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,25 +12,8 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
+import { submitAction, submitDelete } from "@/lib/submit-action";
 import type { MessageAudience, MessageChannel } from "@education-erp/api-client";
-
-function errorMessage(err: unknown, fallback: string) {
-  const message =
-    err && typeof err === "object" && "body" in err
-      ? ((err as { body?: { message?: string } }).body?.message ?? null)
-      : null;
-  return typeof message === "string" ? message : fallback;
-}
-
-async function submitAction(action: () => Promise<unknown>, onSuccess: () => void) {
-  try {
-    await action();
-    onSuccess();
-    toast.success("Saved");
-  } catch (err) {
-    toast.error(errorMessage(err, "Failed"));
-  }
-}
 
 const CHANNELS: { value: MessageChannel; label: string }[] = [
   { value: "IN_APP", label: "In-app" },
@@ -85,7 +67,7 @@ export default function CommunicationPage() {
         <p className="text-muted-foreground text-sm">
           Org-wide broadcast messaging across in-app, email, SMS, and push. Course announcements live under Academics/
           Syllabus; this is for admin-composed messages to staff, students, or guardians. Email delivers for real
-          once your organization's email is configured; SMS and push are simulated only until a provider is set up.
+          once your organization&apos;s email is configured; SMS and push are simulated only until a provider is set up.
         </p>
       </div>
 
@@ -125,7 +107,7 @@ export default function CommunicationPage() {
                       type="button"
                       size="sm"
                       variant="destructive"
-                      onClick={() => submitAction(() => api.deleteMessageTemplate(t.id), () => templates.mutate())}
+                      onClick={() => submitDelete(() => api.deleteMessageTemplate(t.id), () => templates.mutate())}
                     >
                       Delete
                     </Button>

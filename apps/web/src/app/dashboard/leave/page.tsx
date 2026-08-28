@@ -2,7 +2,6 @@
 
 import { useState, type FormEvent } from "react";
 import useSWR from "swr";
-import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,25 +11,8 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
+import { submitAction, submitDelete } from "@/lib/submit-action";
 import type { LeaveRequestStatus } from "@education-erp/api-client";
-
-function errorMessage(err: unknown, fallback: string) {
-  const message =
-    err && typeof err === "object" && "body" in err
-      ? ((err as { body?: { message?: string } }).body?.message ?? null)
-      : null;
-  return typeof message === "string" ? message : fallback;
-}
-
-async function submitAction(action: () => Promise<unknown>, onSuccess: () => void) {
-  try {
-    await action();
-    onSuccess();
-    toast.success("Saved");
-  } catch (err) {
-    toast.error(errorMessage(err, "Failed"));
-  }
-}
 
 // "ALL" rather than "" — NativeSelect always renders its own
 // `<option value="" disabled>` placeholder first, so an "All" entry
@@ -124,7 +106,7 @@ export default function LeavePage() {
                       type="button"
                       size="sm"
                       variant="destructive"
-                      onClick={() => submitAction(() => api.deleteLeaveType(t.id), () => leaveTypes.mutate())}
+                      onClick={() => submitDelete(() => api.deleteLeaveType(t.id), () => leaveTypes.mutate())}
                     >
                       Delete
                     </Button>

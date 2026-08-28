@@ -2,7 +2,6 @@
 
 import { useState, type FormEvent } from "react";
 import useSWR from "swr";
-import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +11,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
+import { submitAction } from "@/lib/submit-action";
 import type { AdmissionStatus } from "@education-erp/api-client";
 
 const REVIEW_STATUSES: AdmissionStatus[] = [
@@ -42,15 +42,6 @@ export default function AdmissionsPage() {
     Record<string, { studentCode: string; sectionId: string; termId: string; enrollmentDate: string }>
   >({});
 
-  async function submit(action: () => Promise<unknown>, onSuccess: () => void) {
-    try {
-      await action();
-      onSuccess();
-      toast.success("Saved");
-    } catch {
-      toast.error("Failed — check that required fields are filled in");
-    }
-  }
 
   return (
     <div className="max-w-3xl space-y-6">
@@ -98,7 +89,7 @@ export default function AdmissionsPage() {
                           e.preventDefault();
                           const status = statusEdits[app.id] ?? app.status;
                           if (status === "ENROLLED") return;
-                          submit(
+                          submitAction(
                             () =>
                               api.updateAdmissionStatus(app.id, {
                                 status,
@@ -128,7 +119,7 @@ export default function AdmissionsPage() {
                         className="flex flex-wrap items-end gap-2"
                         onSubmit={(e: FormEvent) => {
                           e.preventDefault();
-                          submit(
+                          submitAction(
                             () => api.enrollApplication(app.id, enrollForm),
                             () => {
                               setEnrollForms((f) => ({ ...f, [app.id]: { studentCode: "", sectionId: "", termId: "", enrollmentDate: "" } }));
@@ -199,7 +190,7 @@ export default function AdmissionsPage() {
             className="flex flex-wrap items-end gap-3"
             onSubmit={(e: FormEvent) => {
               e.preventDefault();
-              submit(
+              submitAction(
                 () =>
                   api.createAdmissionApplication({
                     ...form,

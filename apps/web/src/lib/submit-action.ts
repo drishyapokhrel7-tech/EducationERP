@@ -12,12 +12,26 @@ export function errorMessage(err: unknown, fallback: string): string {
   return typeof message === "string" ? message : fallback;
 }
 
-export async function submitAction(action: () => Promise<unknown>, onSuccess: () => void): Promise<void> {
+export async function submitAction(
+  action: () => Promise<unknown>,
+  onSuccess: () => void,
+  successMessage = "Saved",
+): Promise<void> {
   try {
     await action();
     onSuccess();
-    toast.success("Saved");
+    toast.success(successMessage);
   } catch (err) {
     toast.error(errorMessage(err, "Failed"));
   }
+}
+
+// Thin wrapper for delete buttons — every one of them was popping a
+// green "Saved" on a destructive action (a delete succeeding via
+// submitAction's own default), which reads as wrong at best and
+// alarming at worst. Same helper, just says "Deleted." Renaming a
+// delete call site from submitAction to submitDelete is a single
+// find-and-replace, not a signature change at every call site.
+export function submitDelete(action: () => Promise<unknown>, onSuccess: () => void): Promise<void> {
+  return submitAction(action, onSuccess, "Deleted");
 }

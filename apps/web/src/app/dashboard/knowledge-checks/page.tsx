@@ -2,7 +2,6 @@
 
 import { useState, type FormEvent } from "react";
 import useSWR from "swr";
-import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,14 +12,7 @@ import { Separator } from "@/components/ui/separator";
 import { EntityCard } from "@/components/dashboard/entity-card";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
-
-function errorMessage(err: unknown, fallback: string) {
-  const message =
-    err && typeof err === "object" && "body" in err
-      ? ((err as { body?: { message?: string } }).body?.message ?? null)
-      : null;
-  return typeof message === "string" ? message : fallback;
-}
+import { submitAction } from "@/lib/submit-action";
 
 export default function KnowledgeChecksPage() {
   const checks = useSWR("knowledge-checks", () => api.listKnowledgeChecks());
@@ -46,16 +38,6 @@ export default function KnowledgeChecksPage() {
   });
   const [attemptStudentId, setAttemptStudentId] = useState("");
   const [attemptAnswers, setAttemptAnswers] = useState<Record<string, string>>({});
-
-  async function submit(action: () => Promise<unknown>, onSuccess: () => void) {
-    try {
-      await action();
-      onSuccess();
-      toast.success("Saved");
-    } catch (err) {
-      toast.error(errorMessage(err, "Failed — check that required fields are filled in"));
-    }
-  }
 
   const nonEmptyOptions = questionForm.options.map((o) => o.trim()).filter(Boolean);
 
@@ -98,7 +80,7 @@ export default function KnowledgeChecksPage() {
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e: FormEvent) => {
             e.preventDefault();
-            submit(
+            submitAction(
               () =>
                 api.createKnowledgeCheck({
                   teachingAssignmentId: form.teachingAssignmentId,
@@ -184,7 +166,7 @@ export default function KnowledgeChecksPage() {
                     onSubmit={(e: FormEvent) => {
                       e.preventDefault();
                       if (!activeCheckId) return;
-                      submit(
+                      submitAction(
                         () =>
                           api.addKnowledgeCheckQuestion(activeCheckId, {
                             sequence: Number(questionForm.sequence),
@@ -260,7 +242,7 @@ export default function KnowledgeChecksPage() {
                     disabled={activeCheck.data.questions.length === 0}
                     onClick={() => {
                       if (!activeCheckId) return;
-                      submit(
+                      submitAction(
                         () => api.publishKnowledgeCheck(activeCheckId),
                         () => activeCheck.mutate(),
                       );
@@ -314,7 +296,7 @@ export default function KnowledgeChecksPage() {
                       onClick={() => {
                         if (!activeCheckId || !activeCheck.data) return;
                         const answers = activeCheck.data.questions.map((q) => Number(attemptAnswers[q.id]));
-                        submit(
+                        submitAction(
                           () => api.attemptKnowledgeCheck(activeCheckId, { studentId: attemptStudentId, answers }),
                           () => {
                             setAttemptStudentId("");

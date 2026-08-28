@@ -2,7 +2,6 @@
 
 import { useState, type FormEvent } from "react";
 import useSWR from "swr";
-import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +12,7 @@ import { Separator } from "@/components/ui/separator";
 import { EntityCard } from "@/components/dashboard/entity-card";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
+import { submitAction } from "@/lib/submit-action";
 import type { SubmissionType } from "@education-erp/api-client";
 
 const SUBMISSION_TYPE_OPTIONS: { value: SubmissionType; label: string }[] = [
@@ -26,14 +26,6 @@ const SUBMISSION_TYPE_OPTIONS: { value: SubmissionType; label: string }[] = [
   { value: "LINK", label: "Link" },
   { value: "TEXT", label: "Text" },
 ];
-
-function errorMessage(err: unknown, fallback: string) {
-  const message =
-    err && typeof err === "object" && "body" in err
-      ? ((err as { body?: { message?: string } }).body?.message ?? null)
-      : null;
-  return typeof message === "string" ? message : fallback;
-}
 
 export default function AssignmentsPage() {
   const assignments = useSWR("assignments", () => api.listAssignments());
@@ -62,15 +54,6 @@ export default function AssignmentsPage() {
   const [gradeTarget, setGradeTarget] = useState<string | null>(null);
   const [gradeForm, setGradeForm] = useState({ score: "", feedback: "" });
 
-  async function submit(action: () => Promise<unknown>, onSuccess: () => void) {
-    try {
-      await action();
-      onSuccess();
-      toast.success("Saved");
-    } catch (err) {
-      toast.error(errorMessage(err, "Failed — check that required fields are filled in"));
-    }
-  }
 
   return (
     <div className="max-w-3xl space-y-6">
@@ -107,7 +90,7 @@ export default function AssignmentsPage() {
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e: FormEvent) => {
             e.preventDefault();
-            submit(
+            submitAction(
               () =>
                 api.createAssignment({
                   teachingAssignmentId: form.teachingAssignmentId,
@@ -241,7 +224,7 @@ export default function AssignmentsPage() {
                           disabled={!gradeForm.score}
                           onClick={() => {
                             if (!activeAssignmentId) return;
-                            submit(
+                            submitAction(
                               () =>
                                 api.gradeSubmission(activeAssignmentId, s.studentId, {
                                   score: Number(gradeForm.score),
@@ -270,7 +253,7 @@ export default function AssignmentsPage() {
               onSubmit={(e: FormEvent) => {
                 e.preventDefault();
                 if (!activeAssignmentId) return;
-                submit(
+                submitAction(
                   () => api.submitAssignment(activeAssignmentId, submissionForm),
                   () => {
                     setSubmissionForm({ studentId: "", content: "" });

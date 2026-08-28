@@ -2,14 +2,13 @@
 
 import { useState, type FormEvent } from "react";
 import useSWR from "swr";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { EntityCard } from "@/components/dashboard/entity-card";
 import { api } from "@/lib/api";
-import { submitAction } from "@/lib/submit-action";
+import { submitAction, submitDelete } from "@/lib/submit-action";
 
 const DAYS = [
   { value: 1, label: "Monday" },
@@ -59,19 +58,6 @@ export default function TimetablePage() {
     dayOfWeek: "",
   });
 
-  async function submit(action: () => Promise<unknown>, onSuccess: () => void) {
-    try {
-      await action();
-      onSuccess();
-      toast.success("Saved");
-    } catch (err) {
-      const message =
-        err && typeof err === "object" && "body" in err
-          ? ((err as { body?: { message?: string } }).body?.message ?? null)
-          : null;
-      toast.error(typeof message === "string" ? message : "Failed — check that required fields are filled in");
-    }
-  }
 
   return (
     <div className="max-w-3xl space-y-6">
@@ -124,7 +110,7 @@ export default function TimetablePage() {
                 type="button"
                 size="sm"
                 variant="destructive"
-                onClick={() => submitAction(() => api.deleteRoom(r.id), () => rooms.mutate())}
+                onClick={() => submitDelete(() => api.deleteRoom(r.id), () => rooms.mutate())}
               >
                 Delete
               </Button>
@@ -211,7 +197,7 @@ export default function TimetablePage() {
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e: FormEvent) => {
             e.preventDefault();
-            submit(
+            submitAction(
               () =>
                 api.createRoom({
                   campusId: roomForm.campusId,
@@ -309,7 +295,7 @@ export default function TimetablePage() {
                 type="button"
                 size="sm"
                 variant="destructive"
-                onClick={() => submitAction(() => api.deletePeriod(p.id), () => periods.mutate())}
+                onClick={() => submitDelete(() => api.deletePeriod(p.id), () => periods.mutate())}
               >
                 Delete
               </Button>
@@ -398,7 +384,7 @@ export default function TimetablePage() {
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e: FormEvent) => {
             e.preventDefault();
-            submit(
+            submitAction(
               () =>
                 api.createPeriod({
                   name: periodForm.name,
@@ -487,7 +473,7 @@ export default function TimetablePage() {
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e: FormEvent) => {
             e.preventDefault();
-            submit(
+            submitAction(
               () => api.createTeachingAssignment(assignmentForm),
               () => {
                 setAssignmentForm({ employeeId: "", subjectId: "", sectionId: "", termId: "" });
@@ -576,7 +562,7 @@ export default function TimetablePage() {
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e: FormEvent) => {
             e.preventDefault();
-            submit(
+            submitAction(
               () =>
                 api.createClassSchedule({
                   teachingAssignmentId: scheduleForm.teachingAssignmentId,

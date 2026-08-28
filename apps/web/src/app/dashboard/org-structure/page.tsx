@@ -2,14 +2,13 @@
 
 import { useState, type FormEvent } from "react";
 import useSWR from "swr";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { EntityCard } from "@/components/dashboard/entity-card";
 import { api } from "@/lib/api";
-import { submitAction } from "@/lib/submit-action";
+import { submitAction, submitDelete } from "@/lib/submit-action";
 
 export default function OrgStructurePage() {
   const campuses = useSWR("campuses", () => api.listCampuses());
@@ -69,16 +68,6 @@ export default function OrgStructurePage() {
     capacity: "",
   });
 
-  async function submit(action: () => Promise<unknown>, onSuccess: () => void) {
-    try {
-      await action();
-      onSuccess();
-      toast.success("Created");
-    } catch {
-      toast.error("Failed to create — check that required fields are selected");
-    }
-  }
-
   return (
     <div className="max-w-3xl space-y-6">
       <div>
@@ -114,7 +103,7 @@ export default function OrgStructurePage() {
                 type="button"
                 size="sm"
                 variant="destructive"
-                onClick={() => submitAction(() => api.deleteFaculty(f.id), () => faculties.mutate())}
+                onClick={() => submitDelete(() => api.deleteFaculty(f.id), () => faculties.mutate())}
               >
                 Delete
               </Button>
@@ -177,7 +166,7 @@ export default function OrgStructurePage() {
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e: FormEvent) => {
             e.preventDefault();
-            submit(
+            submitAction(
               () => api.createFaculty(facultyForm),
               () => {
                 setFacultyForm({ campusId: "", name: "", code: "" });
@@ -246,7 +235,7 @@ export default function OrgStructurePage() {
                 type="button"
                 size="sm"
                 variant="destructive"
-                onClick={() => submitAction(() => api.deleteDepartment(d.id), () => departments.mutate())}
+                onClick={() => submitDelete(() => api.deleteDepartment(d.id), () => departments.mutate())}
               >
                 Delete
               </Button>
@@ -309,7 +298,7 @@ export default function OrgStructurePage() {
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e: FormEvent) => {
             e.preventDefault();
-            submit(
+            submitAction(
               () => api.createDepartment(departmentForm),
               () => {
                 setDepartmentForm({ facultyId: "", name: "", code: "" });
@@ -400,7 +389,7 @@ export default function OrgStructurePage() {
                 type="button"
                 size="sm"
                 variant="destructive"
-                onClick={() => submitAction(() => api.deleteProgram(p.id), () => programs.mutate())}
+                onClick={() => submitDelete(() => api.deleteProgram(p.id), () => programs.mutate())}
               >
                 Delete
               </Button>
@@ -475,7 +464,7 @@ export default function OrgStructurePage() {
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e: FormEvent) => {
             e.preventDefault();
-            submit(
+            submitAction(
               () =>
                 api.createProgram({
                   ...programForm,
@@ -561,7 +550,7 @@ export default function OrgStructurePage() {
                 type="button"
                 size="sm"
                 variant="destructive"
-                onClick={() => submitAction(() => api.deleteAcademicYear(y.id), () => academicYears.mutate())}
+                onClick={() => submitDelete(() => api.deleteAcademicYear(y.id), () => academicYears.mutate())}
               >
                 Delete
               </Button>
@@ -623,7 +612,7 @@ export default function OrgStructurePage() {
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e: FormEvent) => {
             e.preventDefault();
-            submit(
+            submitAction(
               () => api.createAcademicYear(yearForm),
               () => {
                 setYearForm({ name: "", startDate: "", endDate: "" });
@@ -703,7 +692,7 @@ export default function OrgStructurePage() {
                 type="button"
                 size="sm"
                 variant="destructive"
-                onClick={() => submitAction(() => api.deleteTerm(t.id), () => terms.mutate())}
+                onClick={() => submitDelete(() => api.deleteTerm(t.id), () => terms.mutate())}
               >
                 Delete
               </Button>
@@ -799,7 +788,7 @@ export default function OrgStructurePage() {
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e: FormEvent) => {
             e.preventDefault();
-            submit(
+            submitAction(
               () => api.createTerm({ ...termForm, sequence: Number(termForm.sequence) }),
               () => {
                 setTermForm({
@@ -919,7 +908,7 @@ export default function OrgStructurePage() {
                 type="button"
                 size="sm"
                 variant="destructive"
-                onClick={() => submitAction(() => api.deleteSection(s.id), () => sections.mutate())}
+                onClick={() => submitDelete(() => api.deleteSection(s.id), () => sections.mutate())}
               >
                 Delete
               </Button>
@@ -1006,7 +995,7 @@ export default function OrgStructurePage() {
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e: FormEvent) => {
             e.preventDefault();
-            submit(
+            submitAction(
               () =>
                 api.createSection({
                   ...sectionForm,

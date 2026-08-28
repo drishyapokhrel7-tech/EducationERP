@@ -2,7 +2,6 @@
 
 import { useState, type FormEvent } from "react";
 import useSWR from "swr";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,7 +10,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { EntityCard } from "@/components/dashboard/entity-card";
 import { api } from "@/lib/api";
-import { submitAction, errorMessage } from "@/lib/submit-action";
+import { submitAction, submitDelete } from "@/lib/submit-action";
 import type { GradeBand, QuestionType } from "@education-erp/api-client";
 
 const emptyBand: GradeBand = { minPercentage: 0, maxPercentage: 0, grade: "" };
@@ -21,16 +20,6 @@ export default function ExamSetupPage() {
   const gradingSchemes = useSWR("grading-schemes", () => api.listGradingSchemes());
   const questionBanks = useSWR("question-banks", () => api.listQuestionBanks());
   const curricula = useSWR("curricula", () => api.listCurricula());
-
-  async function submit(action: () => Promise<unknown>, onSuccess: () => void) {
-    try {
-      await action();
-      onSuccess();
-      toast.success("Saved");
-    } catch (err) {
-      toast.error(errorMessage(err, "Failed — check that required fields are filled in"));
-    }
-  }
 
   // --- Exam types ---------------------------------------------------------
   const [examTypeForm, setExamTypeForm] = useState({ name: "", code: "" });
@@ -99,7 +88,7 @@ export default function ExamSetupPage() {
                 type="button"
                 size="sm"
                 variant="destructive"
-                onClick={() => submitAction(() => api.deleteExamType(t.id), () => examTypes.mutate())}
+                onClick={() => submitDelete(() => api.deleteExamType(t.id), () => examTypes.mutate())}
               >
                 Delete
               </Button>
@@ -153,7 +142,7 @@ export default function ExamSetupPage() {
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e: FormEvent) => {
             e.preventDefault();
-            submit(
+            submitAction(
               () => api.createExamType({ name: examTypeForm.name, code: examTypeForm.code }),
               () => {
                 setExamTypeForm({ name: "", code: "" });
@@ -217,7 +206,7 @@ export default function ExamSetupPage() {
                 type="button"
                 size="sm"
                 variant="destructive"
-                onClick={() => submitAction(() => api.deleteGradingScheme(s.id), () => gradingSchemes.mutate())}
+                onClick={() => submitDelete(() => api.deleteGradingScheme(s.id), () => gradingSchemes.mutate())}
               >
                 Delete
               </Button>
@@ -370,7 +359,7 @@ export default function ExamSetupPage() {
           className="space-y-3"
           onSubmit={(e: FormEvent) => {
             e.preventDefault();
-            submit(
+            submitAction(
               () =>
                 api.createGradingScheme({
                   name: schemeForm.name,
@@ -517,7 +506,7 @@ export default function ExamSetupPage() {
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e: FormEvent) => {
             e.preventDefault();
-            submit(
+            submitAction(
               () =>
                 api.createQuestionBank({
                   curriculumSubjectId: bankForm.curriculumSubjectId,
@@ -591,7 +580,7 @@ export default function ExamSetupPage() {
                   onSubmit={(e: FormEvent) => {
                     e.preventDefault();
                     if (!activeBankId) return;
-                    submit(
+                    submitAction(
                       () =>
                         api.addExamQuestion(activeBankId, {
                           sequence: Number(questionForm.sequence),

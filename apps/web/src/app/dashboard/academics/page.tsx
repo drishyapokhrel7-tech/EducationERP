@@ -2,7 +2,6 @@
 
 import { useState, type FormEvent } from "react";
 import useSWR from "swr";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,7 +9,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { EntityCard } from "@/components/dashboard/entity-card";
 import { api } from "@/lib/api";
-import { submitAction } from "@/lib/submit-action";
+import { submitAction, submitDelete } from "@/lib/submit-action";
 
 export default function AcademicsPage() {
   const subjects = useSWR("subjects", () => api.listSubjects());
@@ -29,16 +28,6 @@ export default function AcademicsPage() {
   const [editSubjectForm, setEditSubjectForm] = useState({ name: "", code: "" });
   const [editingCurriculumId, setEditingCurriculumId] = useState<string | null>(null);
   const [editCurriculumForm, setEditCurriculumForm] = useState({ programId: "", name: "", code: "" });
-
-  async function submit(action: () => Promise<unknown>, onSuccess: () => void) {
-    try {
-      await action();
-      onSuccess();
-      toast.success("Saved");
-    } catch {
-      toast.error("Failed — check that required fields are filled in");
-    }
-  }
 
   return (
     <div className="max-w-3xl space-y-6">
@@ -75,7 +64,7 @@ export default function AcademicsPage() {
                 type="button"
                 size="sm"
                 variant="destructive"
-                onClick={() => submitAction(() => api.deleteSubject(s.id), () => subjects.mutate())}
+                onClick={() => submitDelete(() => api.deleteSubject(s.id), () => subjects.mutate())}
               >
                 Delete
               </Button>
@@ -128,7 +117,7 @@ export default function AcademicsPage() {
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e: FormEvent) => {
             e.preventDefault();
-            submit(
+            submitAction(
               () => api.createSubject(subjectForm),
               () => {
                 setSubjectForm({ name: "", code: "" });
@@ -198,7 +187,7 @@ export default function AcademicsPage() {
                 type="button"
                 size="sm"
                 variant="destructive"
-                onClick={() => submitAction(() => api.deleteCurriculum(c.id), () => curricula.mutate())}
+                onClick={() => submitDelete(() => api.deleteCurriculum(c.id), () => curricula.mutate())}
               >
                 Delete
               </Button>
@@ -261,7 +250,7 @@ export default function AcademicsPage() {
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e: FormEvent) => {
             e.preventDefault();
-            submit(
+            submitAction(
               () => api.createCurriculum(curriculumForm),
               () => {
                 setCurriculumForm({ programId: "", name: "", code: "" });
@@ -309,7 +298,7 @@ export default function AcademicsPage() {
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e: FormEvent) => {
             e.preventDefault();
-            submit(
+            submitAction(
               () =>
                 api.attachCurriculumSubject(attachForm.curriculumId, {
                   subjectId: attachForm.subjectId,

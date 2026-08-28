@@ -12,6 +12,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { EntityCard } from "@/components/dashboard/entity-card";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
+import { submitAction, errorMessage } from "@/lib/submit-action";
 import type { AttendanceStatus, StaffAttendanceStatus } from "@education-erp/api-client";
 
 const DAYS = ["", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -51,24 +52,6 @@ export default function AttendancePage() {
   const [correctionForm, setCorrectionForm] = useState({ status: "PRESENT" as AttendanceStatus, reason: "" });
 
   const [staffForm, setStaffForm] = useState({ employeeId: "", date: "", status: "PRESENT" as StaffAttendanceStatus, remarks: "" });
-
-  function errorMessage(err: unknown, fallback: string) {
-    const message =
-      err && typeof err === "object" && "body" in err
-        ? ((err as { body?: { message?: string } }).body?.message ?? null)
-        : null;
-    return typeof message === "string" ? message : fallback;
-  }
-
-  async function submit(action: () => Promise<unknown>, onSuccess: () => void) {
-    try {
-      await action();
-      onSuccess();
-      toast.success("Saved");
-    } catch (err) {
-      toast.error(errorMessage(err, "Failed — check that required fields are filled in"));
-    }
-  }
 
   function openSession(sessionId: string) {
     setActiveSessionId(sessionId);
@@ -246,7 +229,7 @@ export default function AttendancePage() {
                             disabled={!correctionForm.reason}
                             onClick={() => {
                               if (!activeSessionId) return;
-                              submit(
+                              submitAction(
                                 () => api.correctAttendance(activeSessionId, student.id, correctionForm),
                                 () => {
                                   setCorrecting(null);
@@ -276,7 +259,7 @@ export default function AttendancePage() {
                     activeSession.data?.studentAttendance.find((a) => a.studentId === student.id)?.status ??
                     ("PRESENT" as AttendanceStatus),
                 }));
-                submit(
+                submitAction(
                   () => api.markAttendance(activeSessionId, { entries }),
                   () => {
                     activeSession.mutate();
@@ -307,7 +290,7 @@ export default function AttendancePage() {
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e: FormEvent) => {
             e.preventDefault();
-            submit(
+            submitAction(
               () => api.markStaffAttendance({ ...staffForm, remarks: staffForm.remarks || undefined }),
               () => {
                 setStaffForm({ employeeId: "", date: "", status: "PRESENT", remarks: "" });

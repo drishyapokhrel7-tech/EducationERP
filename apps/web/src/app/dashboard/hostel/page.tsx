@@ -2,7 +2,6 @@
 
 import { useState, type FormEvent } from "react";
 import useSWR from "swr";
-import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,25 +11,8 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
+import { submitAction, submitDelete } from "@/lib/submit-action";
 import type { HostelLookupKind, HostelLookupRecord, StudentEnrollment } from "@education-erp/api-client";
-
-function errorMessage(err: unknown, fallback: string) {
-  const message =
-    err && typeof err === "object" && "body" in err
-      ? ((err as { body?: { message?: string } }).body?.message ?? null)
-      : null;
-  return typeof message === "string" ? message : fallback;
-}
-
-async function submitAction(action: () => Promise<unknown>, onSuccess: () => void) {
-  try {
-    await action();
-    onSuccess();
-    toast.success("Saved");
-  } catch (err) {
-    toast.error(errorMessage(err, "Failed"));
-  }
-}
 
 // A plain free-text Input let the same real value get typo'd a dozen
 // ways across data entry (room type, visitor relation, complaint
@@ -149,7 +131,7 @@ function LookupManageList({
                   type="button"
                   size="sm"
                   variant="destructive"
-                  onClick={() => submitAction(() => api.deleteHostelLookup(l.id), () => mutate())}
+                  onClick={() => submitDelete(() => api.deleteHostelLookup(l.id), () => mutate())}
                 >
                   Delete
                 </Button>

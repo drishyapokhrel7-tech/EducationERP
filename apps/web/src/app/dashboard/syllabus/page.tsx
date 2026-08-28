@@ -2,7 +2,6 @@
 
 import { useState, type FormEvent } from "react";
 import useSWR from "swr";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -10,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { EntityCard } from "@/components/dashboard/entity-card";
 import { api } from "@/lib/api";
+import { submitAction } from "@/lib/submit-action";
 import type { SyllabusNode, SyllabusNodeLevel } from "@education-erp/api-client";
 
 const LEVEL_OPTIONS: { value: SyllabusNodeLevel; label: string }[] = [
@@ -89,23 +89,6 @@ export default function SyllabusPage() {
     objectives: "",
   });
 
-  function errorMessage(err: unknown, fallback: string) {
-    const message =
-      err && typeof err === "object" && "body" in err
-        ? ((err as { body?: { message?: string } }).body?.message ?? null)
-        : null;
-    return typeof message === "string" ? message : fallback;
-  }
-
-  async function submit(action: () => Promise<unknown>, onSuccess: () => void) {
-    try {
-      await action();
-      onSuccess();
-      toast.success("Saved");
-    } catch (err) {
-      toast.error(errorMessage(err, "Failed — check that required fields are filled in"));
-    }
-  }
 
   const nodes = activeSyllabus.data ? orderTree(activeSyllabus.data.nodes) : [];
   const parentCandidates = (activeSyllabus.data?.nodes ?? []).filter(
@@ -146,7 +129,7 @@ export default function SyllabusPage() {
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e: FormEvent) => {
             e.preventDefault();
-            submit(
+            submitAction(
               () =>
                 api.createSyllabus({
                   curriculumSubjectId: syllabusForm.curriculumSubjectId,
@@ -260,7 +243,7 @@ export default function SyllabusPage() {
                           className="h-8"
                           disabled={!objectiveForm.description}
                           onClick={() => {
-                            submit(
+                            submitAction(
                               () =>
                                 api.createLearningObjective(node.id, {
                                   sequence: Number(objectiveForm.sequence),
@@ -287,7 +270,7 @@ export default function SyllabusPage() {
               onSubmit={(e: FormEvent) => {
                 e.preventDefault();
                 if (!activeSyllabusId) return;
-                submit(
+                submitAction(
                   () =>
                     api.createSyllabusNode(activeSyllabusId, {
                       parentId: nodeForm.parentId || undefined,
@@ -379,7 +362,7 @@ export default function SyllabusPage() {
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e: FormEvent) => {
             e.preventDefault();
-            submit(
+            submitAction(
               () => api.createLessonPlan(lessonPlanForm),
               () => {
                 setLessonPlanForm({ teachingAssignmentId: "", syllabusNodeId: "", title: "", objectives: "" });

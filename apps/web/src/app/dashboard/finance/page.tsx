@@ -15,25 +15,8 @@ import { ListPager } from "@/components/dashboard/list-pager";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
 import { submitEsewaForm } from "@/lib/esewa";
+import { submitAction, submitDelete, errorMessage } from "@/lib/submit-action";
 import type { PaymentMethod, StudentEnrollment } from "@education-erp/api-client";
-
-function errorMessage(err: unknown, fallback: string) {
-  const message =
-    err && typeof err === "object" && "body" in err
-      ? ((err as { body?: { message?: string } }).body?.message ?? null)
-      : null;
-  return typeof message === "string" ? message : fallback;
-}
-
-async function submitAction(action: () => Promise<unknown>, onSuccess: () => void) {
-  try {
-    await action();
-    onSuccess();
-    toast.success("Saved");
-  } catch (err) {
-    toast.error(errorMessage(err, "Failed"));
-  }
-}
 
 function formatMoney(amount: string) {
   return `NPR ${Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -126,7 +109,7 @@ export default function FinancePage() {
                 type="button"
                 size="sm"
                 variant="destructive"
-                onClick={() => submitAction(() => api.deleteFeeCategory(c.id), () => feeCategories.mutate())}
+                onClick={() => submitDelete(() => api.deleteFeeCategory(c.id), () => feeCategories.mutate())}
               >
                 Delete
               </Button>
@@ -500,7 +483,7 @@ export default function FinancePage() {
                       type="button"
                       size="sm"
                       variant="destructive"
-                      onClick={() => submitAction(() => api.deleteScholarship(s.id), () => scholarships.mutate())}
+                      onClick={() => submitDelete(() => api.deleteScholarship(s.id), () => scholarships.mutate())}
                     >
                       Delete
                     </Button>

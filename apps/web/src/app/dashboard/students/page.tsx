@@ -20,6 +20,7 @@ import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
 import { useHighlightFromSearch } from "@/lib/use-highlight-from-search";
 import { isEditionLimitError } from "@/lib/edition-limit-error";
+import { errorMessage } from "@/lib/submit-action";
 import { ApiError, type Edition, type ImportResult } from "@education-erp/api-client";
 
 // Matches the backend's GENDER_OPTIONS
@@ -198,7 +199,7 @@ export default function StudentsPage() {
         setEditionLimitEdition(err.body.edition);
         return;
       }
-      toast.error("Failed — check that required fields are filled in");
+      toast.error(errorMessage(err, "Failed — check that required fields are filled in"));
     }
   }
 

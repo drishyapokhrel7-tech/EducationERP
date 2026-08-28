@@ -13,30 +13,13 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
 import { useHighlightFromSearch } from "@/lib/use-highlight-from-search";
+import { submitAction, submitDelete, errorMessage } from "@/lib/submit-action";
 import type { StudentEnrollment } from "@education-erp/api-client";
 
 const LiveTrackingMap = dynamic(
   () => import("@/components/transport/live-tracking-map").then((m) => m.LiveTrackingMap),
   { ssr: false },
 );
-
-function errorMessage(err: unknown, fallback: string) {
-  const message =
-    err && typeof err === "object" && "body" in err
-      ? ((err as { body?: { message?: string } }).body?.message ?? null)
-      : null;
-  return typeof message === "string" ? message : fallback;
-}
-
-async function submitAction(action: () => Promise<unknown>, onSuccess: () => void) {
-  try {
-    await action();
-    onSuccess();
-    toast.success("Saved");
-  } catch (err) {
-    toast.error(errorMessage(err, "Failed"));
-  }
-}
 
 export default function TransportPage() {
   // Deliberately the unbounded, narrow picker — this is a "pick a
@@ -203,7 +186,7 @@ export default function TransportPage() {
                         type="button"
                         size="sm"
                         variant="destructive"
-                        onClick={() => submitAction(() => api.deleteDriver(d.id), () => drivers.mutate())}
+                        onClick={() => submitDelete(() => api.deleteDriver(d.id), () => drivers.mutate())}
                       >
                         Delete
                       </Button>

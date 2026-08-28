@@ -16,7 +16,7 @@ import { EditionUpgradeBanner } from "@/components/edition-upgrade-banner";
 import { api } from "@/lib/api";
 import { useHighlightFromSearch } from "@/lib/use-highlight-from-search";
 import { isEditionLimitError } from "@/lib/edition-limit-error";
-import { submitAction } from "@/lib/submit-action";
+import { submitAction, submitDelete, errorMessage } from "@/lib/submit-action";
 import { ApiError, type Edition } from "@education-erp/api-client";
 
 export default function StaffPage() {
@@ -87,7 +87,7 @@ export default function StaffPage() {
         setEditionLimitEdition(err.body.edition);
         return;
       }
-      toast.error("Failed to create — check that required fields are filled in");
+      toast.error(errorMessage(err, "Failed to create — check that required fields are filled in"));
     }
   }
 
@@ -125,7 +125,7 @@ export default function StaffPage() {
                 type="button"
                 size="sm"
                 variant="destructive"
-                onClick={() => submitAction(() => api.deleteStaffType(t.id), () => staffTypes.mutate())}
+                onClick={() => submitDelete(() => api.deleteStaffType(t.id), () => staffTypes.mutate())}
               >
                 Delete
               </Button>
@@ -234,7 +234,7 @@ export default function StaffPage() {
                 type="button"
                 size="sm"
                 variant="destructive"
-                onClick={() => submitAction(() => api.deleteDesignation(d.id), () => designations.mutate())}
+                onClick={() => submitDelete(() => api.deleteDesignation(d.id), () => designations.mutate())}
               >
                 Delete
               </Button>

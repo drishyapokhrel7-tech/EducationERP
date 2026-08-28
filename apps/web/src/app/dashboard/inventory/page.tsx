@@ -2,7 +2,6 @@
 
 import { useState, type FormEvent } from "react";
 import useSWR from "swr";
-import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,24 +12,7 @@ import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
 import { useHighlightFromSearch } from "@/lib/use-highlight-from-search";
-
-function errorMessage(err: unknown, fallback: string) {
-  const message =
-    err && typeof err === "object" && "body" in err
-      ? ((err as { body?: { message?: string } }).body?.message ?? null)
-      : null;
-  return typeof message === "string" ? message : fallback;
-}
-
-async function submitAction(action: () => Promise<unknown>, onSuccess: () => void) {
-  try {
-    await action();
-    onSuccess();
-    toast.success("Saved");
-  } catch (err) {
-    toast.error(errorMessage(err, "Failed"));
-  }
-}
+import { submitAction, submitDelete } from "@/lib/submit-action";
 
 export default function InventoryPage() {
   const categories = useSWR("inventory-categories", () => api.listInventoryCategories());
@@ -119,7 +101,7 @@ export default function InventoryPage() {
                       type="button"
                       size="sm"
                       variant="destructive"
-                      onClick={() => submitAction(() => api.deleteInventoryCategory(c.id), () => categories.mutate())}
+                      onClick={() => submitDelete(() => api.deleteInventoryCategory(c.id), () => categories.mutate())}
                     >
                       Delete
                     </Button>
@@ -238,7 +220,7 @@ export default function InventoryPage() {
                       type="button"
                       size="sm"
                       variant="destructive"
-                      onClick={() => submitAction(() => api.deleteSupplier(s.id), () => suppliers.mutate())}
+                      onClick={() => submitDelete(() => api.deleteSupplier(s.id), () => suppliers.mutate())}
                     >
                       Delete
                     </Button>

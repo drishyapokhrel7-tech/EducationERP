@@ -12,7 +12,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { StatCard } from "@/components/ui/stat-card";
 import { api } from "@/lib/api";
-import { submitAction } from "@/lib/submit-action";
+import { submitAction, submitDelete } from "@/lib/submit-action";
 import type { CampusType } from "@education-erp/api-client";
 
 export default function DashboardPage() {
@@ -109,7 +109,7 @@ export default function DashboardPage() {
       <div>
         <h1 className="text-2xl font-semibold">{organization?.name ?? "Loading…"}</h1>
         <p className="text-muted-foreground text-sm">
-          Your organization's data is private — nothing here is visible to any other school on this platform.
+          Your organization&apos;s data is private — nothing here is visible to any other school on this platform.
         </p>
       </div>
 
@@ -154,7 +154,7 @@ export default function DashboardPage() {
                       type="button"
                       size="sm"
                       variant="destructive"
-                      onClick={() => submitAction(() => api.deleteCampus(campus.id), () => mutateCampuses())}
+                      onClick={() => submitDelete(() => api.deleteCampus(campus.id), () => mutateCampuses())}
                     >
                       Delete
                     </Button>
