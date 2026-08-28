@@ -5,7 +5,9 @@ import * as ExcelJS from "exceljs";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateStudentDto } from "./dto/create-student.dto";
+import { UpdateStudentDto } from "./dto/update-student.dto";
 import { CreateGuardianDto } from "./dto/create-guardian.dto";
+import { UpdateGuardianDto } from "./dto/update-guardian.dto";
 import { AttachGuardianDto } from "./dto/attach-guardian.dto";
 import { CreateEnrollmentDto } from "./dto/create-enrollment.dto";
 import { UpdateStudentStatusDto } from "./dto/update-student-status.dto";
@@ -13,6 +15,7 @@ import { CreateStudentLoginDto } from "./dto/create-student-login.dto";
 import { ImportResult, ImportRowError } from "./dto/import-result.dto";
 import { assertUnderEditionLimit, editionLimit } from "../organizations/edition-limits";
 import { paginate } from "../../common/pagination";
+import { assertNoDependents } from "../../common/assert-no-dependents";
 
 // Canonical gender values — shown as an Excel dropdown in the import
 // template and enforced on import (both CSV and .xlsx), so the
@@ -153,6 +156,70 @@ export class StudentsService {
     });
   }
 
+  async updateStudent(organizationId: string, id: string, dto: UpdateStudentDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadStudent(tx, organizationId, id);
+      return tx.student.update({
+        where: { id },
+        data: {
+          firstName: dto.firstName,
+          middleName: dto.middleName,
+          lastName: dto.lastName,
+          dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : undefined,
+          gender: dto.gender,
+          photoUrl: dto.photoUrl,
+        },
+      });
+    });
+  }
+
+  // A real student record accumulates dependents almost immediately
+  // (an enrollment, an attendance mark, an invoice, ...) — this guard
+  // is expected to block deletion for any student who has actually
+  // done anything in the system, same as every other guarded delete in
+  // this app. It exists for the case this is actually for: a record
+  // created by mistake (wrong person, duplicate import row) that
+  // nothing else references yet. A portal login is blocked
+  // separately — deleting the Student out from under a live User
+  // account (sessions, notifications, audit trail all keyed to that
+  // userId) is a different, bigger operation than this endpoint does.
+  async deleteStudent(organizationId: string, id: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const student = await this.loadStudent(tx, organizationId, id);
+      if (student.userId) {
+        throw new ConflictException("This student has a portal login — remove that first before deleting the record");
+      }
+      await assertNoDependents(
+        [
+          tx.studentGuardian.count({ where: { studentId: id } }),
+          tx.studentEnrollment.count({ where: { studentId: id } }),
+          tx.studentStatusHistory.count({ where: { studentId: id } }),
+          tx.studentAttendance.count({ where: { studentId: id } }),
+          tx.faceEnrollment.count({ where: { studentId: id } }),
+          tx.assignmentSubmission.count({ where: { studentId: id } }),
+          tx.knowledgeCheckAttempt.count({ where: { studentId: id } }),
+          tx.examAttempt.count({ where: { studentId: id } }),
+          tx.reportCard.count({ where: { studentId: id } }),
+          tx.invoice.count({ where: { studentId: id } }),
+          tx.studentScholarship.count({ where: { studentId: id } }),
+          tx.courseModuleItemCompletion.count({ where: { studentId: id } }),
+          tx.studentDocument.count({ where: { studentId: id } }),
+          tx.certificate.count({ where: { studentId: id } }),
+          tx.alumniProfile.count({ where: { studentId: id } }),
+        ],
+        "student",
+      );
+      await tx.student.delete({ where: { id } });
+      return { deleted: true };
+    });
+  }
+
+  private async loadStudent(tx: PrismaClient, organizationId: string, id: string) {
+    const student = await tx.student.findUnique({ where: { id } });
+    if (!student || student.organizationId !== organizationId) throw new NotFoundException("Student not found");
+    return student;
+  }
+
   listGuardians(organizationId: string) {
     return this.prisma.withTenant(organizationId, (tx) =>
       tx.guardian.findMany({
@@ -177,6 +244,39 @@ export class StudentsService {
         },
       }),
     );
+  }
+
+  async updateGuardian(organizationId: string, id: string, dto: UpdateGuardianDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadGuardian(tx, organizationId, id);
+      return tx.guardian.update({
+        where: { id },
+        data: {
+          firstName: dto.firstName,
+          middleName: dto.middleName,
+          lastName: dto.lastName,
+          phone: dto.phone,
+          email: dto.email,
+          occupation: dto.occupation,
+          photoUrl: dto.photoUrl,
+        },
+      });
+    });
+  }
+
+  async deleteGuardian(organizationId: string, id: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadGuardian(tx, organizationId, id);
+      await assertNoDependents([tx.studentGuardian.count({ where: { guardianId: id } })], "guardian");
+      await tx.guardian.delete({ where: { id } });
+      return { deleted: true };
+    });
+  }
+
+  private async loadGuardian(tx: PrismaClient, organizationId: string, id: string) {
+    const guardian = await tx.guardian.findUnique({ where: { id } });
+    if (!guardian || guardian.organizationId !== organizationId) throw new NotFoundException("Guardian not found");
+    return guardian;
   }
 
   private async requireStudent(organizationId: string, studentId: string) {

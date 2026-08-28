@@ -20,7 +20,7 @@ import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
 import { useHighlightFromSearch } from "@/lib/use-highlight-from-search";
 import { isEditionLimitError } from "@/lib/edition-limit-error";
-import { errorMessage } from "@/lib/submit-action";
+import { submitAction, submitDelete, errorMessage } from "@/lib/submit-action";
 import { ApiError, type Edition, type ImportResult } from "@education-erp/api-client";
 
 // Matches the backend's GENDER_OPTIONS
@@ -94,6 +94,15 @@ export default function StudentsPage() {
     gender: "",
   });
   const [studentPhoto, setStudentPhoto] = useState<PhotoValue>(EMPTY_PHOTO);
+  const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
+  const [editStudentForm, setEditStudentForm] = useState({
+    firstName: "",
+    middleName: "",
+    lastName: "",
+    dateOfBirth: "",
+    gender: "",
+  });
+  const [editStudentPhoto, setEditStudentPhoto] = useState<PhotoValue>(EMPTY_PHOTO);
   const [guardianForm, setGuardianForm] = useState({
     firstName: "",
     middleName: "",
@@ -102,6 +111,15 @@ export default function StudentsPage() {
     email: "",
   });
   const [guardianPhoto, setGuardianPhoto] = useState<PhotoValue>(EMPTY_PHOTO);
+  const [editingGuardianId, setEditingGuardianId] = useState<string | null>(null);
+  const [editGuardianForm, setEditGuardianForm] = useState({
+    firstName: "",
+    middleName: "",
+    lastName: "",
+    phone: "",
+    email: "",
+  });
+  const [editGuardianPhoto, setEditGuardianPhoto] = useState<PhotoValue>(EMPTY_PHOTO);
   const [linkForm, setLinkForm] = useState({
     studentId: "",
     guardianId: "",
@@ -277,14 +295,92 @@ export default function StudentsPage() {
         emptyLabel="No students yet."
         items={students.data?.data}
         footer={
-          students.data ? (
-            <ListPager
-              page={students.data.page}
-              totalPages={students.data.totalPages}
-              onPrev={() => setStudentsPage((p) => Math.max(1, p - 1))}
-              onNext={() => setStudentsPage((p) => p + 1)}
-            />
-          ) : null
+          <>
+            {editingStudentId ? (
+              <form
+                className="flex flex-wrap items-end gap-3 border-b pb-4"
+                onSubmit={(e: FormEvent) => {
+                  e.preventDefault();
+                  submitAction(
+                    async () => {
+                      const photoUrl = hasPhoto(editStudentPhoto) ? await resolvePhotoUrl(editStudentPhoto) : undefined;
+                      return api.updateStudent(editingStudentId, {
+                        ...editStudentForm,
+                        middleName: editStudentForm.middleName || undefined,
+                        gender: editStudentForm.gender || undefined,
+                        photoUrl,
+                      });
+                    },
+                    () => {
+                      setEditingStudentId(null);
+                      students.mutate();
+                    },
+                  );
+                }}
+              >
+                <div className="space-y-2">
+                  <Label>First name</Label>
+                  <Input
+                    required
+                    value={editStudentForm.firstName}
+                    onChange={(e) => setEditStudentForm((f) => ({ ...f, firstName: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Middle name (optional)</Label>
+                  <Input
+                    value={editStudentForm.middleName}
+                    onChange={(e) => setEditStudentForm((f) => ({ ...f, middleName: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Last name</Label>
+                  <Input
+                    required
+                    value={editStudentForm.lastName}
+                    onChange={(e) => setEditStudentForm((f) => ({ ...f, lastName: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Date of birth</Label>
+                  <Input
+                    required
+                    type="date"
+                    value={editStudentForm.dateOfBirth}
+                    onChange={(e) => setEditStudentForm((f) => ({ ...f, dateOfBirth: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Gender (optional)</Label>
+                  <NativeSelect
+                    className="w-28"
+                    placeholder="Select"
+                    value={editStudentForm.gender}
+                    onChange={(v) => setEditStudentForm((f) => ({ ...f, gender: v }))}
+                    options={GENDER_OPTIONS.map((g) => ({ value: g, label: g }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Photo</Label>
+                  <PhotoInput value={editStudentPhoto} onChange={setEditStudentPhoto} />
+                </div>
+                <Button type="submit" size="sm" disabled={!hasPhoto(editStudentPhoto)}>
+                  Save
+                </Button>
+                <Button type="button" size="sm" variant="outline" onClick={() => setEditingStudentId(null)}>
+                  Cancel
+                </Button>
+              </form>
+            ) : null}
+            {students.data ? (
+              <ListPager
+                page={students.data.page}
+                totalPages={students.data.totalPages}
+                onPrev={() => setStudentsPage((p) => Math.max(1, p - 1))}
+                onNext={() => setStudentsPage((p) => p + 1)}
+              />
+            ) : null}
+          </>
         }
         renderItem={(s: {
           id: string;
@@ -294,6 +390,8 @@ export default function StudentsPage() {
           lastName: string;
           studentCode: string;
           status: string;
+          dateOfBirth: string;
+          gender: string | null;
           photoUrl: string | null;
           guardians: { relationship: string; guardian: { firstName: string; lastName: string } }[];
         }) => (
@@ -303,6 +401,32 @@ export default function StudentsPage() {
               {s.firstName} {s.middleName ? `${s.middleName} ` : ""}
               {s.lastName} <span className="text-muted-foreground">{s.studentCode}</span>
               <Badge variant={statusVariant(s.status)}>{s.status}</Badge>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setEditingStudentId(s.id);
+                  setEditStudentForm({
+                    firstName: s.firstName,
+                    middleName: s.middleName ?? "",
+                    lastName: s.lastName,
+                    dateOfBirth: s.dateOfBirth.slice(0, 10),
+                    gender: s.gender ?? "",
+                  });
+                  setEditStudentPhoto(s.photoUrl ? { status: "uploaded", url: s.photoUrl } : EMPTY_PHOTO);
+                }}
+              >
+                Edit
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                onClick={() => submitDelete(() => api.deleteStudent(s.id), () => students.mutate())}
+              >
+                Delete
+              </Button>
             </span>
             {s.guardians.length > 0 ? (
               <p className="text-muted-foreground mt-1 text-xs">
@@ -430,18 +554,120 @@ export default function StudentsPage() {
         title="Guardians"
         emptyLabel="No guardians yet."
         items={guardians.data}
+        footer={
+          editingGuardianId ? (
+            <form
+              className="flex flex-wrap items-end gap-3 border-b pb-4"
+              onSubmit={(e: FormEvent) => {
+                e.preventDefault();
+                submitAction(
+                  async () => {
+                    const photoUrl = hasPhoto(editGuardianPhoto) ? await resolvePhotoUrl(editGuardianPhoto) : undefined;
+                    return api.updateGuardian(editingGuardianId, {
+                      ...editGuardianForm,
+                      middleName: editGuardianForm.middleName || undefined,
+                      email: editGuardianForm.email || undefined,
+                      photoUrl,
+                    });
+                  },
+                  () => {
+                    setEditingGuardianId(null);
+                    guardians.mutate();
+                  },
+                );
+              }}
+            >
+              <div className="space-y-2">
+                <Label>First name</Label>
+                <Input
+                  required
+                  value={editGuardianForm.firstName}
+                  onChange={(e) => setEditGuardianForm((f) => ({ ...f, firstName: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Middle name (optional)</Label>
+                <Input
+                  value={editGuardianForm.middleName}
+                  onChange={(e) => setEditGuardianForm((f) => ({ ...f, middleName: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Last name</Label>
+                <Input
+                  required
+                  value={editGuardianForm.lastName}
+                  onChange={(e) => setEditGuardianForm((f) => ({ ...f, lastName: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Phone</Label>
+                <Input
+                  required
+                  value={editGuardianForm.phone}
+                  onChange={(e) => setEditGuardianForm((f) => ({ ...f, phone: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Email (optional)</Label>
+                <Input
+                  type="email"
+                  value={editGuardianForm.email}
+                  onChange={(e) => setEditGuardianForm((f) => ({ ...f, email: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Photo</Label>
+                <PhotoInput value={editGuardianPhoto} onChange={setEditGuardianPhoto} />
+              </div>
+              <Button type="submit" size="sm" disabled={!hasPhoto(editGuardianPhoto)}>
+                Save
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setEditingGuardianId(null)}>
+                Cancel
+              </Button>
+            </form>
+          ) : null
+        }
         renderItem={(g: {
           id: string;
           firstName: string;
           middleName: string | null;
           lastName: string;
           phone: string;
+          email: string | null;
           photoUrl: string | null;
         }) => (
           <span id={`guardian-${g.id}`} className="flex items-center gap-2">
             <Avatar src={g.photoUrl} />
             {g.firstName} {g.middleName ? `${g.middleName} ` : ""}
             {g.lastName} <span className="text-muted-foreground">{g.phone}</span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setEditingGuardianId(g.id);
+                setEditGuardianForm({
+                  firstName: g.firstName,
+                  middleName: g.middleName ?? "",
+                  lastName: g.lastName,
+                  phone: g.phone,
+                  email: g.email ?? "",
+                });
+                setEditGuardianPhoto(g.photoUrl ? { status: "uploaded", url: g.photoUrl } : EMPTY_PHOTO);
+              }}
+            >
+              Edit
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="destructive"
+              onClick={() => submitDelete(() => api.deleteGuardian(g.id), () => guardians.mutate())}
+            >
+              Delete
+            </Button>
           </span>
         )}
       >

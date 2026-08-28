@@ -2,9 +2,11 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Header,
   Param,
+  Patch,
   Post,
   Put,
   Query,
@@ -17,7 +19,9 @@ import { FileInterceptor } from "@nestjs/platform-express";
 import type { Response } from "express";
 import { StudentsService } from "./students.service";
 import { CreateStudentDto } from "./dto/create-student.dto";
+import { UpdateStudentDto } from "./dto/update-student.dto";
 import { CreateGuardianDto } from "./dto/create-guardian.dto";
+import { UpdateGuardianDto } from "./dto/update-guardian.dto";
 import { AttachGuardianDto } from "./dto/attach-guardian.dto";
 import { CreateEnrollmentDto } from "./dto/create-enrollment.dto";
 import { UpdateStudentStatusDto } from "./dto/update-student-status.dto";
@@ -55,6 +59,18 @@ export class StudentsController {
     return this.students.createStudent(user.organizationId, dto);
   }
 
+  @Patch("students/:id")
+  @RequirePermissions("student:update")
+  updateStudent(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: UpdateStudentDto) {
+    return this.students.updateStudent(user.organizationId, id, dto);
+  }
+
+  @Delete("students/:id")
+  @RequirePermissions("student:delete")
+  deleteStudent(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.students.deleteStudent(user.organizationId, id);
+  }
+
   @Get("guardians")
   @RequirePermissions("guardian:view")
   listGuardians(@CurrentUser() user: JwtPayload) {
@@ -65,6 +81,18 @@ export class StudentsController {
   @RequirePermissions("guardian:create")
   createGuardian(@CurrentUser() user: JwtPayload, @Body() dto: CreateGuardianDto) {
     return this.students.createGuardian(user.organizationId, dto);
+  }
+
+  @Patch("guardians/:id")
+  @RequirePermissions("guardian:update")
+  updateGuardian(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: UpdateGuardianDto) {
+    return this.students.updateGuardian(user.organizationId, id, dto);
+  }
+
+  @Delete("guardians/:id")
+  @RequirePermissions("guardian:delete")
+  deleteGuardian(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.students.deleteGuardian(user.organizationId, id);
   }
 
   @Post("students/:studentId/guardians")

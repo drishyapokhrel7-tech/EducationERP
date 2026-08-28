@@ -7,6 +7,7 @@ import { UpdateStaffTypeDto } from "./dto/update-staff-type.dto";
 import { CreateDesignationDto } from "./dto/create-designation.dto";
 import { UpdateDesignationDto } from "./dto/update-designation.dto";
 import { CreateEmployeeDto } from "./dto/create-employee.dto";
+import { UpdateEmployeeDto } from "./dto/update-employee.dto";
 import { CreateEmploymentHistoryDto } from "./dto/create-employment-history.dto";
 import { CreateQualificationDto } from "./dto/create-qualification.dto";
 import { UpsertTeacherProfileDto } from "./dto/upsert-teacher-profile.dto";
@@ -250,6 +251,74 @@ export class StaffService {
       if (!employee) throw new NotFoundException("Employee not found");
       return employee;
     });
+  }
+
+  async updateEmployee(organizationId: string, id: string, dto: UpdateEmployeeDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadEmployee(tx, organizationId, id);
+      const [staffType, designation, department] = await Promise.all([
+        dto.staffTypeId ? tx.staffType.findUnique({ where: { id: dto.staffTypeId } }) : null,
+        dto.designationId ? tx.designation.findUnique({ where: { id: dto.designationId } }) : null,
+        dto.departmentId ? tx.department.findUnique({ where: { id: dto.departmentId } }) : null,
+      ]);
+      if (dto.staffTypeId && !staffType) throw new NotFoundException("Staff type not found");
+      if (dto.designationId && !designation) throw new NotFoundException("Designation not found");
+      if (dto.departmentId && !department) throw new NotFoundException("Department not found");
+
+      return tx.employee.update({
+        where: { id },
+        data: {
+          staffTypeId: dto.staffTypeId,
+          designationId: dto.designationId,
+          departmentId: dto.departmentId,
+          firstName: dto.firstName,
+          middleName: dto.middleName,
+          lastName: dto.lastName,
+          email: dto.email,
+          phone: dto.phone,
+          dateOfJoining: dto.dateOfJoining ? new Date(dto.dateOfJoining) : undefined,
+          photoUrl: dto.photoUrl,
+        },
+      });
+    });
+  }
+
+  // Same reasoning as StudentsService.deleteStudent: a real employee
+  // accumulates dependents almost immediately (employment history,
+  // a leave balance, a payroll run, ...), so this guard is expected to
+  // block deletion for anyone who's actually been used in the system —
+  // it exists for the mistaken-entry case. A portal login is blocked
+  // separately, same reasoning as Student.
+  async deleteEmployee(organizationId: string, id: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const employee = await this.loadEmployee(tx, organizationId, id);
+      if (employee.userId) {
+        throw new ConflictException("This employee has a portal login — remove that first before deleting the record");
+      }
+      await assertNoDependents(
+        [
+          tx.employmentHistory.count({ where: { employeeId: id } }),
+          tx.qualification.count({ where: { employeeId: id } }),
+          tx.teacherProfile.count({ where: { employeeId: id } }),
+          tx.teachingAssignment.count({ where: { employeeId: id } }),
+          tx.staffAttendance.count({ where: { employeeId: id } }),
+          tx.staffLeaveBalance.count({ where: { employeeId: id } }),
+          tx.leaveRequest.count({ where: { employeeId: id } }),
+          tx.payroll.count({ where: { employeeId: id } }),
+          tx.driver.count({ where: { employeeId: id } }),
+          tx.staffDocument.count({ where: { employeeId: id } }),
+        ],
+        "employee",
+      );
+      await tx.employee.delete({ where: { id } });
+      return { deleted: true };
+    });
+  }
+
+  private async loadEmployee(tx: PrismaClient, organizationId: string, id: string) {
+    const employee = await tx.employee.findUnique({ where: { id } });
+    if (!employee || employee.organizationId !== organizationId) throw new NotFoundException("Employee not found");
+    return employee;
   }
 
   async listEmploymentHistory(organizationId: string, employeeId: string) {

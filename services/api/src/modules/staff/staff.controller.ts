@@ -5,6 +5,7 @@ import { UpdateStaffTypeDto } from "./dto/update-staff-type.dto";
 import { CreateDesignationDto } from "./dto/create-designation.dto";
 import { UpdateDesignationDto } from "./dto/update-designation.dto";
 import { CreateEmployeeDto } from "./dto/create-employee.dto";
+import { UpdateEmployeeDto } from "./dto/update-employee.dto";
 import { CreateEmploymentHistoryDto } from "./dto/create-employment-history.dto";
 import { CreateQualificationDto } from "./dto/create-qualification.dto";
 import { UpsertTeacherProfileDto } from "./dto/upsert-teacher-profile.dto";
@@ -88,6 +89,18 @@ export class StaffController {
   @RequirePermissions("employee:create")
   createEmployee(@CurrentUser() user: JwtPayload, @Body() dto: CreateEmployeeDto) {
     return this.staff.createEmployee(user.organizationId, dto);
+  }
+
+  @Patch("employees/:id")
+  @RequirePermissions("employee:update")
+  updateEmployee(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: UpdateEmployeeDto) {
+    return this.staff.updateEmployee(user.organizationId, id, dto);
+  }
+
+  @Delete("employees/:id")
+  @RequirePermissions("employee:delete")
+  deleteEmployee(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.staff.deleteEmployee(user.organizationId, id);
   }
 
   @Post("employees/:employeeId/create-login")

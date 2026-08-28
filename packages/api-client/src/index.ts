@@ -16,15 +16,18 @@ import type {
   CreateDepartmentInput,
   CreateDesignationInput,
   CreateEmployeeInput,
+  UpdateEmployeeInput,
   CreateEmploymentHistoryInput,
   CreateEnrollmentInput,
   CreateFacultyInput,
   CreateGuardianInput,
+  UpdateGuardianInput,
   CreateProgramInput,
   CreateQualificationInput,
   CreateSectionInput,
   CreateStaffTypeInput,
   CreateStudentInput,
+  UpdateStudentInput,
   CreateStudentLoginInput,
   CreateStudentLoginResult,
   CreateSubjectInput,
@@ -612,6 +615,10 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         method: "POST",
         body: JSON.stringify(input),
       }),
+    updateEmployee: (id: string, input: UpdateEmployeeInput) =>
+      request<Employee>(`/organizations/me/employees/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    deleteEmployee: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/employees/${id}`, { method: "DELETE" }),
     createEmployeeLogin: (employeeId: string, input: CreateEmployeeLoginInput) =>
       request<CreateEmployeeLoginResult>(`/organizations/me/employees/${employeeId}/create-login`, {
         method: "POST",
@@ -677,6 +684,10 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         method: "POST",
         body: JSON.stringify(input),
       }),
+    updateStudent: (id: string, input: UpdateStudentInput) =>
+      request<Student>(`/organizations/me/students/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    deleteStudent: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/students/${id}`, { method: "DELETE" }),
     createStudentLogin: (studentId: string, input: CreateStudentLoginInput) =>
       request<CreateStudentLoginResult>(`/organizations/me/students/${studentId}/create-login`, {
         method: "POST",
@@ -689,6 +700,10 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         method: "POST",
         body: JSON.stringify(input),
       }),
+    updateGuardian: (id: string, input: UpdateGuardianInput) =>
+      request<Guardian>(`/organizations/me/guardians/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    deleteGuardian: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/guardians/${id}`, { method: "DELETE" }),
     attachGuardian: (studentId: string, input: AttachGuardianInput) =>
       request<StudentGuardian>(`/organizations/me/students/${studentId}/guardians`, {
         method: "POST",

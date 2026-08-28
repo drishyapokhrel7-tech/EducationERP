@@ -357,6 +357,21 @@ export interface CreateEmployeeInput {
   photoUrl: string;
 }
 
+// employeeCode is deliberately absent — see UpdateEmployeeDto's own
+// comment (the portal-login username is fixed at create-login time).
+export interface UpdateEmployeeInput {
+  staffTypeId?: string;
+  designationId?: string;
+  departmentId?: string;
+  firstName?: string;
+  middleName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+  dateOfJoining?: string;
+  photoUrl?: string;
+}
+
 export interface EmploymentHistory {
   id: string;
   organizationId: string;
@@ -481,6 +496,16 @@ export interface CreateGuardianInput {
   photoUrl: string;
 }
 
+export interface UpdateGuardianInput {
+  firstName?: string;
+  middleName?: string;
+  lastName?: string;
+  phone?: string;
+  email?: string;
+  occupation?: string;
+  photoUrl?: string;
+}
+
 export interface StudentGuardian {
   id: string;
   studentId: string;
@@ -534,6 +559,16 @@ export interface CreateStudentInput {
   gender?: string;
   // Mandatory (explicit user request).
   photoUrl: string;
+}
+
+// studentCode is deliberately absent — immutable once assigned.
+export interface UpdateStudentInput {
+  firstName?: string;
+  middleName?: string;
+  lastName?: string;
+  dateOfBirth?: string;
+  gender?: string;
+  photoUrl?: string;
 }
 
 export interface CreateStudentLoginInput {

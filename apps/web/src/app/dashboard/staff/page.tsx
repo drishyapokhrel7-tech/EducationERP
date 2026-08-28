@@ -87,6 +87,22 @@ export default function StaffPage() {
   });
   const [employeePhoto, setEmployeePhoto] = useState<PhotoValue>(EMPTY_PHOTO);
 
+  // employeeCode is deliberately excluded — see UpdateEmployeeDto's own
+  // comment (it's fixed once a portal login exists).
+  const [editingEmployeeId, setEditingEmployeeId] = useState<string | null>(null);
+  const [editEmployeeForm, setEditEmployeeForm] = useState({
+    staffTypeId: "",
+    designationId: "",
+    departmentId: "",
+    firstName: "",
+    middleName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+    dateOfJoining: "",
+  });
+  const [editEmployeePhoto, setEditEmployeePhoto] = useState<PhotoValue>(EMPTY_PHOTO);
+
   async function submit(action: () => Promise<unknown>, onSuccess: () => void) {
     try {
       await action();
@@ -335,14 +351,129 @@ export default function StaffPage() {
         emptyLabel="No employees yet."
         items={employees.data?.data}
         footer={
-          employees.data ? (
-            <ListPager
-              page={employees.data.page}
-              totalPages={employees.data.totalPages}
-              onPrev={() => setEmployeesPage((p) => Math.max(1, p - 1))}
-              onNext={() => setEmployeesPage((p) => p + 1)}
-            />
-          ) : null
+          <>
+            {editingEmployeeId ? (
+              <form
+                className="flex flex-wrap items-end gap-3 border-b pb-4"
+                onSubmit={(ev: FormEvent) => {
+                  ev.preventDefault();
+                  submitAction(
+                    async () => {
+                      const photoUrl = hasPhoto(editEmployeePhoto) ? await resolvePhotoUrl(editEmployeePhoto) : undefined;
+                      return api.updateEmployee(editingEmployeeId, {
+                        ...editEmployeeForm,
+                        departmentId: editEmployeeForm.departmentId || undefined,
+                        middleName: editEmployeeForm.middleName || undefined,
+                        phone: editEmployeeForm.phone || undefined,
+                        photoUrl,
+                      });
+                    },
+                    () => {
+                      setEditingEmployeeId(null);
+                      employees.mutate();
+                    },
+                  );
+                }}
+              >
+                <div className="space-y-2">
+                  <Label>Staff type</Label>
+                  <NativeSelect
+                    className="w-36"
+                    placeholder="Select type"
+                    value={editEmployeeForm.staffTypeId}
+                    onChange={(v) => setEditEmployeeForm((f) => ({ ...f, staffTypeId: v }))}
+                    options={(staffTypes.data ?? []).map((t) => ({ value: t.id, label: t.name }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Designation</Label>
+                  <NativeSelect
+                    className="w-36"
+                    placeholder="Select designation"
+                    value={editEmployeeForm.designationId}
+                    onChange={(v) => setEditEmployeeForm((f) => ({ ...f, designationId: v }))}
+                    options={(designations.data ?? []).map((d) => ({ value: d.id, label: d.name }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Department (optional)</Label>
+                  <NativeSelect
+                    className="w-36"
+                    placeholder="None"
+                    value={editEmployeeForm.departmentId}
+                    onChange={(v) => setEditEmployeeForm((f) => ({ ...f, departmentId: v }))}
+                    options={(departments.data ?? []).map((d) => ({ value: d.id, label: d.name }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>First name</Label>
+                  <Input
+                    required
+                    value={editEmployeeForm.firstName}
+                    onChange={(e) => setEditEmployeeForm((f) => ({ ...f, firstName: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Middle name (optional)</Label>
+                  <Input
+                    value={editEmployeeForm.middleName}
+                    onChange={(e) => setEditEmployeeForm((f) => ({ ...f, middleName: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Last name</Label>
+                  <Input
+                    required
+                    value={editEmployeeForm.lastName}
+                    onChange={(e) => setEditEmployeeForm((f) => ({ ...f, lastName: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input
+                    required
+                    type="email"
+                    value={editEmployeeForm.email}
+                    onChange={(e) => setEditEmployeeForm((f) => ({ ...f, email: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Phone (optional)</Label>
+                  <Input
+                    value={editEmployeeForm.phone}
+                    onChange={(e) => setEditEmployeeForm((f) => ({ ...f, phone: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Date of joining</Label>
+                  <Input
+                    required
+                    type="date"
+                    value={editEmployeeForm.dateOfJoining}
+                    onChange={(e) => setEditEmployeeForm((f) => ({ ...f, dateOfJoining: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Photo</Label>
+                  <PhotoInput value={editEmployeePhoto} onChange={setEditEmployeePhoto} />
+                </div>
+                <Button type="submit" size="sm" disabled={!hasPhoto(editEmployeePhoto)}>
+                  Save
+                </Button>
+                <Button type="button" size="sm" variant="outline" onClick={() => setEditingEmployeeId(null)}>
+                  Cancel
+                </Button>
+              </form>
+            ) : null}
+            {employees.data ? (
+              <ListPager
+                page={employees.data.page}
+                totalPages={employees.data.totalPages}
+                onPrev={() => setEmployeesPage((p) => Math.max(1, p - 1))}
+                onNext={() => setEmployeesPage((p) => p + 1)}
+              />
+            ) : null}
+          </>
         }
         renderItem={(e: {
           id: string;
@@ -352,6 +483,12 @@ export default function StaffPage() {
           employeeCode: string;
           userId: string | null;
           photoUrl: string | null;
+          staffTypeId: string;
+          designationId: string;
+          departmentId: string | null;
+          email: string;
+          phone: string | null;
+          dateOfJoining: string;
           designation?: { name: string };
         }) => (
           <div id={`employee-${e.id}`} className="rounded-md transition-shadow">
@@ -362,6 +499,36 @@ export default function StaffPage() {
                 {e.employeeCode}
                 {e.designation ? ` · ${e.designation.name}` : ""}
               </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setEditingEmployeeId(e.id);
+                  setEditEmployeeForm({
+                    staffTypeId: e.staffTypeId,
+                    designationId: e.designationId,
+                    departmentId: e.departmentId ?? "",
+                    firstName: e.firstName,
+                    middleName: e.middleName ?? "",
+                    lastName: e.lastName,
+                    email: e.email,
+                    phone: e.phone ?? "",
+                    dateOfJoining: e.dateOfJoining.slice(0, 10),
+                  });
+                  setEditEmployeePhoto(e.photoUrl ? { status: "uploaded", url: e.photoUrl } : EMPTY_PHOTO);
+                }}
+              >
+                Edit
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                onClick={() => submitDelete(() => api.deleteEmployee(e.id), () => employees.mutate())}
+              >
+                Delete
+              </Button>
             </span>
             {e.userId ? (
               <p className="text-muted-foreground mt-1 text-xs">
