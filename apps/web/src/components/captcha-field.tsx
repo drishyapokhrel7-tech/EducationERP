@@ -56,7 +56,7 @@ export function CaptchaField({
           // Server-generated (svg-captcha), never user-supplied — safe to render directly.
           <div className="rounded border" dangerouslySetInnerHTML={{ __html: svg }} />
         ) : (
-          <div className="text-muted-foreground flex h-[50px] w-[150px] items-center justify-center rounded border text-xs">
+          <div className="text-muted-foreground flex h-[60px] w-[150px] items-center justify-center rounded border text-xs">
             Loading…
           </div>
         )}
@@ -66,7 +66,9 @@ export function CaptchaField({
       </div>
       <Input
         required
-        placeholder="Type the characters above"
+        inputMode="numeric"
+        maxLength={4}
+        placeholder="Type the numbers above"
         value={value.captchaAnswer}
         onChange={(e) => onChange({ captchaId: value.captchaId, captchaAnswer: e.target.value })}
       />
