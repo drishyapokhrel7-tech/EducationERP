@@ -201,6 +201,12 @@ export class TransportService {
       await this.loadRoute(tx, organizationId, routeId);
       const stop = await tx.stop.findUnique({ where: { id: stopId } });
       if (!stop || stop.routeId !== routeId) throw new NotFoundException("Stop not found");
+      // Unlike HostelAllocation's own child rows (which exist only for
+      // that specific stay and are cleared alongside it), a
+      // StudentTransportAssignment is a genuine cross-reference from a
+      // different domain — a real student is dropped at this stop —
+      // so this follows the standard block-not-cascade pattern instead.
+      await assertNoDependents([tx.studentTransportAssignment.count({ where: { stopId } })], "stop");
       await tx.stop.delete({ where: { id: stopId } });
       return { id: stopId };
     });
