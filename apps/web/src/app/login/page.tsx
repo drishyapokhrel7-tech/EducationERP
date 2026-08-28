@@ -4,7 +4,7 @@ import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Building2, CheckCircle2, Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, GraduationCap, Sparkles } from "lucide-react";
 import { ApiError, type PasswordResetChallenge } from "@education-erp/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,11 +37,10 @@ function errorMessage(err: unknown, fallback: string): string {
   return typeof message === "string" ? message : fallback;
 }
 
-// Left brand panel — purely visual, no auth logic. Hidden below `lg`
-// so small screens just get the plain form, full width. The floating
-// card is a stand-in for what this product actually does (attendance,
-// not the generic "payment" mockup this layout was adapted from) —
-// static/illustrative, not wired to real data.
+// Left brand panel — purely visual, no auth logic, no real/internal
+// data. Hidden below `lg` so small screens just get the plain form,
+// full width. The centerpiece is an abstract illustration + brand
+// copy for Ovexa Education, not a data mockup.
 function BrandPanel() {
   return (
     <div className="from-primary via-primary relative hidden overflow-hidden bg-gradient-to-br to-[oklch(0.5_0.15_290)] p-10 lg:flex lg:w-1/2 lg:flex-col lg:justify-between">
@@ -53,35 +52,47 @@ function BrandPanel() {
           backgroundSize: "42px 42px",
         }}
       />
+      {/* Soft decorative glow — abstract, not a data visualization */}
+      <div className="absolute -top-24 -right-24 size-80 rounded-full bg-white/10 blur-3xl" />
+      <div className="absolute -bottom-32 -left-16 size-96 rounded-full bg-white/10 blur-3xl" />
+
       <div className="relative flex items-center gap-2">
         <div className="flex size-9 items-center justify-center rounded-lg bg-white/15 backdrop-blur">
-          <Building2 className="size-5 text-white" />
+          <GraduationCap className="size-5 text-white" />
         </div>
-        <span className="font-heading text-lg font-semibold text-white">Education ERP</span>
+        <span className="font-heading text-lg font-semibold text-white">Ovexa Education</span>
       </div>
 
-      <div className="relative flex flex-1 items-center justify-center py-10">
-        <div className="w-full max-w-xs rounded-2xl bg-white/95 p-5 shadow-2xl">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-muted-foreground text-xs">Today&apos;s attendance</p>
-              <p className="text-2xl font-semibold">42 / 45</p>
-            </div>
-            <div className="flex size-9 items-center justify-center rounded-full bg-emerald-100">
-              <CheckCircle2 className="size-5 text-emerald-600" />
-            </div>
+      <div className="relative flex flex-1 flex-col items-center justify-center gap-6 py-10 text-center">
+        <div className="relative flex size-28 items-center justify-center rounded-3xl bg-white/10 backdrop-blur">
+          <div className="absolute inset-0 rounded-3xl border border-white/20" />
+          <GraduationCap className="size-14 text-white" strokeWidth={1.5} />
+          <div className="absolute -top-2 -right-2 flex size-8 items-center justify-center rounded-full bg-white shadow-lg">
+            <Sparkles className="size-4 text-primary" />
           </div>
-          <div className="bg-muted mt-4 h-2 w-full overflow-hidden rounded-full">
-            <div className="h-full w-[93%] rounded-full bg-emerald-500" />
-          </div>
-          <p className="text-muted-foreground mt-2 text-xs">Class 10 · Section A · marked at 9:15 AM</p>
+        </div>
+        <div className="max-w-sm space-y-3">
+          <h2 className="font-heading text-2xl font-semibold text-white">
+            Run your institution, effortlessly
+          </h2>
+          <p className="text-sm leading-relaxed text-white/80">
+            Ovexa Education brings admissions, academics, attendance, exams, and fees together
+            in one place — built for schools and colleges to run smoothly, end to end.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          {["Admissions", "Academics", "Finance", "Examinations"].map((label) => (
+            <span
+              key={label}
+              className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs text-white/90 backdrop-blur"
+            >
+              {label}
+            </span>
+          ))}
         </div>
       </div>
 
-      <p className="relative text-sm text-white/80">
-        One platform for admissions, attendance, exams, fees, and everything else your
-        institution runs on.
-      </p>
+      <p className="relative text-sm text-white/70">A complete Education Operating System.</p>
     </div>
   );
 }
@@ -320,7 +331,7 @@ export default function LoginPage() {
 
   return (
     <AuthShell>
-      <h1 className="font-heading text-2xl font-semibold">Welcome to Education ERP</h1>
+      <h1 className="font-heading text-2xl font-semibold">Welcome to Ovexa Education</h1>
       <p className="text-muted-foreground mt-2 text-sm">
         No institution yet?{" "}
         <Link href="/register" className="text-primary font-medium underline underline-offset-4">
