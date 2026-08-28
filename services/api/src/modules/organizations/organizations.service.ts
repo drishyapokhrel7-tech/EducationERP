@@ -40,28 +40,49 @@ export class OrganizationsService {
         data: { organizationId, name: dto.name, code: dto.code, type: dto.type ?? "GENERIC" },
       });
       if (campus.type === "COLLEGE") {
-        await seedCollegeStructure(tx, organizationId, campus.id);
-        // Org-level (StaffType/Designation have no campusId of their
-        // own) — skipDuplicates makes this harmless if a second
-        // COLLEGE campus is added later, or the org already has one
-        // of these codes for some other reason.
-        await tx.staffType.createMany({
-          data: DEFAULT_COLLEGE_STAFF_TYPES.map((t) => ({ ...t, organizationId })),
-          skipDuplicates: true,
-        });
-        await tx.designation.createMany({
-          data: DEFAULT_COLLEGE_DESIGNATIONS.map((d) => ({ ...d, organizationId })),
-          skipDuplicates: true,
-        });
+        await this.seedCollegeDefaults(tx, organizationId, campus.id);
       }
       return campus;
     });
   }
 
+  // Most institutions run exactly one campus record for their whole
+  // organization (this app's own single-institution shortcut assumes
+  // it) — an admin reclassifying that one existing campus to COLLEGE
+  // is the normal path to "give me the college structure," not
+  // creating a second, duplicate campus just to trigger the seeding
+  // createCampus does. Fires only on a genuine GENERIC/SCHOOL/
+  // MONTESSORI → COLLEGE transition, and only if this campus has no
+  // faculties yet — so flipping the type back and forth, or an admin
+  // who already started building their own structure by hand, never
+  // gets a duplicate/clobbering re-seed.
   async updateCampus(organizationId: string, id: string, dto: UpdateCampusDto) {
     return this.prisma.withTenant(organizationId, async (tx) => {
-      await this.loadCampus(tx, organizationId, id);
-      return tx.campus.update({ where: { id }, data: dto });
+      const existing = await this.loadCampus(tx, organizationId, id);
+      const updated = await tx.campus.update({ where: { id }, data: dto });
+      if (updated.type === "COLLEGE" && existing.type !== "COLLEGE") {
+        const facultyCount = await tx.faculty.count({ where: { campusId: id } });
+        if (facultyCount === 0) {
+          await this.seedCollegeDefaults(tx, organizationId, id);
+        }
+      }
+      return updated;
+    });
+  }
+
+  private async seedCollegeDefaults(tx: PrismaClient, organizationId: string, campusId: string) {
+    await seedCollegeStructure(tx, organizationId, campusId);
+    // Org-level (StaffType/Designation have no campusId of their own)
+    // — skipDuplicates makes this harmless if a second COLLEGE campus
+    // is added/reclassified later, or the org already has one of
+    // these codes for some other reason.
+    await tx.staffType.createMany({
+      data: DEFAULT_COLLEGE_STAFF_TYPES.map((t) => ({ ...t, organizationId })),
+      skipDuplicates: true,
+    });
+    await tx.designation.createMany({
+      data: DEFAULT_COLLEGE_DESIGNATIONS.map((d) => ({ ...d, organizationId })),
+      skipDuplicates: true,
     });
   }
 
