@@ -10,6 +10,13 @@ export interface SafeUser {
   id: string;
   organizationId: string;
   email: string;
+  // Set for self-service logins that aren't email-based (students log
+  // in by student code, staff similarly) — this was already returned
+  // by the backend (toSafeUser only strips passwordHash) but missing
+  // from this type. The user's actual login identifier is
+  // `username ?? email`, not `id` (a DB primary key, never typed
+  // anywhere).
+  username: string | null;
   firstName: string;
   lastName: string;
   status: UserStatus;
@@ -27,6 +34,16 @@ export interface SafeUser {
 export interface EmailVerificationChallenge {
   codeId: string;
   code: string;
+}
+
+// POST auth/me's shape — the JWT payload itself. SafeUser (the object
+// stored in the session) has no roles field, so the user-profile
+// popup fetches this separately to show "Role".
+export interface CurrentUserInfo {
+  sub: string;
+  organizationId: string;
+  roles: string[];
+  permissions: string[];
 }
 
 export type Edition = "FREE" | "PROFESSIONAL" | "ULTRA";

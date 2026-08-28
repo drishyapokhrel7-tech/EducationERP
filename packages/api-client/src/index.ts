@@ -229,6 +229,7 @@ import type {
   EmployeePicker,
   CaptchaChallenge,
   EmailVerificationChallenge,
+  CurrentUserInfo,
   EditionStatus,
   Edition,
   PlatformAdminUser,
@@ -440,6 +441,10 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
 
     resendVerificationCode: () =>
       request<EmailVerificationChallenge>("/auth/resend-verification-code", { method: "POST" }),
+
+    // SafeUser (stored in the session) has no roles field — the
+    // user-profile popup fetches this separately for "Role".
+    getMe: () => request<CurrentUserInfo>("/auth/me", { method: "POST" }),
 
     login: (input: LoginInput) =>
       request<{ user: SafeUser } & AuthTokens>("/auth/login", {

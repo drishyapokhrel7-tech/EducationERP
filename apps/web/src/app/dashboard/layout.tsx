@@ -38,10 +38,10 @@ import {
   Wallet,
   type LucideIcon,
 } from "lucide-react";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { NotificationBell } from "@/components/notification-bell";
 import { GlobalSearchBox } from "@/components/global-search-box";
+import { UserProfilePopover } from "@/components/user-profile-popover";
 import { useAuth } from "@/lib/auth-context";
 
 interface NavItem {
@@ -173,8 +173,6 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     );
   }
 
-  const initials = `${user.firstName[0] ?? ""}${user.lastName[0] ?? ""}`.toUpperCase();
-
   return (
     <div className="flex min-h-screen flex-1">
       <aside className="bg-sidebar text-sidebar-foreground border-sidebar-border flex w-64 flex-col border-r p-4">
@@ -239,12 +237,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         <header className="flex items-center justify-between gap-3 border-b p-4">
           <GlobalSearchBox />
           <div className="flex items-center gap-3">
-            <Avatar className="size-8">
-              <AvatarFallback className="bg-primary/10 text-primary">{initials}</AvatarFallback>
-            </Avatar>
-            <span className="text-sm font-medium">
-              {user.firstName} {user.lastName}
-            </span>
+            <UserProfilePopover user={user} />
             <NotificationBell />
             <Button variant="ghost" size="icon" onClick={() => logout().then(() => router.push("/login"))}>
               <LogOut className="size-4" />
