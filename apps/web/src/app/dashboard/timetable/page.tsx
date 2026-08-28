@@ -154,10 +154,10 @@ export default function TimetablePage() {
               }}
             >
               <div className="space-y-2">
-                <Label>Campus</Label>
+                <Label>Institution</Label>
                 <NativeSelect
                   className="w-40"
-                  placeholder="Select campus"
+                  placeholder="Select institution"
                   value={editRoomForm.campusId}
                   onChange={(v) => setEditRoomForm((f) => ({ ...f, campusId: v }))}
                   options={(campuses.data ?? []).map((c) => ({ value: c.id, label: c.name }))}
@@ -228,10 +228,10 @@ export default function TimetablePage() {
           }}
         >
           <div className="space-y-2">
-            <Label>Campus</Label>
+            <Label>Institution</Label>
             <NativeSelect
               className="w-40"
-              placeholder="Select campus"
+              placeholder="Select institution"
               value={roomForm.campusId}
               onChange={(v) => setRoomForm((f) => ({ ...f, campusId: v }))}
               options={(campuses.data ?? []).map((c) => ({ value: c.id, label: c.name }))}

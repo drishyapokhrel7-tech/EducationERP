@@ -11,6 +11,7 @@ import type {
   CreateAcademicYearInput,
   CreateAdmissionApplicationInput,
   CreateCampusInput,
+  UpdateCampusInput,
   CreateCurriculumInput,
   CreateDepartmentInput,
   CreateDesignationInput,
@@ -511,6 +512,10 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         method: "POST",
         body: JSON.stringify(input),
       }),
+    updateCampus: (id: string, input: UpdateCampusInput) =>
+      request<Campus>(`/organizations/me/campuses/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    deleteCampus: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/campuses/${id}`, { method: "DELETE" }),
 
     listFaculties: () => request<Faculty[]>("/organizations/me/faculties"),
     createFaculty: (input: CreateFacultyInput) =>

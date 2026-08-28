@@ -48,6 +48,41 @@ export const DEFAULT_DESIGNATIONS: { name: string; code: string }[] = [
   { name: "Office Assistant", code: "OA" },
 ];
 
+// The college counterpart of DEFAULT_STAFF_TYPES/DEFAULT_DESIGNATIONS
+// above — seeded by OrganizationsService.createCampus whenever a
+// COLLEGE-type campus is created (org-level, same as the school
+// defaults, since StaffType/Designation have no campusId of their
+// own), not just once at registration. Codes are deliberately
+// disjoint from the school defaults' own codes so both sets coexist
+// cleanly in an organization that runs both a school and a college
+// (the seed-demo.ts precedent). Seeded with skipDuplicates — a second
+// COLLEGE campus added later re-runs this harmlessly. Same starting-
+// point, fully editable/deletable precedent as every other default
+// list here.
+export const DEFAULT_COLLEGE_STAFF_TYPES: { name: string; code: string }[] = [
+  { name: "Professor", code: "PROF" },
+  { name: "Associate Professor", code: "APROF" },
+  { name: "Assistant Professor", code: "ASTPROF" },
+  { name: "Lecturer", code: "LEC" },
+  { name: "Teaching Assistant", code: "TA" },
+  { name: "Lab Assistant", code: "LABAST" },
+  { name: "Registrar", code: "REG" },
+  { name: "Exam Controller", code: "EXAMC" },
+];
+
+export const DEFAULT_COLLEGE_DESIGNATIONS: { name: string; code: string }[] = [
+  { name: "Dean", code: "DEAN" },
+  { name: "Head of Department", code: "HOD" },
+  { name: "Professor", code: "PROF" },
+  { name: "Associate Professor", code: "APROF" },
+  { name: "Assistant Professor", code: "ASTPROF" },
+  { name: "Lecturer", code: "LEC" },
+  { name: "Teaching Assistant", code: "TA" },
+  { name: "Registrar", code: "REG" },
+  { name: "Exam Controller", code: "EXAMC" },
+  { name: "Lab Assistant", code: "LABAST" },
+];
+
 /**
  * Same load-bearing pattern as org-structure.service.ts: every create*
  * that takes a parent/reference id (departmentId, staffTypeId,

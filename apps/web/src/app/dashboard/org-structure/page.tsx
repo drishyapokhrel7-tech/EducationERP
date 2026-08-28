@@ -137,10 +137,10 @@ export default function OrgStructurePage() {
               }}
             >
               <div className="space-y-2">
-                <Label>Campus</Label>
+                <Label>Institution</Label>
                 <NativeSelect
                   className="w-40"
-                  placeholder="Select campus"
+                  placeholder="Select institution"
                   value={editFacultyForm.campusId}
                   onChange={(v) => setEditFacultyForm((f) => ({ ...f, campusId: v }))}
                   options={(campuses.data ?? []).map((c) => ({ value: c.id, label: c.name }))}
@@ -187,10 +187,10 @@ export default function OrgStructurePage() {
           }}
         >
           <div className="space-y-2">
-            <Label>Campus</Label>
+            <Label>Institution</Label>
             <NativeSelect
               className="w-40"
-              placeholder="Select campus"
+              placeholder="Select institution"
               value={facultyForm.campusId}
               onChange={(v) => setFacultyForm((f) => ({ ...f, campusId: v }))}
               options={(campuses.data ?? []).map((c) => ({ value: c.id, label: c.name }))}

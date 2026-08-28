@@ -1,6 +1,7 @@
-import { Body, Controller, Get, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
 import { OrganizationsService } from "./organizations.service";
 import { CreateCampusDto } from "./dto/create-campus.dto";
+import { UpdateCampusDto } from "./dto/update-campus.dto";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
@@ -35,5 +36,17 @@ export class OrganizationsController {
   @RequirePermissions("campus:create")
   createCampus(@CurrentUser() user: JwtPayload, @Body() dto: CreateCampusDto) {
     return this.organizationsService.createCampus(user.organizationId, dto);
+  }
+
+  @Patch("campuses/:id")
+  @RequirePermissions("campus:update")
+  updateCampus(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: UpdateCampusDto) {
+    return this.organizationsService.updateCampus(user.organizationId, id, dto);
+  }
+
+  @Delete("campuses/:id")
+  @RequirePermissions("campus:delete")
+  deleteCampus(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.organizationsService.deleteCampus(user.organizationId, id);
   }
 }

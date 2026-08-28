@@ -113,6 +113,14 @@ export interface CreateCampusInput {
   type?: CampusType;
 }
 
+export interface UpdateCampusInput {
+  name?: string;
+  code?: string;
+  // Does not retroactively seed the college structure/defaults — see
+  // UpdateCampusDto's own comment.
+  type?: CampusType;
+}
+
 export interface Faculty {
   id: string;
   organizationId: string;
