@@ -104,7 +104,10 @@ function LookupSelect({
 }
 
 export default function HostelPage() {
-  const students = useSWR("students", () => api.listStudents());
+  // Deliberately the unbounded, narrow picker — this is a "pick a
+  // student" dropdown, not the paginated admin list view (Phase 8
+  // performance-optimization slice).
+  const students = useSWR("students-picker", () => api.listStudentsPicker());
   const hostels = useSWR("hostels", () => api.listHostels());
   const vacantBeds = useSWR("hostel-vacant-beds", () => api.listVacantHostelBeds());
   const allocations = useSWR("hostel-allocations", () => api.listHostelAllocations());

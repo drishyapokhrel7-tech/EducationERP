@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Put, Query, UseGuards } from "@nestjs/common";
 import { StaffService } from "./staff.service";
 import { CreateStaffTypeDto } from "./dto/create-staff-type.dto";
 import { CreateDesignationDto } from "./dto/create-designation.dto";
@@ -12,6 +12,7 @@ import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtPayload } from "../../common/auth/jwt-payload";
+import { PaginationQueryDto } from "../../common/dto/pagination.dto";
 
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller("organizations/me")
@@ -44,8 +45,17 @@ export class StaffController {
 
   @Get("employees")
   @RequirePermissions("employee:view")
-  listEmployees(@CurrentUser() user: JwtPayload) {
-    return this.staff.listEmployees(user.organizationId);
+  listEmployees(@CurrentUser() user: JwtPayload, @Query() pagination: PaginationQueryDto) {
+    return this.staff.listEmployees(user.organizationId, pagination.page ?? 1, pagination.pageSize ?? 25);
+  }
+
+  // Deliberately separate from the paginated listEmployees above — see
+  // StaffService.listEmployeesPicker's comment. Reuses the same
+  // employee:view permission (this returns strictly less data).
+  @Get("employees/picker")
+  @RequirePermissions("employee:view")
+  listEmployeesPicker(@CurrentUser() user: JwtPayload) {
+    return this.staff.listEmployeesPicker(user.organizationId);
   }
 
   @Post("employees")

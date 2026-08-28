@@ -18,6 +18,7 @@ import { ApplyDiscountDto } from "./dto/apply-discount.dto";
 import { IssueRefundDto } from "./dto/issue-refund.dto";
 import { CreateScholarshipDto } from "./dto/create-scholarship.dto";
 import { AssignScholarshipDto } from "./dto/assign-scholarship.dto";
+import { paginate } from "../../common/pagination";
 
 function toNumber(value: Prisma.Decimal | number): number {
   return typeof value === "number" ? value : value.toNumber();
@@ -229,19 +230,28 @@ export class FinanceService {
 
   // ── Invoices, payments, discounts, refunds ──────────────────────────
 
-  listInvoices(organizationId: string) {
-    return this.prisma.withTenant(organizationId, (tx) =>
-      tx.invoice.findMany({
-        where: { organizationId },
-        include: {
-          student: true,
-          items: { include: { feeCategory: true } },
-          payments: true,
-          discounts: true,
-        },
-        orderBy: { createdAt: "desc" },
-      }),
-    );
+  // Paginated (Phase 8 performance-optimization slice). Also narrowed:
+  // the list view only ever renders student.firstName/lastName, and
+  // items/payments/discounts aren't rendered in the list at all — the
+  // full graph is fetched separately by getInvoice() when a row is
+  // opened, so dragging it into every list row was pure waste.
+  listInvoices(organizationId: string, page: number, pageSize: number) {
+    return this.prisma.withTenant(organizationId, (tx) => {
+      const where = { organizationId };
+      return paginate(
+        () =>
+          tx.invoice.findMany({
+            where,
+            include: { student: { select: { firstName: true, lastName: true } } },
+            orderBy: { createdAt: "desc" },
+            skip: (page - 1) * pageSize,
+            take: pageSize,
+          }),
+        () => tx.invoice.count({ where }),
+        page,
+        pageSize,
+      );
+    });
   }
 
   listInvoicesForStudent(organizationId: string, studentId: string) {

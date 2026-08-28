@@ -10,19 +10,55 @@ import { UpdateStudentStatusDto } from "./dto/update-student-status.dto";
 import { CreateStudentLoginDto } from "./dto/create-student-login.dto";
 import { ImportResult, ImportRowError } from "./dto/import-result.dto";
 import { assertUnderEditionLimit, editionLimit } from "../organizations/edition-limits";
+import { paginate } from "../../common/pagination";
 
 /** Same load-bearing parent-guard pattern as every prior slice's service. */
 @Injectable()
 export class StudentsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  listStudents(organizationId: string) {
+  // Deliberately unbounded, deliberately narrow — every "pick a
+  // student" dropdown across the app (attendance, exams, hostel,
+  // transport, biometric enrollment, knowledge checks, documents,
+  // alumni, finance, ...) needs the *whole* roster, not one page of
+  // it, but none of them need the guardian graph listStudents()
+  // includes. A flat id/name/code/status projection over an indexed
+  // table stays cheap even at Ultra-edition scale (no record cap) —
+  // categorically different from listStudents()'s original problem,
+  // which was the heavy include on every row, not the row count alone.
+  // Phase 8 performance-optimization slice.
+  listStudentsPicker(organizationId: string) {
     return this.prisma.withTenant(organizationId, (tx) =>
       tx.student.findMany({
         where: { organizationId, deletedAt: null },
-        include: { guardians: { include: { guardian: true } } },
+        select: { id: true, firstName: true, lastName: true, studentCode: true, status: true },
+        orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
       }),
     );
+  }
+
+  // Paginated (Phase 8 performance-optimization slice) — this was an
+  // unbounded findMany. `orderBy` is required for skip/take to be
+  // well-defined at all (Postgres gives no ordering guarantee across
+  // two paginated reads without one); newest-first also means a
+  // freshly-created student naturally lands on page 1.
+  listStudents(organizationId: string, page: number, pageSize: number) {
+    return this.prisma.withTenant(organizationId, (tx) => {
+      const where = { organizationId, deletedAt: null };
+      return paginate(
+        () =>
+          tx.student.findMany({
+            where,
+            include: { guardians: { include: { guardian: true } } },
+            orderBy: { createdAt: "desc" },
+            skip: (page - 1) * pageSize,
+            take: pageSize,
+          }),
+        () => tx.student.count({ where }),
+        page,
+        pageSize,
+      );
+    });
   }
 
   createStudent(organizationId: string, dto: CreateStudentDto) {

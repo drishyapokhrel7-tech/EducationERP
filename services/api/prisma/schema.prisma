@@ -585,6 +585,9 @@ model AuditLog {
 
   @@index([organizationId])
   @@index([resource, resourceId])
+  // Append-only, ever-growing table; every real query on it (audit
+  // trail views, future retention jobs) filters by date range.
+  @@index([createdAt])
   @@map("audit_logs")
 }
 
@@ -699,6 +702,11 @@ model Employee {
   @@unique([organizationId, employeeCode])
   @@unique([organizationId, email])
   @@index([organizationId])
+  // Filtered on directly by service-layer queries but weren't covered
+  // by any index — Phase 8 performance-optimization slice.
+  @@index([departmentId])
+  @@index([designationId])
+  @@index([staffTypeId])
   @@map("employees")
 }
 
@@ -1166,6 +1174,9 @@ model StudentAttendance {
 
   @@unique([attendanceSessionId, studentId])
   @@index([organizationId])
+  // Student-dashboard reads query by studentId alone (not through the
+  // unique's leading attendanceSessionId) — Phase 8 performance slice.
+  @@index([studentId])
   @@map("student_attendance")
 }
 
@@ -2066,6 +2077,9 @@ model ExamAttempt {
   // already made for assignments and knowledge checks.
   @@unique([examSubjectId, studentId])
   @@index([organizationId])
+  // Analytics/dashboard reads filter by studentId alone — Phase 8
+  // performance-optimization slice.
+  @@index([studentId])
   @@map("exam_attempts")
 }
 
@@ -2283,6 +2297,9 @@ model Invoice {
   esewaTransactions EsewaTransaction[]
 
   @@index([organizationId])
+  // Per-student invoice lookups filter on this directly — Phase 8
+  // performance-optimization slice.
+  @@index([studentId])
   @@map("invoices")
 }
 

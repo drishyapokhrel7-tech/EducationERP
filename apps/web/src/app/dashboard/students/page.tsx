@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { EntityCard } from "@/components/dashboard/entity-card";
+import { ListPager } from "@/components/dashboard/list-pager";
 import { PhotoInput } from "@/components/photo-input";
 import { EditionUsageBadge } from "@/components/edition-usage-badge";
 import { EditionUpgradeBanner } from "@/components/edition-upgrade-banner";
@@ -21,7 +22,15 @@ import { isEditionLimitError } from "@/lib/edition-limit-error";
 import { ApiError, type Edition, type ImportResult } from "@education-erp/api-client";
 
 export default function StudentsPage() {
-  const students = useSWR("students", () => api.listStudents());
+  // Paginated (Phase 8 performance-optimization slice) — studentsPage
+  // is part of the SWR key so changing it triggers a fresh fetch of
+  // that page, same pattern used by every other paginated list below.
+  const [studentsPage, setStudentsPage] = useState(1);
+  const students = useSWR(["students", studentsPage], () => api.listStudents({ page: studentsPage }));
+  // Deliberately separate from the paginated `students` above — every
+  // "pick a student" dropdown on this page needs the whole roster, not
+  // one page of it (Phase 8 performance-optimization slice).
+  const studentsPicker = useSWR("students-picker", () => api.listStudentsPicker());
   const guardians = useSWR("guardians", () => api.listGuardians());
   const programs = useSWR("programs", () => api.listPrograms());
   const sections = useSWR("sections", () => api.listSections());
@@ -90,6 +99,7 @@ export default function StudentsPage() {
       const result = await api.importStudents(file);
       setImportResult(result);
       students.mutate();
+      studentsPicker.mutate();
       if (importFileRef.current) importFileRef.current.value = "";
       toast.success(`Imported ${result.created} of ${result.totalRows} row(s)`);
     } catch {
@@ -189,7 +199,17 @@ export default function StudentsPage() {
         title="Students"
         titleExtra={<EditionUsageBadge status={editionStatus.data} />}
         emptyLabel="No students yet."
-        items={students.data}
+        items={students.data?.data}
+        footer={
+          students.data ? (
+            <ListPager
+              page={students.data.page}
+              totalPages={students.data.totalPages}
+              onPrev={() => setStudentsPage((p) => Math.max(1, p - 1))}
+              onNext={() => setStudentsPage((p) => p + 1)}
+            />
+          ) : null
+        }
         renderItem={(s: {
           id: string;
           userId: string | null;
@@ -266,6 +286,7 @@ export default function StudentsPage() {
                 setStudentPhotoUrl(null);
                 setEditionLimitEdition(null);
                 students.mutate();
+                studentsPicker.mutate();
               },
             );
           }}
@@ -406,7 +427,7 @@ export default function StudentsPage() {
               placeholder="Select student"
               value={linkForm.studentId}
               onChange={(v) => setLinkForm((f) => ({ ...f, studentId: v }))}
-              options={(students.data ?? []).map((s) => ({
+              options={(studentsPicker.data ?? []).map((s) => ({
                 value: s.id,
                 label: `${s.firstName} ${s.lastName}`,
               }))}
@@ -472,7 +493,7 @@ export default function StudentsPage() {
               placeholder="Select student"
               value={enrollForm.studentId}
               onChange={(v) => setEnrollForm((f) => ({ ...f, studentId: v }))}
-              options={(students.data ?? []).map((s) => ({
+              options={(studentsPicker.data ?? []).map((s) => ({
                 value: s.id,
                 label: `${s.firstName} ${s.lastName}`,
               }))}

@@ -7,6 +7,7 @@ import {
   Param,
   Post,
   Put,
+  Query,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -24,6 +25,7 @@ import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtPayload } from "../../common/auth/jwt-payload";
+import { PaginationQueryDto } from "../../common/dto/pagination.dto";
 
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller("organizations/me")
@@ -32,8 +34,17 @@ export class StudentsController {
 
   @Get("students")
   @RequirePermissions("student:view")
-  listStudents(@CurrentUser() user: JwtPayload) {
-    return this.students.listStudents(user.organizationId);
+  listStudents(@CurrentUser() user: JwtPayload, @Query() pagination: PaginationQueryDto) {
+    return this.students.listStudents(user.organizationId, pagination.page ?? 1, pagination.pageSize ?? 25);
+  }
+
+  // Deliberately separate from the paginated listStudents above — see
+  // StudentsService.listStudentsPicker's comment. Reuses the same
+  // student:view permission (this returns strictly less data).
+  @Get("students/picker")
+  @RequirePermissions("student:view")
+  listStudentsPicker(@CurrentUser() user: JwtPayload) {
+    return this.students.listStudentsPicker(user.organizationId);
   }
 
   @Post("students")

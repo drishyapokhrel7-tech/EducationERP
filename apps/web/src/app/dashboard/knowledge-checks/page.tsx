@@ -25,7 +25,10 @@ function errorMessage(err: unknown, fallback: string) {
 export default function KnowledgeChecksPage() {
   const checks = useSWR("knowledge-checks", () => api.listKnowledgeChecks());
   const teachingAssignments = useSWR("teaching-assignments", () => api.listTeachingAssignments());
-  const students = useSWR("students", () => api.listStudents());
+  // Deliberately the unbounded, narrow picker — this is a "pick a
+  // student" dropdown, not the paginated admin list view (Phase 8
+  // performance-optimization slice).
+  const students = useSWR("students-picker", () => api.listStudentsPicker());
 
   const [form, setForm] = useState({ teachingAssignmentId: "", title: "", durationMinutes: "" });
 

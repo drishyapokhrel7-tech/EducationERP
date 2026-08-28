@@ -50,7 +50,10 @@ const AUDIENCES: { value: MessageAudience; label: string }[] = [
 export default function CommunicationPage() {
   const templates = useSWR("message-templates", () => api.listMessageTemplates());
   const messages = useSWR("messages", () => api.listMessages());
-  const users = useSWR("users-for-messaging", () => api.listEmployees());
+  // Deliberately the unbounded, narrow picker — this is a "pick a
+  // recipient" dropdown, not the paginated admin list view (Phase 8
+  // performance-optimization slice).
+  const users = useSWR("users-for-messaging", () => api.listEmployeesPicker());
 
   const [templateForm, setTemplateForm] = useState<{ name: string; channel: MessageChannel; subject: string; body: string }>({
     name: "",

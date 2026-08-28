@@ -170,28 +170,40 @@ export class ClassSessionsService {
   // Computed, not stored (see schema.prisma's comment on why
   // syllabus_progress isn't a table): a node's progress is just "is
   // there a COMPLETED class session whose actualSyllabusNodeId is this
-  // node."
+  // node." Copy-pasted from DashboardsService.computeSyllabusProgress
+  // rather than called — Prisma doesn't support nested `$transaction`
+  // calls, so this can't be a cross-module call into an already-open
+  // `tx`. Batched the identical way (Phase 8 performance-optimization
+  // slice: one classSession query for every node instead of N).
   async syllabusProgress(organizationId: string, syllabusId: string) {
     return this.prisma.withTenant(organizationId, async (tx) => {
       const syllabus = await tx.syllabus.findUnique({ where: { id: syllabusId } });
       if (!syllabus) throw new NotFoundException("Syllabus not found");
 
       const nodes = await tx.syllabusNode.findMany({ where: { organizationId, syllabusId } });
-      return Promise.all(
-        nodes.map(async (node) => {
-          const completedSession = await tx.classSession.findFirst({
-            where: { organizationId, actualSyllabusNodeId: node.id, status: "COMPLETED" },
+      const nodeIds = nodes.map((n) => n.id);
+      const completedSessions = nodeIds.length
+        ? await tx.classSession.findMany({
+            where: { organizationId, actualSyllabusNodeId: { in: nodeIds }, status: "COMPLETED" },
             orderBy: { completedAt: "asc" },
-          });
-          return {
-            nodeId: node.id,
-            name: node.name,
-            level: node.level,
-            status: completedSession ? "COMPLETED" : "NOT_STARTED",
-            completedAt: completedSession?.completedAt ?? null,
-          };
-        }),
-      );
+          })
+        : [];
+      const earliestByNode = new Map<string, (typeof completedSessions)[number]>();
+      for (const session of completedSessions) {
+        if (session.actualSyllabusNodeId && !earliestByNode.has(session.actualSyllabusNodeId)) {
+          earliestByNode.set(session.actualSyllabusNodeId, session);
+        }
+      }
+      return nodes.map((node) => {
+        const completedSession = earliestByNode.get(node.id);
+        return {
+          nodeId: node.id,
+          name: node.name,
+          level: node.level,
+          status: completedSession ? "COMPLETED" : "NOT_STARTED",
+          completedAt: completedSession?.completedAt ?? null,
+        };
+      });
     });
   }
 }

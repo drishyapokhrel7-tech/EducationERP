@@ -219,6 +219,19 @@ export interface Employee {
   department?: Department | null;
 }
 
+// Phase 8 performance-optimization slice — the deliberately unbounded,
+// deliberately narrow shape used by "pick a staff member" dropdowns
+// across the app, distinct from the paginated Employee list returned
+// by listEmployees().
+export interface EmployeePicker {
+  id: string;
+  userId: string | null;
+  firstName: string;
+  lastName: string;
+  employeeCode: string;
+  status: EmployeeStatus;
+}
+
 export interface CreateEmployeeInput {
   staffTypeId: string;
   designationId: string;
@@ -366,6 +379,18 @@ export interface Student {
   status: StudentStatus;
   photoUrl: string | null;
   guardians: StudentGuardian[];
+}
+
+// Phase 8 performance-optimization slice — the deliberately unbounded,
+// deliberately narrow shape used by "pick a student" dropdowns across
+// the app (attendance, exams, hostel, transport, ...), distinct from
+// the paginated Student list returned by listStudents().
+export interface StudentPicker {
+  id: string;
+  firstName: string;
+  lastName: string;
+  studentCode: string;
+  status: StudentStatus;
 }
 
 export interface CreateStudentInput {
@@ -1817,6 +1842,24 @@ export interface InvoiceRecord {
   items: InvoiceItemRecord[];
   payments: PaymentRecord[];
   discounts: DiscountRecord[];
+}
+
+// Phase 8 performance-optimization slice — the list endpoint no longer
+// returns the full InvoiceRecord graph (items/payments/discounts, full
+// Student row); the list UI never rendered those, only student's name.
+// getInvoice()/InvoiceRecord are unaffected — the detail fetch still
+// returns everything.
+export interface InvoiceListItem {
+  id: string;
+  organizationId: string;
+  studentId: string;
+  studentEnrollmentId: string;
+  totalAmount: string;
+  dueDate: string;
+  status: InvoiceStatus;
+  createdAt: string;
+  updatedAt: string;
+  student: { firstName: string; lastName: string };
 }
 
 export interface RecordPaymentInput {
@@ -3410,6 +3453,21 @@ export interface SearchResult {
   vehicles: VehicleSearchResult[];
   inventoryItems: InventoryItemSearchResult[];
   exams: ExamSearchResult[];
+}
+
+// Phase 8 performance-optimization slice — shared envelope every
+// paginated list endpoint returns (students, employees, invoices).
+export interface PaginatedResult<T> {
+  data: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export interface PaginationParams {
+  page?: number;
+  pageSize?: number;
 }
 
 // Self-hosted human-verification challenge — see CaptchaService.

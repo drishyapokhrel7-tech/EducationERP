@@ -39,8 +39,14 @@ async function submitAction(action: () => Promise<unknown>, onSuccess: () => voi
 }
 
 export default function TransportPage() {
-  const employees = useSWR("employees", () => api.listEmployees());
-  const students = useSWR("students", () => api.listStudents());
+  // Deliberately the unbounded, narrow picker — this is a "pick a
+  // staff member" dropdown, not the paginated admin list view (Phase 8
+  // performance-optimization slice).
+  const employees = useSWR("employees-picker", () => api.listEmployeesPicker());
+  // Deliberately the unbounded, narrow picker — this is a "pick a
+  // student" dropdown, not the paginated admin list view (Phase 8
+  // performance-optimization slice).
+  const students = useSWR("students-picker", () => api.listStudentsPicker());
   const vehicles = useSWR("vehicles", () => api.listVehicles());
   useHighlightFromSearch(Boolean(vehicles.data));
   const drivers = useSWR("drivers", () => api.listDrivers());

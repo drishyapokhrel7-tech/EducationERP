@@ -41,7 +41,10 @@ const STATUS_FILTERS: { value: LeaveRequestStatus | ""; label: string }[] = [
 ];
 
 export default function LeavePage() {
-  const employees = useSWR("employees", () => api.listEmployees());
+  // Deliberately the unbounded, narrow picker — this is a "pick a
+  // staff member" dropdown, not the paginated admin list view (Phase 8
+  // performance-optimization slice).
+  const employees = useSWR("employees-picker", () => api.listEmployeesPicker());
   const leaveTypes = useSWR("leave-types", () => api.listLeaveTypes());
 
   // ── Leave types ────────────────────────────────────────────────────

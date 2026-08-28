@@ -11285,4 +11285,225 @@ describe("Tenant isolation (e2e)", () => {
       // hook).
     }, 90000);
   });
+
+  describe("Performance optimization — pagination, pickers, indexes (Phase 8)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    it("paginates students/employees/invoices, keeps pickers and CSV export unbounded, and stays tenant-scoped", async () => {
+      // A fresh org, not orgA — same reasoning as the Licensing test
+      // above: orgA has accumulated an unpredictable number of records
+      // from every earlier describe block in this file, so testing a
+      // precise page count needs a clean slate.
+      const suffix = `perf${run}`;
+      const reg = await request(app.getHttpServer())
+        .post("/auth/register-organization")
+        .send({
+          organizationName: `Perf Test ${suffix}`,
+          slug: `perf-test-${suffix}`,
+          adminEmail: `perf-admin-${suffix}@rls-e2e.test`,
+          adminFirstName: "Perf",
+          adminLastName: "Admin",
+          password: "PerfTest123!",
+        })
+        .expect(201);
+      const perfOrgId: string = reg.body.organization.id;
+      const perfToken: string = reg.body.accessToken;
+
+      // 30 students, explicit staggered createdAt so orderBy(createdAt
+      // desc)'s page split is deterministic and assertable — direct
+      // Prisma insert inside withTenant, same RLS reasoning as the
+      // Licensing test's filler students (Student is RLS-protected via
+      // FORCE ROW LEVEL SECURITY).
+      const base = Date.now() - 1000 * 60 * 60;
+      await prisma.withTenant(perfOrgId, (tx) =>
+        tx.student.createMany({
+          data: Array.from({ length: 30 }, (_, i) => ({
+            organizationId: perfOrgId,
+            studentCode: `P-${i}`,
+            firstName: "Filler",
+            lastName: `S${i}`,
+            dateOfBirth: new Date("2010-01-01"),
+            createdAt: new Date(base + i * 1000),
+          })),
+        }),
+      );
+
+      // Default pageSize (25): page 1 is full, page 2 has the
+      // remainder, and the two pages never overlap.
+      const page1 = await request(app.getHttpServer())
+        .get("/organizations/me/students")
+        .set(...auth(perfToken))
+        .expect(200);
+      expect(page1.body).toMatchObject({ total: 30, page: 1, pageSize: 25, totalPages: 2 });
+      expect(page1.body.data).toHaveLength(25);
+
+      const page2 = await request(app.getHttpServer())
+        .get("/organizations/me/students?page=2")
+        .set(...auth(perfToken))
+        .expect(200);
+      expect(page2.body).toMatchObject({ total: 30, page: 2, pageSize: 25, totalPages: 2 });
+      expect(page2.body.data).toHaveLength(5);
+
+      const page1Ids = new Set(page1.body.data.map((s: { id: string }) => s.id));
+      const page2Ids = new Set(page2.body.data.map((s: { id: string }) => s.id));
+      expect([...page1Ids].some((id) => page2Ids.has(id))).toBe(false);
+      expect(page1Ids.size + page2Ids.size).toBe(30);
+
+      // pageSize is validated, not silently clamped — a request over
+      // the cap is rejected outright (matches this codebase's existing
+      // strict ValidationPipe convention elsewhere, not a new pattern).
+      await request(app.getHttpServer())
+        .get("/organizations/me/students?pageSize=101")
+        .set(...auth(perfToken))
+        .expect(400);
+
+      // The picker endpoint is deliberately unbounded and narrow — all
+      // 30 students, no guardians graph.
+      const picker = await request(app.getHttpServer())
+        .get("/organizations/me/students/picker")
+        .set(...auth(perfToken))
+        .expect(200);
+      expect(picker.body).toHaveLength(30);
+      expect(picker.body[0]).not.toHaveProperty("guardians");
+      expect(picker.body[0]).toMatchObject({
+        id: expect.any(String),
+        firstName: expect.any(String),
+        lastName: expect.any(String),
+        studentCode: expect.any(String),
+        status: expect.any(String),
+      });
+
+      // CSV export stays fully unbounded — a real, separate query path
+      // from the paginated list, unaffected by any of the above.
+      const csv = await request(app.getHttpServer())
+        .get("/organizations/me/students/export")
+        .set(...auth(perfToken))
+        .expect(200);
+      for (let i = 0; i < 30; i++) expect(csv.text).toContain(`P-${i}`);
+
+      // Employees: lighter check — same pagination shape, plus the
+      // picker's userId field (needed by Communication's recipient
+      // picker) actually round-trips.
+      const staffType = await request(app.getHttpServer())
+        .post("/organizations/me/staff-types")
+        .set(...auth(perfToken))
+        .send({ name: "Teacher", code: "TCH" })
+        .expect(201);
+      const designation = await request(app.getHttpServer())
+        .post("/organizations/me/designations")
+        .set(...auth(perfToken))
+        .send({ name: "Lecturer", code: "LEC" })
+        .expect(201);
+      for (let i = 0; i < 3; i++) {
+        await request(app.getHttpServer())
+          .post("/organizations/me/employees")
+          .set(...auth(perfToken))
+          .send({
+            staffTypeId: staffType.body.id,
+            designationId: designation.body.id,
+            employeeCode: `EMP-${i}`,
+            firstName: "Filler",
+            lastName: `E${i}`,
+            email: `filler-e${i}-${suffix}@rls-e2e.test`,
+            dateOfJoining: "2020-01-01",
+          })
+          .expect(201);
+      }
+      const employeesPage1 = await request(app.getHttpServer())
+        .get("/organizations/me/employees?page=1&pageSize=2")
+        .set(...auth(perfToken))
+        .expect(200);
+      expect(employeesPage1.body).toMatchObject({ total: 3, page: 1, pageSize: 2, totalPages: 2 });
+      expect(employeesPage1.body.data).toHaveLength(2);
+
+      const employeesPicker = await request(app.getHttpServer())
+        .get("/organizations/me/employees/picker")
+        .set(...auth(perfToken))
+        .expect(200);
+      expect(employeesPicker.body).toHaveLength(3);
+      expect(employeesPicker.body[0]).not.toHaveProperty("staffType");
+      expect(employeesPicker.body[0]).toHaveProperty("userId");
+
+      // Invoices: lighter check — same pagination shape, plus the
+      // narrowed include (student's firstName/lastName only, no
+      // items/payments/discounts — getInvoice's detail fetch, unwired
+      // here, is what still returns the full graph). The full
+      // Campus→Faculty→Department→Program→AcademicYear→Term→Section→
+      // Enrollment→Invoice chain is built directly via Prisma inside
+      // one withTenant call — this test cares about the invoice list
+      // endpoint's shape, not about exercising every intermediate
+      // module's own create endpoint (each already has its own
+      // dedicated coverage elsewhere in this file).
+      const invoiceStudent = picker.body[0];
+      const invoice = await prisma.withTenant(perfOrgId, async (tx) => {
+        const campus = await tx.campus.create({ data: { organizationId: perfOrgId, name: "Main", code: "MAIN" } });
+        const faculty = await tx.faculty.create({
+          data: { organizationId: perfOrgId, campusId: campus.id, name: "Faculty", code: "FAC" },
+        });
+        const department = await tx.department.create({
+          data: { organizationId: perfOrgId, facultyId: faculty.id, name: "Dept", code: "DEPT" },
+        });
+        const program = await tx.program.create({
+          data: { organizationId: perfOrgId, departmentId: department.id, name: "Program", code: "PROG" },
+        });
+        const year = await tx.academicYear.create({
+          data: { organizationId: perfOrgId, name: "2099-2100", startDate: new Date("2099-08-01"), endDate: new Date("2100-06-30") },
+        });
+        const term = await tx.term.create({
+          data: {
+            organizationId: perfOrgId,
+            academicYearId: year.id,
+            name: "Term",
+            code: "T1",
+            sequence: 1,
+            startDate: new Date("2099-08-01"),
+            endDate: new Date("2099-12-15"),
+          },
+        });
+        const section = await tx.section.create({
+          data: { organizationId: perfOrgId, programId: program.id, termId: term.id, name: "A", code: "SEC-A" },
+        });
+        const enrollment = await tx.studentEnrollment.create({
+          data: {
+            organizationId: perfOrgId,
+            studentId: invoiceStudent.id,
+            programId: program.id,
+            sectionId: section.id,
+            termId: term.id,
+            enrollmentDate: new Date("2099-08-01"),
+          },
+        });
+        return tx.invoice.create({
+          data: {
+            organizationId: perfOrgId,
+            studentId: invoiceStudent.id,
+            studentEnrollmentId: enrollment.id,
+            totalAmount: "100.00",
+            dueDate: new Date("2099-09-01"),
+          },
+        });
+      });
+
+      const invoicesPage = await request(app.getHttpServer())
+        .get("/organizations/me/invoices")
+        .set(...auth(perfToken))
+        .expect(200);
+      expect(invoicesPage.body).toMatchObject({ total: 1, page: 1, pageSize: 25, totalPages: 1 });
+      expect(invoicesPage.body.data[0].id).toBe(invoice.id);
+      expect(invoicesPage.body.data[0].student).toEqual({
+        firstName: invoiceStudent.firstName,
+        lastName: invoiceStudent.lastName,
+      });
+      expect(invoicesPage.body.data[0]).not.toHaveProperty("items");
+      expect(invoicesPage.body.data[0]).not.toHaveProperty("payments");
+
+      // Cross-tenant: org B's own (empty) students list is unaffected
+      // by any of perfOrg's data.
+      const crossTenant = await request(app.getHttpServer())
+        .get("/organizations/me/students")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(crossTenant.body.data.every((s: { id: string }) => !page1Ids.has(s.id) && !page2Ids.has(s.id))).toBe(true);
+    }, 60000);
+  });
 });

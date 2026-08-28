@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
 import { FinanceService } from "./finance.service";
 import { CreateFeeCategoryDto } from "./dto/create-fee-category.dto";
 import { CreateFeeStructureDto } from "./dto/create-fee-structure.dto";
@@ -15,6 +15,7 @@ import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtPayload } from "../../common/auth/jwt-payload";
+import { PaginationQueryDto } from "../../common/dto/pagination.dto";
 
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller("organizations/me")
@@ -67,8 +68,8 @@ export class FinanceController {
 
   @Get("invoices")
   @RequirePermissions("invoice:view")
-  listInvoices(@CurrentUser() user: JwtPayload) {
-    return this.finance.listInvoices(user.organizationId);
+  listInvoices(@CurrentUser() user: JwtPayload, @Query() pagination: PaginationQueryDto) {
+    return this.finance.listInvoices(user.organizationId, pagination.page ?? 1, pagination.pageSize ?? 25);
   }
 
   @Get("invoices/:id")

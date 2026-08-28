@@ -22,7 +22,10 @@ const DAYS = [
 
 export default function TimetablePage() {
   const campuses = useSWR("campuses", () => api.listCampuses());
-  const employees = useSWR("employees", () => api.listEmployees());
+  // Deliberately the unbounded, narrow picker — this is a "pick a
+  // staff member" dropdown, not the paginated admin list view (Phase 8
+  // performance-optimization slice).
+  const employees = useSWR("employees-picker", () => api.listEmployeesPicker());
   const subjects = useSWR("subjects", () => api.listSubjects());
   const sections = useSWR("sections", () => api.listSections());
   const terms = useSWR("terms", () => api.listTerms());

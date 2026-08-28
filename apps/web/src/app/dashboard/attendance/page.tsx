@@ -34,7 +34,10 @@ const STAFF_STATUS_OPTIONS: { value: StaffAttendanceStatus; label: string }[] = 
 export default function AttendancePage() {
   const sessions = useSWR("attendance-sessions", () => api.listAttendanceSessions());
   const classSchedules = useSWR("class-schedules", () => api.listClassSchedules());
-  const employees = useSWR("employees", () => api.listEmployees());
+  // Deliberately the unbounded, narrow picker — this is a "pick a
+  // staff member" dropdown, not the paginated admin list view (Phase 8
+  // performance-optimization slice).
+  const employees = useSWR("employees-picker", () => api.listEmployeesPicker());
   const staffAttendance = useSWR("staff-attendance", () => api.listStaffAttendance());
 
   const [sessionForm, setSessionForm] = useState({ classScheduleId: "", date: "" });

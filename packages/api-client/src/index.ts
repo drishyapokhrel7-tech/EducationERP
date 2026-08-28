@@ -222,6 +222,11 @@ import type {
   AlumniOutcomesAnalytics,
   AnalyticsExportFormat,
   SearchResult,
+  PaginatedResult,
+  PaginationParams,
+  InvoiceListItem,
+  StudentPicker,
+  EmployeePicker,
   CaptchaChallenge,
   EditionStatus,
   Edition,
@@ -395,6 +400,16 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
     return body as T;
   }
 
+  // Phase 8 performance-optimization slice — shared by every paginated
+  // list method below.
+  function paginationQuery(pagination?: PaginationParams): string {
+    const params = new URLSearchParams();
+    if (pagination?.page) params.set("page", String(pagination.page));
+    if (pagination?.pageSize) params.set("pageSize", String(pagination.pageSize));
+    const qs = params.toString();
+    return qs ? `?${qs}` : "";
+  }
+
   // The response is a raw CSV file, not JSON — fetched as a Blob so the
   // caller can trigger a normal browser download.
   async function requestBlob(path: string): Promise<Blob> {
@@ -503,7 +518,9 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         body: JSON.stringify(input),
       }),
 
-    listEmployees: () => request<Employee[]>("/organizations/me/employees"),
+    listEmployees: (pagination?: PaginationParams) =>
+      request<PaginatedResult<Employee>>(`/organizations/me/employees${paginationQuery(pagination)}`),
+    listEmployeesPicker: () => request<EmployeePicker[]>("/organizations/me/employees/picker"),
     createEmployee: (input: CreateEmployeeInput) =>
       request<Employee>("/organizations/me/employees", {
         method: "POST",
@@ -558,7 +575,9 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         body: JSON.stringify(input),
       }),
 
-    listStudents: () => request<Student[]>("/organizations/me/students"),
+    listStudents: (pagination?: PaginationParams) =>
+      request<PaginatedResult<Student>>(`/organizations/me/students${paginationQuery(pagination)}`),
+    listStudentsPicker: () => request<StudentPicker[]>("/organizations/me/students/picker"),
     createStudent: (input: CreateStudentInput) =>
       request<Student>("/organizations/me/students", {
         method: "POST",
@@ -922,7 +941,8 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         method: "POST",
         body: JSON.stringify(input),
       }),
-    listInvoices: () => request<InvoiceRecord[]>("/organizations/me/invoices"),
+    listInvoices: (pagination?: PaginationParams) =>
+      request<PaginatedResult<InvoiceListItem>>(`/organizations/me/invoices${paginationQuery(pagination)}`),
     getInvoice: (id: string) => request<InvoiceRecord>(`/organizations/me/invoices/${id}`),
     recordPayment: (invoiceId: string, input: RecordPaymentInput) =>
       request<PaymentRecord>(`/organizations/me/invoices/${invoiceId}/payments`, {

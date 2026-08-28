@@ -23,23 +23,36 @@ import { PrismaService } from "../../prisma/prisma.service";
 export class DashboardsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  // Phase 8 performance-optimization slice: was one classSession
+  // findFirst per node (N+1). One query for every node's completed
+  // sessions instead, ordered ascending so the first entry kept per
+  // node below is the earliest completion — same semantics as the
+  // original per-node findFirst(orderBy: completedAt asc).
   private async computeSyllabusProgress(tx: PrismaClient, organizationId: string, syllabusId: string) {
     const nodes = await tx.syllabusNode.findMany({ where: { organizationId, syllabusId } });
-    return Promise.all(
-      nodes.map(async (node) => {
-        const completedSession = await tx.classSession.findFirst({
-          where: { organizationId, actualSyllabusNodeId: node.id, status: "COMPLETED" },
+    const nodeIds = nodes.map((n) => n.id);
+    const completedSessions = nodeIds.length
+      ? await tx.classSession.findMany({
+          where: { organizationId, actualSyllabusNodeId: { in: nodeIds }, status: "COMPLETED" },
           orderBy: { completedAt: "asc" },
-        });
-        return {
-          nodeId: node.id,
-          name: node.name,
-          level: node.level,
-          status: completedSession ? ("COMPLETED" as const) : ("NOT_STARTED" as const),
-          completedAt: completedSession?.completedAt ?? null,
-        };
-      }),
-    );
+        })
+      : [];
+    const earliestByNode = new Map<string, (typeof completedSessions)[number]>();
+    for (const session of completedSessions) {
+      if (session.actualSyllabusNodeId && !earliestByNode.has(session.actualSyllabusNodeId)) {
+        earliestByNode.set(session.actualSyllabusNodeId, session);
+      }
+    }
+    return nodes.map((node) => {
+      const completedSession = earliestByNode.get(node.id);
+      return {
+        nodeId: node.id,
+        name: node.name,
+        level: node.level,
+        status: completedSession ? ("COMPLETED" as const) : ("NOT_STARTED" as const),
+        completedAt: completedSession?.completedAt ?? null,
+      };
+    });
   }
 
   private async buildStudentDashboard(tx: PrismaClient, organizationId: string, studentId: string) {

@@ -40,7 +40,10 @@ export default function InventoryPage() {
   const purchaseOrders = useSWR("purchase-orders", () => api.listPurchaseOrders());
   const stockMovements = useSWR("stock-movements", () => api.listStockMovements());
   const assets = useSWR("assets", () => api.listAssets());
-  const employees = useSWR("employees", () => api.listEmployees());
+  // Deliberately the unbounded, narrow picker — this is a "pick a
+  // staff member" dropdown, not the paginated admin list view (Phase 8
+  // performance-optimization slice).
+  const employees = useSWR("employees-picker", () => api.listEmployeesPicker());
 
   // ── Categories ────────────────────────────────────────────────────
   const [categoryForm, setCategoryForm] = useState({ name: "", code: "" });

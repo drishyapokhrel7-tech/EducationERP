@@ -8,6 +8,7 @@ export function EntityCard({
   emptyLabel,
   items,
   renderItem,
+  footer,
   children,
 }: {
   title: string;
@@ -17,6 +18,11 @@ export function EntityCard({
   emptyLabel: string;
   items: unknown[] | undefined;
   renderItem: (item: never) => ReactNode;
+  // Optional content rendered right after the item list, before the
+  // separator (e.g. a Prev/Next pager, Phase 8 performance-
+  // optimization slice) — every existing caller is unaffected since
+  // this is optional.
+  footer?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -37,6 +43,7 @@ export function EntityCard({
             ))}
           </ul>
         )}
+        {footer}
         <Separator />
         {children}
       </CardContent>

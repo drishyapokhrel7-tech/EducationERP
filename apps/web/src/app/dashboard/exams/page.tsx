@@ -13,7 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
 import { useHighlightFromSearch } from "@/lib/use-highlight-from-search";
-import type { AttendanceStatus, Student } from "@education-erp/api-client";
+import type { AttendanceStatus, StudentPicker } from "@education-erp/api-client";
 
 const ATTEMPT_STATUSES: AttendanceStatus[] = ["PRESENT", "ABSENT", "LATE", "EXCUSED"];
 
@@ -64,7 +64,7 @@ function ExamSubjectAttempts({
 }: {
   examSubjectId: string;
   fullMarks: number;
-  students: Student[];
+  students: StudentPicker[];
 }) {
   const attempts = useSWR(["exam-attempts", examSubjectId], () => api.listExamAttempts(examSubjectId));
   const [attemptForm, setAttemptForm] = useState<{ studentId: string; status: AttendanceStatus }>({
@@ -194,7 +194,7 @@ function ExamSubjectAttempts({
   );
 }
 
-function ReportCardSection({ examId, students }: { examId: string; students: Student[] }) {
+function ReportCardSection({ examId, students }: { examId: string; students: StudentPicker[] }) {
   const [studentId, setStudentId] = useState("");
   const reportCard = useSWR(
     studentId ? ["report-card", examId, studentId] : null,
@@ -264,7 +264,10 @@ export default function ExamsPage() {
   const gradingSchemes = useSWR("grading-schemes", () => api.listGradingSchemes());
   const curricula = useSWR("curricula", () => api.listCurricula());
   const rooms = useSWR("rooms", () => api.listRooms());
-  const students = useSWR("students", () => api.listStudents());
+  // Deliberately the unbounded, narrow picker — this is a "pick a
+  // student" dropdown, not the paginated admin list view (Phase 8
+  // performance-optimization slice).
+  const students = useSWR("students-picker", () => api.listStudentsPicker());
   const questionBanks = useSWR("question-banks", () => api.listQuestionBanks());
   const exams = useSWR("exams", () => api.listExams());
   useHighlightFromSearch(Boolean(exams.data));

@@ -9,6 +9,7 @@ import { CreateQualificationDto } from "./dto/create-qualification.dto";
 import { UpsertTeacherProfileDto } from "./dto/upsert-teacher-profile.dto";
 import { CreateEmployeeLoginDto } from "./dto/create-employee-login.dto";
 import { assertUnderEditionLimit } from "../organizations/edition-limits";
+import { paginate } from "../../common/pagination";
 
 /**
  * Same load-bearing pattern as org-structure.service.ts: every create*
@@ -46,13 +47,40 @@ export class StaffService {
     );
   }
 
-  listEmployees(organizationId: string) {
+  // Deliberately unbounded, deliberately narrow — same reasoning as
+  // StudentsService.listStudentsPicker: every "pick a staff member"
+  // dropdown across the app needs the whole roster, not one page, but
+  // none of them need the joined staffType/designation/department
+  // rows. Phase 8 performance-optimization slice.
+  listEmployeesPicker(organizationId: string) {
     return this.prisma.withTenant(organizationId, (tx) =>
       tx.employee.findMany({
         where: { organizationId, deletedAt: null },
-        include: { staffType: true, designation: true, department: true },
+        select: { id: true, userId: true, firstName: true, lastName: true, employeeCode: true, status: true },
+        orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
       }),
     );
+  }
+
+  // Paginated (Phase 8 performance-optimization slice) — same
+  // required-orderBy reasoning as StudentsService.listStudents.
+  listEmployees(organizationId: string, page: number, pageSize: number) {
+    return this.prisma.withTenant(organizationId, (tx) => {
+      const where = { organizationId, deletedAt: null };
+      return paginate(
+        () =>
+          tx.employee.findMany({
+            where,
+            include: { staffType: true, designation: true, department: true },
+            orderBy: { createdAt: "desc" },
+            skip: (page - 1) * pageSize,
+            take: pageSize,
+          }),
+        () => tx.employee.count({ where }),
+        page,
+        pageSize,
+      );
+    });
   }
 
   async createEmployee(organizationId: string, dto: CreateEmployeeDto) {

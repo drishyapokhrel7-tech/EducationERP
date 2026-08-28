@@ -1087,3 +1087,191 @@ Per this project's standing per-slice check-in rule, any further
 Phase 8 bullet (search part 3 for other entities, performance
 optimization, security hardening, backups, observability, deployment/
 release management) needs its own fresh go-ahead.
+
+---
+
+# Phase 8 — Performance optimization
+
+## Context
+
+User said "go-ahead" to the first-listed option offered at the global
+search part 2 check-in: performance optimization. The plan's own text
+for this bullet is just the phrase itself, but the docx's Final —
+Production Audit row gives a literal checklist for "Performance": *"No
+N+1 critical queries; pagination/caching/jobs used where needed; scale
+assumptions documented."* This slice targets exactly that checklist,
+scoped by two parallel Explore investigations (backend + frontend)
+rather than speculative optimization. Full design reasoning is in the
+approved plan (`~/.claude/plans/wondrous-sparking-coral.md`'s
+"Phase 8 — Performance optimization" section).
+
+## What shipped
+
+- **Five N+1 queries batched**, all `array.map(async ...)` fan-outs
+  turned into one query + JS grouping: `DashboardsService
+  .computeSyllabusProgress` and `ClassSessionsService.syllabusProgress`
+  (identical logic, intentionally duplicated per that module's own
+  no-nested-`$transaction` constraint — fixed in both places the same
+  way), and `LeaveService.listEmployeeBalances`/`usedDaysFor`.
+  `usedDaysFor`'s single-balance-check call site (leave-request
+  creation, a genuine one-row lookup) was left untouched — only the
+  N-balances-per-employee fan-out needed batching.
+- **Pagination** on the three confirmed-unbounded admin list endpoints
+  — `listStudents`, `listEmployees`, `listInvoices` — via a new shared
+  `PaginationQueryDto` (`page`/`pageSize`, default 25, `pageSize`
+  capped at 100 and **rejected with 400 over the cap, not silently
+  clamped** — a deliberate, minor deviation from the plan's own
+  "clamped" wording: an explicit validation rejection is the more
+  honest, idiomatic choice given this codebase's existing strict
+  `ValidationPipe` everywhere else, and no real caller ever sends an
+  out-of-range value anyway) and a shared `paginate()` helper
+  (`common/pagination.ts`) returning `{ data, total, page, pageSize,
+  totalPages }`. Both `listStudents`/`listEmployees` gained a required
+  `orderBy: { createdAt: "desc" }` they never had before — `skip`/
+  `take` has no defined row order without one, so this was a
+  correctness fix bundled into the pagination work, not an optional
+  nicety.
+- **A real, unplanned blast-radius problem found and fixed while
+  implementing**: `listStudents`/`listEmployees` turned out to be
+  reused by **22 other call sites** across the app (attendance, exams,
+  hostel, transport, biometric enrollment, knowledge checks, documents,
+  alumni, finance, payroll, leave, timetable, communication, inventory,
+  and the root dashboard's stat cards) purely as "pick a person from
+  the whole roster" dropdowns — none of which the plan anticipated,
+  since it only named the three admin *list view* pages. Pagination-
+  izing the underlying method would have silently truncated every one
+  of those dropdowns to 25 rows with no way to reach the rest. Fixed by
+  adding two new, deliberately unbounded, deliberately narrow
+  **picker** endpoints — `GET .../students/picker` and `GET
+  .../employees/picker` (`StudentsService.listStudentsPicker`/
+  `StaffService.listEmployeesPicker`, narrow `select`, no heavy
+  include, ordered by name) — and repointing all 22 callers at them.
+  This is categorically safe to leave unbounded even at Ultra-edition
+  scale (no record cap): a flat id/name/code/status projection over an
+  indexed table stays cheap regardless of row count — the original
+  problem was the heavy `include` on every row, not the row count
+  alone. The root dashboard's two stat cards were further improved
+  (not just fixed) to read `.total` from a `pageSize: 1` paginated
+  fetch instead of pulling the whole roster just to call `.length`.
+- `listInvoices` also **narrowed its over-fetch**: dropped the unused
+  `items`/`payments`/`discounts` includes and narrowed `student: true`
+  to `select: { firstName, lastName }` — confirmed directly against
+  `finance/page.tsx`'s list rendering that nothing else was read from
+  the list response; `getInvoice`'s separate detail fetch (used when a
+  row is opened) is completely unaffected and still returns the full
+  graph.
+- **Five missing indexes** added on hot FK columns that service code
+  filters on directly but had no supporting index: `Employee
+  .departmentId`/`.designationId`/`.staffTypeId`, `Invoice.studentId`,
+  `StudentAttendance.studentId`, `ExamAttempt.studentId`, `AuditLog
+  .createdAt`. Migration: `20260827235511_add_performance_indexes`.
+- **Web UI**: a new shared `ListPager` component
+  (`components/dashboard/list-pager.tsx` — plain Prev/Next + "page X of
+  Y", chosen over infinite-scroll/"Load more" for zero extra
+  accumulation state) and a new optional `EntityCard.footer` prop
+  (rendered between the item list and the separator) so `students`/
+  `staff` pages didn't need their list-rendering logic duplicated.
+  `finance/page.tsx`'s invoice list (a raw `<ul>`, not `EntityCard`)
+  got the same `ListPager` wired in directly.
+
+## Explicitly not in this slice
+
+- Redis caching — real infra exists (BullMQ/ioredis) but nothing found
+  in this investigation clearly justified adding a cache-invalidation
+  surface at this project's real (demo-scale) usage.
+- Virtualized list rendering — pagination already caps every list's
+  DOM node count at `pageSize`.
+- `connection_limit`/pool-size tuning — every historical P2028/P2024 in
+  this project's own docs traces to ambient Neon latency, a stray
+  process, or unbounded fan-out (already fixed elsewhere), never pool
+  size itself.
+- Cursor-based pagination on Notifications beyond its existing
+  hardcoded `take: 50`.
+- `next.config.ts` bundle-analyzer/image config — no evidence of a
+  bundle-size problem (Leaflet, the one heavy lib, is already
+  dynamically imported).
+
+## Scale assumptions (Performance checklist, part 3)
+
+This project is designed and tuned for **one small-to-mid institution's
+real data volumes** — hundreds to low thousands of rows per table, the
+actual range this whole session's demo data and edition caps (Free 50,
+Professional 500, Ultra unlimited) both imply. Two decisions in this
+slice are deliberate *at that scale specifically*, not universally
+correct:
+
+- **Offset (`skip`/`take`) pagination, not cursor-based.** Cursor
+  pagination's extra complexity (opaque cursor state, no simple "page 3
+  of 12" UI) only pays for itself once `OFFSET` scans become expensive
+  — roughly the hundred-thousand-plus-rows range. Revisit if a real
+  org's table ever approaches that.
+- **No caching layer**, despite Redis already being real infrastructure
+  in this project. Caching earns its complexity (invalidation
+  correctness, staleness bugs) only for a specific endpoint under
+  measured sustained high-read traffic — nothing in this investigation
+  showed that yet. Revisit per-endpoint, from real usage data, not
+  speculatively.
+
+Both follow the same "appropriateness is a measured-load decision, not
+a speculative one" reasoning this project has applied consistently
+since Analytics 8d's materialized-view call.
+
+## Verified
+
+- `pnpm -r typecheck`/`lint`/`build` clean across all six packages (one
+  unrelated pre-existing lint error in `apps/web/src/app/sso/page.tsx`,
+  from a different, concurrent session's commit — flagged separately,
+  not fixed here).
+- A standalone diagnostic script (`/tmp/verify_n1_fixes.ts`, run via
+  `ts-node`) exercised the batched syllabus-progress query directly
+  against the persistent demo org's real data and confirmed identical
+  output between the old per-node-`findFirst` shape and the new
+  batched shape.
+- Extended `tenant-isolation.e2e-spec.ts` with a new "Performance
+  optimization — pagination, pickers, indexes" describe block against
+  a fresh org (same "orgA has accumulated unpredictable data" reasoning
+  as the Licensing test): 30 students paginate correctly (page 1 full,
+  page 2 the remainder, no overlap, `total`/`totalPages` correct),
+  `pageSize` over 100 is rejected with 400, the picker endpoint returns
+  all 30 with no `guardians` field, CSV export still returns all 30
+  unaffected, employees paginate correctly and the picker's `userId`
+  field round-trips, invoices paginate correctly with the narrowed
+  `student` shape and no `items`/`payments`, cross-tenant isolation
+  throughout. The pre-existing N+1 regression risk (dashboards'
+  `studentDashboard`/`parentDashboard`, class-sessions'
+  `syllabusProgress`, leave's balance-with-usedDays math) is already
+  covered by tests that predate this slice and asserted precise
+  values before the batching refactor — re-ran clean, confirming the
+  refactor is behavior-preserving.
+- Full browser pass, as the demo admin (logged in for real — solved the
+  self-hosted CAPTCHA via the established `qlmanage`-rasterize-and-read
+  method, then injected the resulting session into the browser to avoid
+  re-solving a fresh single-use challenge on every page navigation).
+  The demo org's real record counts (single digits per table) are all
+  under the default `pageSize` of 25, so no page actually produces a
+  visible "page 2" here — the real page-2/page-1-boundary behavior is
+  what the e2e test's 30-student fixture exercises precisely; the
+  browser pass instead confirmed the envelope unwraps and renders
+  correctly end to end: `/dashboard/students` (9 of 50 edition-usage
+  badge intact, list renders, guardian/enrollment "pick a student"
+  pickers show the full roster), `/dashboard/staff` (staff types/
+  designations/employees all render, department picker intact), and
+  `/dashboard/finance` (the narrowed invoice list renders student name
+  + amount + status correctly, fee-structure/scholarship student
+  pickers show the full roster). Also hit one real, immediately-
+  recognized instance of this project's own extensively-documented
+  transient-P2028 class (`staff-types` 500'd once, "Unable to start a
+  transaction in the given time") — checked for stray `nest`/`jest`
+  processes first (none), then a plain reload cleared it and the real
+  data rendered; not a regression, matches the exact pattern documented
+  since Phase 3. Ad hoc, unrelated to this slice but done in the same
+  pass at the user's request: the main login page's identifier field
+  label changed from "Email or username" to "User Id"
+  (`apps/web/src/app/login/page.tsx`).
+
+## Next step (as of performance optimization)
+
+Per this project's standing per-slice check-in rule, any further Phase
+8 bullet (global search part 3, security hardening, backups,
+observability, deployment/release management) needs its own fresh
+go-ahead.

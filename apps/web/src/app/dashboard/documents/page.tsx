@@ -40,8 +40,14 @@ async function uploadFile(file: File): Promise<string> {
 }
 
 export default function DocumentsPage() {
-  const students = useSWR("students", () => api.listStudents());
-  const employees = useSWR("employees", () => api.listEmployees());
+  // Deliberately the unbounded, narrow picker — this is a "pick a
+  // student" dropdown, not the paginated admin list view (Phase 8
+  // performance-optimization slice).
+  const students = useSWR("students-picker", () => api.listStudentsPicker());
+  // Deliberately the unbounded, narrow picker — this is a "pick a
+  // staff member" dropdown, not the paginated admin list view (Phase 8
+  // performance-optimization slice).
+  const employees = useSWR("employees-picker", () => api.listEmployeesPicker());
   const studentDocuments = useSWR("student-documents", () => api.listStudentDocuments());
   const staffDocuments = useSWR("staff-documents", () => api.listStaffDocuments());
   const certificates = useSWR("certificates", () => api.listCertificates());

@@ -17,8 +17,12 @@ export default function DashboardPage() {
   const { data: campuses = [], mutate: mutateCampuses } = useSWR("campuses", () =>
     api.listCampuses(),
   );
-  const { data: students = [] } = useSWR("students", () => api.listStudents());
-  const { data: employees = [] } = useSWR("employees", () => api.listEmployees());
+  // Only a count is shown (StatCard below) — fetch page 1 at the
+  // smallest page size and read `.total` rather than pulling the whole
+  // roster just to call `.length` on it (Phase 8 performance-
+  // optimization slice).
+  const { data: studentsPage } = useSWR("students-count", () => api.listStudents({ pageSize: 1 }));
+  const { data: employeesPage } = useSWR("employees-count", () => api.listEmployees({ pageSize: 1 }));
   const { data: applications = [] } = useSWR("admission-applications", () =>
     api.listAdmissionApplications(),
   );
@@ -52,8 +56,8 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <StatCard label="Campuses" value={campuses.length} icon={<Building2 className="size-4" />} />
-        <StatCard label="Students" value={students.length} icon={<GraduationCap className="size-4" />} />
-        <StatCard label="Staff" value={employees.length} icon={<Users className="size-4" />} />
+        <StatCard label="Students" value={studentsPage?.total ?? 0} icon={<GraduationCap className="size-4" />} />
+        <StatCard label="Staff" value={employeesPage?.total ?? 0} icon={<Users className="size-4" />} />
         <StatCard
           label="Admissions"
           value={applications.length}

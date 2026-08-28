@@ -33,8 +33,11 @@ async function submitAction(action: () => Promise<unknown>, onSuccess: () => voi
 export default function BiometricPolicyPage() {
   const policy = useSWR("biometric-policy", () => api.getBiometricPolicy());
   const enrollments = useSWR("face-enrollments", () => api.listFaceEnrollments());
-  const students = useSWR("students-for-biometric", () => api.listStudents());
-  const staff = useSWR("staff-for-biometric", () => api.listEmployees());
+  // Deliberately the unbounded, narrow pickers — these are "pick a
+  // person" dropdowns, not the paginated admin list views (Phase 8
+  // performance-optimization slice).
+  const students = useSWR("students-for-biometric", () => api.listStudentsPicker());
+  const staff = useSWR("staff-for-biometric", () => api.listEmployeesPicker());
 
   const [policyForm, setPolicyForm] = useState({
     enabled: false,

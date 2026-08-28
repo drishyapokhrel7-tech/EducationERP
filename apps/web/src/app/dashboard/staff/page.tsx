@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { EntityCard } from "@/components/dashboard/entity-card";
+import { ListPager } from "@/components/dashboard/list-pager";
 import { PhotoInput } from "@/components/photo-input";
 import { EditionUsageBadge } from "@/components/edition-usage-badge";
 import { EditionUpgradeBanner } from "@/components/edition-upgrade-banner";
@@ -20,7 +21,11 @@ export default function StaffPage() {
   const staffTypes = useSWR("staff-types", () => api.listStaffTypes());
   const designations = useSWR("designations", () => api.listDesignations());
   const departments = useSWR("departments", () => api.listDepartments());
-  const employees = useSWR("employees", () => api.listEmployees());
+  // Paginated (Phase 8 performance-optimization slice) — employeesPage
+  // is part of the SWR key so changing it triggers a fresh fetch of
+  // that page, same pattern as the students admin list.
+  const [employeesPage, setEmployeesPage] = useState(1);
+  const employees = useSWR(["employees", employeesPage], () => api.listEmployees({ page: employeesPage }));
   const editionStatus = useSWR("edition-status", () => api.getEditionStatus());
   const [editionLimitEdition, setEditionLimitEdition] = useState<Edition | null>(null);
   useHighlightFromSearch(Boolean(employees.data));
@@ -176,7 +181,17 @@ export default function StaffPage() {
         title="Employees"
         titleExtra={<EditionUsageBadge status={editionStatus.data} />}
         emptyLabel="No employees yet."
-        items={employees.data}
+        items={employees.data?.data}
+        footer={
+          employees.data ? (
+            <ListPager
+              page={employees.data.page}
+              totalPages={employees.data.totalPages}
+              onPrev={() => setEmployeesPage((p) => Math.max(1, p - 1))}
+              onNext={() => setEmployeesPage((p) => p + 1)}
+            />
+          ) : null
+        }
         renderItem={(e: {
           id: string;
           firstName: string;

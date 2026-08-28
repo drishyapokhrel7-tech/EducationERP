@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { EntityCard } from "@/components/dashboard/entity-card";
+import { ListPager } from "@/components/dashboard/list-pager";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
 import { submitEsewaForm } from "@/lib/esewa";
@@ -48,8 +49,15 @@ export default function FinancePage() {
   const feeCategories = useSWR("fee-categories", () => api.listFeeCategories());
   const feeStructures = useSWR("fee-structures", () => api.listFeeStructures());
   const scholarships = useSWR("scholarships", () => api.listScholarships());
-  const invoices = useSWR("invoices", () => api.listInvoices());
-  const students = useSWR("students", () => api.listStudents());
+  // Paginated (Phase 8 performance-optimization slice) — invoicesPage
+  // is part of the SWR key so changing it triggers a fresh fetch of
+  // that page, same pattern as the students/staff admin lists.
+  const [invoicesPage, setInvoicesPage] = useState(1);
+  const invoices = useSWR(["invoices", invoicesPage], () => api.listInvoices({ page: invoicesPage }));
+  // Deliberately the unbounded, narrow picker — this is a "pick a
+  // student" dropdown, not the paginated admin list view (Phase 8
+  // performance-optimization slice).
+  const students = useSWR("students-picker", () => api.listStudentsPicker());
 
   // ── Fee categories ──────────────────────────────────────────────────
   const [categoryForm, setCategoryForm] = useState({ name: "", code: "", description: "" });
@@ -496,22 +504,30 @@ export default function FinancePage() {
           <CardTitle>Invoices</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {!invoices.data || invoices.data.length === 0 ? (
+          {!invoices.data || invoices.data.data.length === 0 ? (
             <p className="text-muted-foreground text-sm">No invoices yet.</p>
           ) : (
-            <ul className="divide-y text-sm">
-              {invoices.data.map((inv) => (
-                <li key={inv.id} className="flex items-center justify-between gap-2 py-2">
-                  <button type="button" className="hover:text-primary text-left" onClick={() => setActiveInvoiceId(inv.id)}>
-                    {inv.student.firstName} {inv.student.lastName}{" "}
-                    <span className="text-muted-foreground">
-                      — {formatMoney(inv.totalAmount)} · due {new Date(inv.dueDate).toLocaleDateString()}
-                    </span>
-                  </button>
-                  <Badge variant={statusVariant(inv.status)}>{inv.status}</Badge>
-                </li>
-              ))}
-            </ul>
+            <>
+              <ul className="divide-y text-sm">
+                {invoices.data.data.map((inv) => (
+                  <li key={inv.id} className="flex items-center justify-between gap-2 py-2">
+                    <button type="button" className="hover:text-primary text-left" onClick={() => setActiveInvoiceId(inv.id)}>
+                      {inv.student.firstName} {inv.student.lastName}{" "}
+                      <span className="text-muted-foreground">
+                        — {formatMoney(inv.totalAmount)} · due {new Date(inv.dueDate).toLocaleDateString()}
+                      </span>
+                    </button>
+                    <Badge variant={statusVariant(inv.status)}>{inv.status}</Badge>
+                  </li>
+                ))}
+              </ul>
+              <ListPager
+                page={invoices.data.page}
+                totalPages={invoices.data.totalPages}
+                onPrev={() => setInvoicesPage((p) => Math.max(1, p - 1))}
+                onNext={() => setInvoicesPage((p) => p + 1)}
+              />
+            </>
           )}
 
           {activeInvoiceId && activeInvoice.data ? (

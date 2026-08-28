@@ -81,7 +81,10 @@ async function submitAction(action: () => Promise<unknown>, onSuccess: () => voi
 }
 
 export default function AlumniPage() {
-  const students = useSWR("students", () => api.listStudents());
+  // Deliberately the unbounded, narrow picker — this is a "pick a
+  // student" dropdown, not the paginated admin list view (Phase 8
+  // performance-optimization slice).
+  const students = useSWR("students-picker", () => api.listStudentsPicker());
   const profiles = useSWR("alumni-profiles", () => api.listAlumniProfiles());
   const companies = useSWR("alumni-companies", () => api.listAlumniCompanies());
   const surveys = useSWR("alumni-surveys", () => api.listAlumniSurveys());

@@ -77,12 +77,25 @@ export class LeaveService {
         orderBy: [{ year: "desc" }, { leaveType: { name: "asc" } }],
       });
 
-      return Promise.all(
-        balances.map(async (balance) => {
-          const usedDays = await this.usedDaysFor(tx, organizationId, employeeId, balance.leaveTypeId, balance.year);
-          return { ...balance, usedDays, remainingDays: balance.allocatedDays - usedDays };
-        }),
-      );
+      // Phase 8 performance-optimization slice: was one leaveRequest
+      // findMany per balance row (N+1, usedDaysFor). One query for the
+      // whole employee's approved requests instead, grouped in JS by
+      // (leaveTypeId, UTC year of startDate) — same grouping usedDaysFor
+      // applied per-call via its date-range filter.
+      const approvedRequests = await tx.leaveRequest.findMany({
+        where: { organizationId, employeeId, status: LeaveRequestStatus.APPROVED },
+      });
+      const usedDaysByTypeAndYear = new Map<string, number>();
+      for (const request of approvedRequests) {
+        const year = request.startDate.getUTCFullYear();
+        const key = `${request.leaveTypeId}:${year}`;
+        usedDaysByTypeAndYear.set(key, (usedDaysByTypeAndYear.get(key) ?? 0) + request.days);
+      }
+
+      return balances.map((balance) => {
+        const usedDays = usedDaysByTypeAndYear.get(`${balance.leaveTypeId}:${balance.year}`) ?? 0;
+        return { ...balance, usedDays, remainingDays: balance.allocatedDays - usedDays };
+      });
     });
   }
 
