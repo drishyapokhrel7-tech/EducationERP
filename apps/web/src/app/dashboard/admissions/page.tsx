@@ -12,15 +12,26 @@ import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
 import { submitAction } from "@/lib/submit-action";
+import { todayLocalDateString } from "@/lib/local-date";
 import type { AdmissionStatus } from "@education-erp/api-client";
 
-const REVIEW_STATUSES: AdmissionStatus[] = [
-  "SUBMITTED",
-  "UNDER_REVIEW",
-  "INTERVIEW_SCHEDULED",
-  "APPROVED",
-  "REJECTED",
+// Human labels for the raw enum — previously the status dropdown and
+// badge both showed "UNDER_REVIEW"/"INTERVIEW_SCHEDULED" verbatim.
+const REVIEW_STATUS_OPTIONS: { value: AdmissionStatus; label: string }[] = [
+  { value: "SUBMITTED", label: "Submitted" },
+  { value: "UNDER_REVIEW", label: "Under review" },
+  { value: "INTERVIEW_SCHEDULED", label: "Interview scheduled" },
+  { value: "APPROVED", label: "Approved" },
+  { value: "REJECTED", label: "Rejected" },
 ];
+const ALL_STATUS_LABELS: Record<AdmissionStatus, string> = {
+  SUBMITTED: "Submitted",
+  UNDER_REVIEW: "Under review",
+  INTERVIEW_SCHEDULED: "Interview scheduled",
+  APPROVED: "Approved",
+  REJECTED: "Rejected",
+  ENROLLED: "Enrolled",
+};
 
 export default function AdmissionsPage() {
   const applications = useSWR("admission-applications", () => api.listAdmissionApplications());
@@ -78,7 +89,7 @@ export default function AdmissionsPage() {
                           · {app.program.name}
                           {app.score != null ? ` · score ${app.score}` : ""}
                         </span>
-                        <Badge variant={statusVariant(app.status)}>{app.status}</Badge>
+                        <Badge variant={statusVariant(app.status)}>{ALL_STATUS_LABELS[app.status]}</Badge>
                       </span>
                     </div>
 
@@ -93,7 +104,7 @@ export default function AdmissionsPage() {
                             () =>
                               api.updateAdmissionStatus(app.id, {
                                 status,
-                                effectiveDate: new Date().toISOString().slice(0, 10),
+                                effectiveDate: todayLocalDateString(),
                               }),
                             () => applications.mutate(),
                           );
@@ -106,7 +117,7 @@ export default function AdmissionsPage() {
                           onChange={(v) =>
                             setStatusEdits((f) => ({ ...f, [app.id]: v as AdmissionStatus }))
                           }
-                          options={REVIEW_STATUSES.map((s) => ({ value: s, label: s }))}
+                          options={REVIEW_STATUS_OPTIONS}
                         />
                         <Button type="submit" size="sm">
                           Update status

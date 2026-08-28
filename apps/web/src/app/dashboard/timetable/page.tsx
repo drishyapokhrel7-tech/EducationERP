@@ -353,19 +353,21 @@ export default function TimetablePage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Start (HH:mm)</Label>
+                <Label>Start</Label>
                 <Input
                   required
-                  className="w-24"
+                  type="time"
+                  className="w-28"
                   value={editPeriodForm.startTime}
                   onChange={(e) => setEditPeriodForm((f) => ({ ...f, startTime: e.target.value }))}
                 />
               </div>
               <div className="space-y-2">
-                <Label>End (HH:mm)</Label>
+                <Label>End</Label>
                 <Input
                   required
-                  className="w-24"
+                  type="time"
+                  className="w-28"
                   value={editPeriodForm.endTime}
                   onChange={(e) => setEditPeriodForm((f) => ({ ...f, endTime: e.target.value }))}
                 />
@@ -430,21 +432,21 @@ export default function TimetablePage() {
             />
           </div>
           <div className="space-y-2">
-            <Label>Start (HH:mm)</Label>
+            <Label>Start</Label>
             <Input
               required
-              placeholder="09:00"
-              className="w-24"
+              type="time"
+              className="w-28"
               value={periodForm.startTime}
               onChange={(e) => setPeriodForm((f) => ({ ...f, startTime: e.target.value }))}
             />
           </div>
           <div className="space-y-2">
-            <Label>End (HH:mm)</Label>
+            <Label>End</Label>
             <Input
               required
-              placeholder="09:45"
-              className="w-24"
+              type="time"
+              className="w-28"
               value={periodForm.endTime}
               onChange={(e) => setPeriodForm((f) => ({ ...f, endTime: e.target.value }))}
             />

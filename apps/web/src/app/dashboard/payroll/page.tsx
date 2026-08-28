@@ -12,24 +12,18 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
+import { submitAction, errorMessage } from "@/lib/submit-action";
 import type { PayrollItemType, PayrollStatus, PaymentMethod } from "@education-erp/api-client";
 
-function errorMessage(err: unknown, fallback: string) {
-  const message =
-    err && typeof err === "object" && "body" in err
-      ? ((err as { body?: { message?: string } }).body?.message ?? null)
-      : null;
-  return typeof message === "string" ? message : fallback;
-}
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
 
-async function submitAction(action: () => Promise<unknown>, onSuccess: () => void) {
-  try {
-    await action();
-    onSuccess();
-    toast.success("Saved");
-  } catch (err) {
-    toast.error(errorMessage(err, "Failed"));
-  }
+// "8/2026" is ambiguous between month-first and day-first conventions
+// — spell the month out instead.
+function monthYearLabel(month: number, year: number): string {
+  return `${MONTHS[month - 1] ?? month} ${year}`;
 }
 
 function formatMoney(amount: number | string | null) {
@@ -303,12 +297,13 @@ export default function PayrollPage() {
             }}
           >
             <div className="space-y-1">
-              <Label className="text-xs">Month (1-12)</Label>
-              <Input
-                type="number"
-                className="w-24"
+              <Label className="text-xs">Month</Label>
+              <NativeSelect
+                className="w-36"
+                placeholder="Select month"
                 value={generateForm.periodMonth}
-                onChange={(e) => setGenerateForm((f) => ({ ...f, periodMonth: e.target.value }))}
+                onChange={(v) => setGenerateForm((f) => ({ ...f, periodMonth: v }))}
+                options={MONTHS.map((m, i) => ({ value: String(i + 1), label: m }))}
               />
             </div>
             <div className="space-y-1">
@@ -354,7 +349,7 @@ export default function PayrollPage() {
                   <button type="button" className="hover:text-primary text-left" onClick={() => setActivePayrollId(p.id)}>
                     {p.employee.firstName} {p.employee.lastName}{" "}
                     <span className="text-muted-foreground">
-                      — {p.periodMonth}/{p.periodYear} · net {formatMoney(p.netPay)}
+                      — {monthYearLabel(p.periodMonth, p.periodYear)} · net {formatMoney(p.netPay)}
                     </span>
                   </button>
                   <Badge variant={payrollStatusVariant(p.status)}>{p.status}</Badge>
@@ -370,7 +365,7 @@ export default function PayrollPage() {
                   <div className="bg-muted/40 space-y-3 rounded-lg border p-4 text-sm">
                     <div className="flex items-center justify-between">
                       <p className="font-medium">
-                        {payroll.employee.firstName} {payroll.employee.lastName} — {payroll.periodMonth}/{payroll.periodYear}
+                        {payroll.employee.firstName} {payroll.employee.lastName} — {monthYearLabel(payroll.periodMonth, payroll.periodYear)}
                       </p>
                       <Badge variant={payrollStatusVariant(payroll.status)}>{payroll.status}</Badge>
                     </div>

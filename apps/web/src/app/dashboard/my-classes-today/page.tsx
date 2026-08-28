@@ -12,23 +12,13 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
+import { todayLocalDateString } from "@/lib/local-date";
+import { errorMessage } from "@/lib/submit-action";
 
 const DAYS = ["", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function errorMessage(err: unknown, fallback: string) {
-  const message =
-    err && typeof err === "object" && "body" in err
-      ? ((err as { body?: { message?: string } }).body?.message ?? null)
-      : null;
-  return typeof message === "string" ? message : fallback;
-}
-
 export default function MyClassesTodayPage() {
-  const [date, setDate] = useState(todayIso());
+  const [date, setDate] = useState(todayLocalDateString());
   const classes = useSWR(["my-classes-today", date], () => api.myClassesToday(date));
 
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);

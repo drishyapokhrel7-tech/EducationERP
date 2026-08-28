@@ -246,12 +246,16 @@ export default function FinancePage() {
                       className="h-8"
                       disabled={!bulkDueDate[s.id]}
                       onClick={() =>
-                        submitAction(
-                          () => api.assignFeeStructureBulk(s.id, { dueDate: bulkDueDate[s.id] }),
-                          () => {
+                        api.assignFeeStructureBulk(s.id, { dueDate: bulkDueDate[s.id] }).then(
+                          (result) => {
                             invoices.mutate();
-                            toast.success("Invoices generated for all enrolled students");
+                            toast.success(
+                              result.skipped.length === 0
+                                ? `Invoice generated for ${result.assigned.length} student(s)`
+                                : `Invoice generated for ${result.assigned.length} student(s) — ${result.skipped.length} already had one, skipped`,
+                            );
                           },
+                          (err) => toast.error(errorMessage(err, "Failed to generate invoices")),
                         )
                       }
                     >

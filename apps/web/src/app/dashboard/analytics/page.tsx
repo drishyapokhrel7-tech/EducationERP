@@ -9,14 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
-
-function errorMessage(err: unknown, fallback: string) {
-  const message =
-    err && typeof err === "object" && "body" in err
-      ? ((err as { body?: { message?: string } }).body?.message ?? null)
-      : null;
-  return typeof message === "string" ? message : fallback;
-}
+import { errorMessage } from "@/lib/submit-action";
+import { toLocalDateString } from "@/lib/local-date";
 
 async function downloadFile(fetchBlob: () => Promise<Blob>, filename: string) {
   try {
@@ -56,13 +50,6 @@ export default function AnalyticsPage() {
   const enrollment = useSWR("analytics-enrollment", () => api.getEnrollmentAnalytics());
 
   const today = new Date();
-  // toISOString() converts to UTC first — in a timezone ahead of UTC
-  // (e.g. Nepal, UTC+5:45), local midnight on the 1st rolls back to
-  // the last day of the *previous* month once converted, silently
-  // showing the wrong default range. Format from local date parts
-  // directly instead.
-  const toLocalDateString = (d: Date) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const defaultFrom = toLocalDateString(new Date(today.getFullYear(), today.getMonth(), 1));
   const defaultTo = toLocalDateString(new Date(today.getFullYear(), today.getMonth() + 1, 0));
   const [dateRange, setDateRange] = useState({ from: defaultFrom, to: defaultTo });

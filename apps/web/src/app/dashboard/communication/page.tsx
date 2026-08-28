@@ -29,6 +29,17 @@ const AUDIENCES: { value: MessageAudience; label: string }[] = [
   { value: "SPECIFIC_USER", label: "Specific user" },
 ];
 
+// Displayed values (badges, picker labels) previously showed the raw
+// enum — "IN_APP", "ALL_GUARDIANS" — even though CHANNELS/AUDIENCES
+// above already had the human labels for the form dropdowns; these
+// just look them back up for anywhere a value is rendered, not chosen.
+function channelLabel(value: MessageChannel): string {
+  return CHANNELS.find((c) => c.value === value)?.label ?? value;
+}
+function audienceLabel(value: MessageAudience): string {
+  return AUDIENCES.find((a) => a.value === value)?.label ?? value;
+}
+
 export default function CommunicationPage() {
   const templates = useSWR("message-templates", () => api.listMessageTemplates());
   const messages = useSWR("messages", () => api.listMessages());
@@ -83,7 +94,7 @@ export default function CommunicationPage() {
               {templates.data.map((t) => (
                 <li key={t.id} className="flex items-center justify-between gap-2 py-2">
                   <span>
-                    <span className="font-medium">{t.name}</span> <Badge variant="secondary">{t.channel}</Badge>
+                    <span className="font-medium">{t.name}</span> <Badge variant="secondary">{channelLabel(t.channel)}</Badge>
                     {t.subject ? <span className="text-muted-foreground"> — {t.subject}</span> : null}
                   </span>
                   <div className="flex items-center gap-2">
@@ -252,7 +263,7 @@ export default function CommunicationPage() {
                 <li key={m.id} className="rounded-md border p-2">
                   <div className="flex items-center justify-between gap-2">
                     <span>
-                      <Badge variant="secondary">{m.channel}</Badge> <Badge variant="outline">{m.audience}</Badge>{" "}
+                      <Badge variant="secondary">{channelLabel(m.channel)}</Badge> <Badge variant="outline">{audienceLabel(m.audience)}</Badge>{" "}
                       {m.subject ? <span className="font-medium">{m.subject}</span> : <span className="text-muted-foreground">(no subject)</span>}
                     </span>
                     <div className="flex items-center gap-2">
@@ -352,7 +363,7 @@ export default function CommunicationPage() {
                     body: t?.body ?? f.body,
                   }));
                 }}
-                options={(templates.data ?? []).map((t) => ({ value: t.id, label: `${t.name} (${t.channel})` }))}
+                options={(templates.data ?? []).map((t) => ({ value: t.id, label: `${t.name} (${channelLabel(t.channel)})` }))}
               />
             </div>
             <div className="space-y-1">
