@@ -186,6 +186,11 @@ function createLibraryApiClient(getAccessToken: () => string | null) {
   // ── Auth ──────────────────────────────────────────────────────────
   erpLogin: (identifier: string, password: string) =>
     request<LibraryLoginResult>("/auth/erp-login", { method: "POST", body: JSON.stringify({ identifier, password }) }),
+  // Silent-SSO variant — bridges an already-issued ERP access token
+  // instead of asking the admin to retype their password. See
+  // dashboard/library/page.tsx for where this is tried first.
+  erpTokenLogin: (accessToken: string) =>
+    request<LibraryLoginResult>("/auth/erp-token-login", { method: "POST", body: JSON.stringify({ accessToken }) }),
   staffLogin: (username: string, password: string) =>
     request<LibraryLoginResult>("/auth/staff/login", { method: "POST", body: JSON.stringify({ username, password }) }),
 

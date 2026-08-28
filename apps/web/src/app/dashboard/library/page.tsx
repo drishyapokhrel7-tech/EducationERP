@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import useSWR from "swr";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +14,7 @@ import { FaceCapture, type FaceCaptureResult } from "@/components/library/face-c
 import { libraryStaffApi, LibraryApiError, type FineCollectionReport } from "@/lib/library-api";
 import { useLibraryStaffSession, setStoredLibraryStaffSession } from "@/lib/library-auth-storage";
 import { useAuth } from "@/lib/auth-context";
+import { getAccessToken } from "@/lib/auth-storage";
 
 function errorMessage(err: unknown, fallback: string) {
   if (err instanceof LibraryApiError) {
@@ -54,6 +55,42 @@ export default function LibraryDashboardPage() {
   const [ssoForm, setSsoForm] = useState({ identifier: user?.email ?? "", password: "" });
   const [ssoError, setSsoError] = useState<string | null>(null);
   const [ssoLoggingIn, setSsoLoggingIn] = useState(false);
+
+  // Silently bridge the ERP session already open in this browser,
+  // instead of asking an already-logged-in admin to type their
+  // password a second time (the exact "asks you to log in again" UX
+  // audit finding). Only the manual forms below (ERP password, or a
+  // separate library account) fall back into view on a genuine
+  // failure — not linked, no Librarian role, or no ERP session at all.
+  const [silentConnecting, setSilentConnecting] = useState(true);
+  const [silentFailure, setSilentFailure] = useState<string | null>(null);
+  const silentAttempted = useRef(false);
+
+  useEffect(() => {
+    if (session || silentAttempted.current) return;
+    silentAttempted.current = true;
+    async function run() {
+      const erpToken = getAccessToken();
+      if (!erpToken) {
+        setSilentConnecting(false);
+        return;
+      }
+      try {
+        const result = await libraryStaffApi.erpTokenLogin(erpToken);
+        if (result.user.role === "MEMBER") {
+          setSilentFailure("Your ERP account doesn't have the Librarian role — ask an admin to grant it via Roles & Permissions.");
+          return;
+        }
+        setStoredLibraryStaffSession(result);
+        toast.success("Connected to Library as " + result.user.role.toLowerCase());
+      } catch (err) {
+        setSilentFailure(errorMessage(err, "Could not connect automatically — sign in below."));
+      } finally {
+        setSilentConnecting(false);
+      }
+    }
+    void Promise.resolve().then(run);
+  }, [session]);
 
   // ── Catalog ────────────────────────────────────────────────────────
   const categories = useSWR(session ? "library-categories" : null, () => libraryStaffApi.listCategories());
@@ -157,12 +194,19 @@ export default function LibraryDashboardPage() {
         </p>
       </div>
 
-      {!session ? (
+      {!session && silentConnecting ? (
+        <Card>
+          <CardContent className="py-6">
+            <p className="text-muted-foreground text-sm">Connecting to Library using your current session…</p>
+          </CardContent>
+        </Card>
+      ) : !session ? (
         <Card>
           <CardHeader>
             <CardTitle>Library staff login</CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
+            {silentFailure ? <p className="text-destructive text-xs">{silentFailure}</p> : null}
             <div>
               <p className="text-muted-foreground mb-3 text-xs">
                 Connect with your ERP session — works if an admin has granted you the &quot;Librarian&quot; role via{" "}

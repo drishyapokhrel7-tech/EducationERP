@@ -542,6 +542,7 @@ export interface Student {
 // the paginated Student list returned by listStudents().
 export interface StudentPicker {
   id: string;
+  userId: string | null;
   firstName: string;
   middleName: string | null;
   lastName: string;

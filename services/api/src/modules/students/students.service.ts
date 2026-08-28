@@ -81,7 +81,15 @@ export class StudentsService {
     return this.prisma.withTenant(organizationId, (tx) =>
       tx.student.findMany({
         where: { organizationId, deletedAt: null },
-        select: { id: true, firstName: true, middleName: true, lastName: true, studentCode: true, status: true },
+        select: {
+          id: true,
+          userId: true,
+          firstName: true,
+          middleName: true,
+          lastName: true,
+          studentCode: true,
+          status: true,
+        },
         orderBy: [{ firstName: "asc" }, { middleName: "asc" }, { lastName: "asc" }],
       }),
     );
