@@ -75,11 +75,7 @@ export default function DashboardPage() {
   // created" reads naturally as plain action copy, the circularity
   // problem only existed inside the type list itself.
   const campusTypeLabel = campusType === "GENERIC" ? "Institution" : CAMPUS_TYPE_OPTIONS.find((o) => o.value === campusType)!.label;
-  // Once exactly one institution exists, that's a real, known fact —
-  // call it "School" (the common single-site case). Otherwise always
-  // the stable, generic "Institutions" — never derived from the
-  // add-form's current selection.
-  const existingCampusLabel = campuses.length === 1 ? "School" : "Institutions";
+  const existingCampusLabel = campuses.length === 1 ? "Institution" : "Institutions";
 
   // Not every institution runs multiple campuses/schools — this
   // shortcut fills the campus form from the organization's own
