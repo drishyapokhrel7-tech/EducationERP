@@ -9,8 +9,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { api } from "@/lib/api";
-import { submitAction } from "@/lib/submit-action";
+import { submitAction, submitDelete } from "@/lib/submit-action";
 import type { RoleRecord } from "@education-erp/api-client";
 
 const ACTIONS = ["VIEW", "CREATE", "UPDATE", "DELETE", "APPROVE", "EXPORT", "PRINT", "MANAGE", "ADMINISTER"] as const;
@@ -40,6 +41,10 @@ export default function RolesPermissionsPage() {
   const [roleForm, setRoleForm] = useState({ name: "", description: "" });
   const [selectedPermissionIds, setSelectedPermissionIds] = useState<Set<string>>(new Set());
   const [cloneFromId, setCloneFromId] = useState("");
+  // Deleting a role silently revokes access for everyone still holding
+  // it, with no other on-screen effect — the one delete in this app
+  // that most needs a confirm step before it fires.
+  const [deletingRole, setDeletingRole] = useState<{ id: string; name: string } | null>(null);
 
   function startCreate() {
     setEditingRoleId("__new__");
@@ -136,15 +141,7 @@ export default function RolesPermissionsPage() {
                         type="button"
                         size="sm"
                         variant="destructive"
-                        onClick={() =>
-                          submitAction(
-                            () => api.deleteRole(r.id),
-                            () => {
-                              roles.mutate();
-                              auditLogs.mutate();
-                            },
-                          )
-                        }
+                        onClick={() => setDeletingRole({ id: r.id, name: r.name })}
                       >
                         Delete
                       </Button>
@@ -323,6 +320,26 @@ export default function RolesPermissionsPage() {
           )}
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={deletingRole !== null}
+        onOpenChange={(open) => !open && setDeletingRole(null)}
+        title={`Delete the "${deletingRole?.name}" role?`}
+        description={
+          deletingRole
+            ? `${(users.data ?? []).filter((u) => u.userRoles.some((ur) => ur.roleId === deletingRole.id)).length} user(s) currently hold this role — deleting it revokes whatever access it granted them immediately, with no separate warning to them.`
+            : ""
+        }
+        confirmLabel="Delete role"
+        variant="destructive"
+        onConfirm={() => {
+          if (!deletingRole) return;
+          return submitDelete(() => api.deleteRole(deletingRole.id), () => {
+            roles.mutate();
+            auditLogs.mutate();
+          });
+        }}
+      />
     </div>
   );
 }

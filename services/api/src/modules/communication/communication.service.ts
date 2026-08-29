@@ -138,6 +138,23 @@ export class CommunicationService {
     );
   }
 
+  // Read-only mirror of sendMessage's own recipient resolution — lets
+  // the frontend show the real blast radius ("N recipients") in a
+  // confirm dialog before a Send actually fires, same "preview, don't
+  // guess" pattern as Finance's assign-bulk preview.
+  async previewMessageRecipients(organizationId: string, messageId: string) {
+    const message = await this.prisma.withTenant(organizationId, (tx) => tx.message.findUnique({ where: { id: messageId } }));
+    if (!message || message.organizationId !== organizationId) throw new NotFoundException("Message not found");
+
+    const unresolvable = UNRESOLVABLE.some((u) => u.audience === message.audience && u.channel === message.channel);
+    if (unresolvable) {
+      return { recipientCount: 0, unresolvable: true };
+    }
+
+    const recipients = await this.resolveRecipients(organizationId, message.audience, message.recipientUserId);
+    return { recipientCount: recipients.length, unresolvable: false };
+  }
+
   async sendMessage(organizationId: string, messageId: string) {
     const message = await this.prisma.withTenant(organizationId, (tx) => tx.message.findUnique({ where: { id: messageId } }));
     if (!message || message.organizationId !== organizationId) throw new NotFoundException("Message not found");

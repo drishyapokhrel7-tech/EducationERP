@@ -162,6 +162,32 @@ export class FinanceService {
     });
   }
 
+  // Read-only mirror of assignFeeStructureBulk's own eligibility check
+  // (same query, same existence check, no writes) — lets the frontend
+  // show the real blast radius ("N students, NPR total") in a confirm
+  // dialog before the bulk assignment actually fires.
+  async previewFeeStructureBulk(organizationId: string, feeStructureId: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const feeStructure = await this.loadFeeStructure(tx, feeStructureId);
+      const enrollments = await tx.studentEnrollment.findMany({
+        where: { organizationId, programId: feeStructure.programId, termId: feeStructure.termId, status: "ACTIVE" },
+      });
+
+      let eligibleCount = 0;
+      let alreadyAssignedCount = 0;
+      for (const enrollment of enrollments) {
+        const existing = await tx.studentFeeAssignment.findUnique({
+          where: { studentEnrollmentId_feeStructureId: { studentEnrollmentId: enrollment.id, feeStructureId } },
+        });
+        if (existing) alreadyAssignedCount++;
+        else eligibleCount++;
+      }
+
+      const perStudentAmount = feeStructure.items.reduce((sum, item) => sum + toNumber(item.amount), 0);
+      return { eligibleCount, alreadyAssignedCount, perStudentAmount, totalAmount: perStudentAmount * eligibleCount };
+    });
+  }
+
   private async loadFeeStructure(tx: PrismaClient, feeStructureId: string) {
     const feeStructure = await tx.feeStructure.findUnique({
       where: { id: feeStructureId },

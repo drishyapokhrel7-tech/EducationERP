@@ -1996,6 +1996,13 @@ export interface AssignFeeStructureBulkResult {
   skipped: { studentEnrollmentId: string; reason: string }[];
 }
 
+export interface AssignFeeStructureBulkPreview {
+  eligibleCount: number;
+  alreadyAssignedCount: number;
+  perStudentAmount: number;
+  totalAmount: number;
+}
+
 export type InvoiceStatus = "PENDING" | "PARTIALLY_PAID" | "PAID" | "CANCELLED";
 export type PaymentMethod = "CASH" | "BANK_TRANSFER" | "CHEQUE" | "ESEWA";
 
@@ -2375,6 +2382,12 @@ export interface GeneratePayrollInput {
 export interface GeneratePayrollResult {
   generated: string[];
   skipped: { employeeId: string; reason: string }[];
+}
+
+export interface PayrollGenerationPreview {
+  eligibleCount: number;
+  alreadyGeneratedCount: number;
+  grossTotal: number;
 }
 
 export interface AddPayrollItemInput {
@@ -3156,6 +3169,11 @@ export interface MessageRecord {
   emailLogs: EmailLogRecord[];
   smsLogs: SmsLogRecord[];
   pushLogs: PushNotificationLogRecord[];
+}
+
+export interface MessageRecipientPreview {
+  recipientCount: number;
+  unresolvable: boolean;
 }
 
 // ── Documents & Certificates (Phase 7h) ─────────────────────────────

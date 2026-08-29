@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
 import { submitAction, errorMessage } from "@/lib/submit-action";
@@ -75,12 +76,27 @@ export default function PayrollPage() {
   const now = new Date();
   const [generateForm, setGenerateForm] = useState({ periodMonth: String(now.getMonth() + 1), periodYear: String(now.getFullYear()) });
   const [generateResult, setGenerateResult] = useState<{ generated: string[]; skipped: { employeeId: string; reason: string }[] } | null>(null);
+  // Real blast-radius confirm — fetches the actual eligible-employee
+  // count and gross total before a payroll run for the whole staff
+  // actually fires.
+  const [generatePreview, setGeneratePreview] = useState<{
+    periodMonth: number;
+    periodYear: number;
+    eligibleCount: number;
+    alreadyGeneratedCount: number;
+    grossTotal: number;
+  } | null>(null);
 
   // ── Payroll list ──────────────────────────────────────────────────────
   const [statusFilter, setStatusFilter] = useState<PayrollStatus | "">("");
   const payrolls = useSWR(["payroll", statusFilter], () => api.listPayroll(statusFilter ? { status: statusFilter } : {}));
   const [activePayrollId, setActivePayrollId] = useState<string | null>(null);
   const activePayroll = useSWR(activePayrollId ? ["payroll-detail", activePayrollId] : null, () => api.getPayroll(activePayrollId as string));
+  // Cancelling a still-DRAFT run is low-stakes (nothing was ever
+  // finalized) so stays a plain click; cancelling a FINALIZED run is
+  // the one this needs a confirm step for — "Cancel" here sits right
+  // next to Finalize/Mark paid and reads the same either way.
+  const [confirmingCancelFinalized, setConfirmingCancelFinalized] = useState(false);
   const [itemForm, setItemForm] = useState({ type: "EARNING" as PayrollItemType, name: "", amount: "" });
   const [payForm, setPayForm] = useState<PaymentMethod>("CASH");
 
@@ -283,16 +299,13 @@ export default function PayrollPage() {
             className="flex flex-wrap items-end gap-3"
             onSubmit={async (e: FormEvent) => {
               e.preventDefault();
+              const periodMonth = Number(generateForm.periodMonth);
+              const periodYear = Number(generateForm.periodYear);
               try {
-                const result = await api.generatePayroll({
-                  periodMonth: Number(generateForm.periodMonth),
-                  periodYear: Number(generateForm.periodYear),
-                });
-                setGenerateResult(result);
-                payrolls.mutate();
-                toast.success("Saved");
+                const preview = await api.previewPayrollGeneration({ periodMonth, periodYear });
+                setGeneratePreview({ periodMonth, periodYear, ...preview });
               } catch (err) {
-                toast.error(errorMessage(err, "Failed"));
+                toast.error(errorMessage(err, "Could not compute how many employees this affects"));
               }
             }}
           >
@@ -483,12 +496,16 @@ export default function PayrollPage() {
                           type="button"
                           size="sm"
                           variant="destructive"
-                          onClick={() =>
+                          onClick={() => {
+                            if (payroll.status === "FINALIZED") {
+                              setConfirmingCancelFinalized(true);
+                              return;
+                            }
                             submitAction(() => api.cancelPayroll(activePayrollId), () => {
                               activePayroll.mutate();
                               payrolls.mutate();
-                            })
-                          }
+                            });
+                          }}
                         >
                           Cancel
                         </Button>
@@ -500,6 +517,54 @@ export default function PayrollPage() {
             : null}
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={generatePreview !== null}
+        onOpenChange={(open) => !open && setGeneratePreview(null)}
+        title={`Generate payroll for ${generatePreview ? monthYearLabel(generatePreview.periodMonth, generatePreview.periodYear) : "this period"}?`}
+        description={
+          generatePreview
+            ? generatePreview.eligibleCount === 0
+              ? "Every active, salary-assigned employee already has a payroll run for this period — nothing new will be generated."
+              : `This creates ${generatePreview.eligibleCount} new payroll run(s), roughly ${formatMoney(generatePreview.grossTotal)} gross before any unpaid-leave deduction${
+                  generatePreview.alreadyGeneratedCount > 0
+                    ? ` (${generatePreview.alreadyGeneratedCount} employee(s) already generated, skipped)`
+                    : ""
+                }.`
+            : ""
+        }
+        confirmLabel="Generate payroll"
+        onConfirm={async () => {
+          if (!generatePreview) return;
+          try {
+            const result = await api.generatePayroll({
+              periodMonth: generatePreview.periodMonth,
+              periodYear: generatePreview.periodYear,
+            });
+            setGenerateResult(result);
+            payrolls.mutate();
+            toast.success("Generated");
+          } catch (err) {
+            toast.error(errorMessage(err, "Failed"));
+          }
+        }}
+      />
+
+      <ConfirmDialog
+        open={confirmingCancelFinalized}
+        onOpenChange={setConfirmingCancelFinalized}
+        title="Cancel this finalized payroll run?"
+        description="Its computed totals were already frozen at finalize time. Cancelling voids the run — it cannot be un-cancelled, only regenerated from scratch."
+        confirmLabel="Cancel run"
+        variant="destructive"
+        onConfirm={() => {
+          if (!activePayrollId) return;
+          return submitAction(() => api.cancelPayroll(activePayrollId), () => {
+            activePayroll.mutate();
+            payrolls.mutate();
+          });
+        }}
+      />
     </div>
   );
 }

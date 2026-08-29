@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import useSWR from "swr";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,9 +11,10 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
-import { submitAction, submitDelete } from "@/lib/submit-action";
+import { submitAction, submitDelete, errorMessage } from "@/lib/submit-action";
 import type { MessageAudience, MessageChannel } from "@education-erp/api-client";
 
 const CHANNELS: { value: MessageChannel; label: string }[] = [
@@ -43,6 +45,11 @@ function audienceLabel(value: MessageAudience): string {
 export default function CommunicationPage() {
   const templates = useSWR("message-templates", () => api.listMessageTemplates());
   const messages = useSWR("messages", () => api.listMessages());
+  // Real blast-radius confirm for Send — fetches the actual resolved
+  // recipient count before the message actually goes out.
+  const [sendPreview, setSendPreview] = useState<{ messageId: string; recipientCount: number; unresolvable: boolean } | null>(
+    null,
+  );
   // Deliberately the unbounded, narrow picker — this is a "pick a
   // recipient" dropdown, not the paginated admin list view (Phase 8
   // performance-optimization slice).
@@ -273,7 +280,12 @@ export default function CommunicationPage() {
                           type="button"
                           size="sm"
                           variant="outline"
-                          onClick={() => submitAction(() => api.sendMessage(m.id), () => messages.mutate())}
+                          onClick={() =>
+                            api
+                              .previewMessageRecipients(m.id)
+                              .then((preview) => setSendPreview({ messageId: m.id, ...preview }))
+                              .catch((err) => toast.error(errorMessage(err, "Could not compute recipients")))
+                          }
                         >
                           Send
                         </Button>
@@ -388,6 +400,26 @@ export default function CommunicationPage() {
           </form>
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={sendPreview !== null}
+        onOpenChange={(open) => !open && setSendPreview(null)}
+        title="Send this message?"
+        description={
+          sendPreview
+            ? sendPreview.unresolvable
+              ? "This audience has no contact path for this channel — sending will fail. Pick a different channel or audience instead."
+              : sendPreview.recipientCount === 0
+                ? "No recipients currently resolve for this audience — nothing will actually be sent."
+                : `This sends to ${sendPreview.recipientCount} recipient(s) immediately. There is no way to recall a message once sent.`
+            : ""
+        }
+        confirmLabel="Send"
+        onConfirm={() => {
+          if (!sendPreview) return;
+          return submitAction(() => api.sendMessage(sendPreview.messageId), () => messages.mutate());
+        }}
+      />
     </div>
   );
 }

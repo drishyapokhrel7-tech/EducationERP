@@ -54,6 +54,15 @@ export class PayrollController {
     return this.payroll.unassignSalaryStructure(user.organizationId, id);
   }
 
+  // POST, not GET — reuses GeneratePayrollDto's own body-shape
+  // validation rather than duplicating it as query params, matching
+  // "preview before create" over "preview as a GET".
+  @Post("payroll/generate/preview")
+  @RequirePermissions("payroll:create")
+  previewPayrollGeneration(@CurrentUser() user: JwtPayload, @Body() dto: GeneratePayrollDto) {
+    return this.payroll.previewPayrollGeneration(user.organizationId, dto);
+  }
+
   @Post("payroll/generate")
   @RequirePermissions("payroll:create")
   generatePayroll(@CurrentUser() user: JwtPayload, @Body() dto: GeneratePayrollDto) {

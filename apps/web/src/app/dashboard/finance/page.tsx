@@ -12,11 +12,17 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { EntityCard } from "@/components/dashboard/entity-card";
 import { ListPager } from "@/components/dashboard/list-pager";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
 import { submitEsewaForm } from "@/lib/esewa";
 import { submitAction, submitDelete, errorMessage } from "@/lib/submit-action";
-import type { InvoiceStatus, PaymentMethod, StudentEnrollment } from "@education-erp/api-client";
+import type {
+  AssignFeeStructureBulkPreview,
+  InvoiceStatus,
+  PaymentMethod,
+  StudentEnrollment,
+} from "@education-erp/api-client";
 
 function formatMoney(amount: string) {
   return `NPR ${Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -65,6 +71,14 @@ export default function FinancePage() {
 
   const [assignForm, setAssignForm] = useState<Record<string, { studentId: string; dueDate: string }>>({});
   const [bulkDueDate, setBulkDueDate] = useState<Record<string, string>>({});
+  // Real blast-radius confirm for "Assign to all enrolled" — fetches
+  // the actual eligible-student count and total before the bulk
+  // invoice run fires, instead of a bare "are you sure."
+  const [bulkPreview, setBulkPreview] = useState<{
+    structureId: string;
+    dueDate: string;
+    data: AssignFeeStructureBulkPreview;
+  } | null>(null);
   const [studentEnrollments, setStudentEnrollments] = useState<StudentEnrollment[]>([]);
   const [selectedEnrollmentId, setSelectedEnrollmentId] = useState("");
 
@@ -83,6 +97,12 @@ export default function FinancePage() {
   const [paymentForm, setPaymentForm] = useState({ amount: "", method: "CASH" as PaymentMethod, reference: "" });
   const [discountForm, setDiscountForm] = useState({ amount: "", reason: "" });
   const [refundForm, setRefundForm] = useState<Record<string, { amount: string; reason: string }>>({});
+  // Money actions — real financial changes to a real invoice, each
+  // firing on a single click/submit before this — now confirm first,
+  // showing the exact numbers involved rather than a bare "are you sure."
+  const [confirmingPayment, setConfirmingPayment] = useState(false);
+  const [confirmingDiscount, setConfirmingDiscount] = useState(false);
+  const [confirmingRefundPaymentId, setConfirmingRefundPaymentId] = useState<string | null>(null);
 
   return (
     <div className="max-w-5xl space-y-6">
@@ -256,17 +276,10 @@ export default function FinancePage() {
                       className="h-8"
                       disabled={!bulkDueDate[s.id]}
                       onClick={() =>
-                        api.assignFeeStructureBulk(s.id, { dueDate: bulkDueDate[s.id] }).then(
-                          (result) => {
-                            invoices.mutate();
-                            toast.success(
-                              result.skipped.length === 0
-                                ? `Invoice generated for ${result.assigned.length} student(s)`
-                                : `Invoice generated for ${result.assigned.length} student(s) — ${result.skipped.length} already had one, skipped`,
-                            );
-                          },
-                          (err) => toast.error(errorMessage(err, "Failed to generate invoices")),
-                        )
+                        api
+                          .previewFeeStructureBulk(s.id)
+                          .then((data) => setBulkPreview({ structureId: s.id, dueDate: bulkDueDate[s.id], data }))
+                          .catch((err) => toast.error(errorMessage(err, "Could not compute how many students this affects")))
                       }
                     >
                       Assign to all enrolled
@@ -719,7 +732,7 @@ export default function FinancePage() {
                       </span>
                       <Input
                         type="number"
-                        className="h-6 w-20"
+                        className="h-8 w-20"
                         placeholder="Amount"
                         value={refundForm[p.id]?.amount ?? ""}
                         onChange={(e) =>
@@ -727,7 +740,7 @@ export default function FinancePage() {
                         }
                       />
                       <Input
-                        className="h-6 w-32"
+                        className="h-8 w-32"
                         placeholder="Reason"
                         value={refundForm[p.id]?.reason ?? ""}
                         onChange={(e) =>
@@ -738,22 +751,9 @@ export default function FinancePage() {
                         type="button"
                         size="sm"
                         variant="outline"
-                        className="h-6"
+                        className="h-8"
                         disabled={!refundForm[p.id]?.amount || !refundForm[p.id]?.reason}
-                        onClick={() =>
-                          submitAction(
-                            () =>
-                              api.issueRefund(p.id, {
-                                amount: Number(refundForm[p.id].amount),
-                                reason: refundForm[p.id].reason,
-                              }),
-                            () => {
-                              activeInvoice.mutate();
-                              invoices.mutate();
-                              setRefundForm((f) => ({ ...f, [p.id]: { amount: "", reason: "" } }));
-                            },
-                          )
-                        }
+                        onClick={() => setConfirmingRefundPaymentId(p.id)}
                       >
                         Refund
                       </Button>
@@ -768,19 +768,7 @@ export default function FinancePage() {
                     className="flex flex-wrap items-end gap-2"
                     onSubmit={(e: FormEvent) => {
                       e.preventDefault();
-                      submitAction(
-                        () =>
-                          api.recordPayment(activeInvoiceId, {
-                            amount: Number(paymentForm.amount),
-                            method: paymentForm.method,
-                            reference: paymentForm.reference || undefined,
-                          }),
-                        () => {
-                          setPaymentForm({ amount: "", method: "CASH", reference: "" });
-                          activeInvoice.mutate();
-                          invoices.mutate();
-                        },
-                      );
+                      setConfirmingPayment(true);
                     }}
                   >
                     <div className="space-y-1">
@@ -838,18 +826,7 @@ export default function FinancePage() {
                     className="flex flex-wrap items-end gap-2"
                     onSubmit={(e: FormEvent) => {
                       e.preventDefault();
-                      submitAction(
-                        () =>
-                          api.applyDiscount(activeInvoiceId, {
-                            amount: Number(discountForm.amount),
-                            reason: discountForm.reason,
-                          }),
-                        () => {
-                          setDiscountForm({ amount: "", reason: "" });
-                          activeInvoice.mutate();
-                          invoices.mutate();
-                        },
-                      );
+                      setConfirmingDiscount(true);
                     }}
                   >
                     <div className="space-y-1">
@@ -885,6 +862,116 @@ export default function FinancePage() {
           ) : null}
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={bulkPreview !== null}
+        onOpenChange={(open) => !open && setBulkPreview(null)}
+        title="Generate invoices for every enrolled student?"
+        description={
+          bulkPreview
+            ? bulkPreview.data.eligibleCount === 0
+              ? `Every currently-enrolled student already has this fee structure assigned — nothing new will be created.`
+              : `This creates ${bulkPreview.data.eligibleCount} new invoice(s), ${formatMoney(String(bulkPreview.data.totalAmount))} total${
+                  bulkPreview.data.alreadyAssignedCount > 0
+                    ? ` (${bulkPreview.data.alreadyAssignedCount} student(s) already assigned, skipped)`
+                    : ""
+                }.`
+            : ""
+        }
+        confirmLabel="Generate invoices"
+        onConfirm={() => {
+          if (!bulkPreview) return;
+          return api.assignFeeStructureBulk(bulkPreview.structureId, { dueDate: bulkPreview.dueDate }).then(
+            (result) => {
+              invoices.mutate();
+              toast.success(
+                result.skipped.length === 0
+                  ? `Invoice generated for ${result.assigned.length} student(s)`
+                  : `Invoice generated for ${result.assigned.length} student(s) — ${result.skipped.length} already had one, skipped`,
+              );
+            },
+            (err) => {
+              toast.error(errorMessage(err, "Failed to generate invoices"));
+            },
+          );
+        }}
+      />
+
+      <ConfirmDialog
+        open={confirmingPayment}
+        onOpenChange={setConfirmingPayment}
+        title="Record this payment?"
+        description={`${formatMoney(paymentForm.amount || "0")} via ${PAYMENT_METHODS.find((m) => m.value === paymentForm.method)?.label ?? paymentForm.method}${paymentForm.reference ? ` (ref: ${paymentForm.reference})` : ""} — this posts immediately against the invoice.`}
+        confirmLabel="Record payment"
+        onConfirm={() => {
+          if (!activeInvoiceId) return;
+          return submitAction(
+            () =>
+              api.recordPayment(activeInvoiceId, {
+                amount: Number(paymentForm.amount),
+                method: paymentForm.method,
+                reference: paymentForm.reference || undefined,
+              }),
+            () => {
+              setPaymentForm({ amount: "", method: "CASH", reference: "" });
+              activeInvoice.mutate();
+              invoices.mutate();
+            },
+          );
+        }}
+      />
+
+      <ConfirmDialog
+        open={confirmingDiscount}
+        onOpenChange={setConfirmingDiscount}
+        title="Apply this discount?"
+        description={`-${formatMoney(discountForm.amount || "0")} — ${discountForm.reason || "no reason given"}. This reduces the invoice total immediately.`}
+        confirmLabel="Apply discount"
+        onConfirm={() => {
+          if (!activeInvoiceId) return;
+          return submitAction(
+            () =>
+              api.applyDiscount(activeInvoiceId, {
+                amount: Number(discountForm.amount),
+                reason: discountForm.reason,
+              }),
+            () => {
+              setDiscountForm({ amount: "", reason: "" });
+              activeInvoice.mutate();
+              invoices.mutate();
+            },
+          );
+        }}
+      />
+
+      <ConfirmDialog
+        open={confirmingRefundPaymentId !== null}
+        onOpenChange={(open) => !open && setConfirmingRefundPaymentId(null)}
+        title="Issue this refund?"
+        description={
+          confirmingRefundPaymentId
+            ? `${formatMoney(refundForm[confirmingRefundPaymentId]?.amount || "0")} — ${refundForm[confirmingRefundPaymentId]?.reason || "no reason given"}. This cannot be undone from here.`
+            : ""
+        }
+        confirmLabel="Issue refund"
+        variant="destructive"
+        onConfirm={() => {
+          const paymentId = confirmingRefundPaymentId;
+          if (!paymentId) return;
+          return submitAction(
+            () =>
+              api.issueRefund(paymentId, {
+                amount: Number(refundForm[paymentId].amount),
+                reason: refundForm[paymentId].reason,
+              }),
+            () => {
+              activeInvoice.mutate();
+              invoices.mutate();
+              setRefundForm((f) => ({ ...f, [paymentId]: { amount: "", reason: "" } }));
+            },
+          );
+        }}
+      />
     </div>
   );
 }

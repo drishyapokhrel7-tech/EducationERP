@@ -193,6 +193,7 @@ import type {
   MessageTemplateRecord,
   CreateMessageInput,
   MessageRecord,
+  MessageRecipientPreview,
   CreateStudentDocumentInput,
   UploadOwnDocumentInput,
   ReviewDocumentInput,
@@ -314,6 +315,7 @@ import type {
   AssignFeeStructureInput,
   AssignFeeStructureBulkInput,
   AssignFeeStructureBulkResult,
+  AssignFeeStructureBulkPreview,
   InvoiceRecord,
   RecordPaymentInput,
   PaymentRecord,
@@ -351,6 +353,7 @@ import type {
   SalaryStructureRecord,
   GeneratePayrollInput,
   GeneratePayrollResult,
+  PayrollGenerationPreview,
   AddPayrollItemInput,
   MarkPayrollPaidInput,
   PayrollStatus,
@@ -1075,6 +1078,8 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         method: "POST",
         body: JSON.stringify(input),
       }),
+    previewFeeStructureBulk: (id: string) =>
+      request<AssignFeeStructureBulkPreview>(`/organizations/me/fee-structures/${id}/assign-bulk/preview`),
     listInvoices: (pagination?: PaginationParams) =>
       request<PaginatedResult<InvoiceListItem>>(`/organizations/me/invoices${paginationQuery(pagination)}`),
     getInvoice: (id: string) => request<InvoiceRecord>(`/organizations/me/invoices/${id}`),
@@ -1198,6 +1203,11 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       request(`/organizations/me/employees/${employeeId}/salary-structure`, { method: "DELETE" }),
     generatePayroll: (input: GeneratePayrollInput) =>
       request<GeneratePayrollResult>("/organizations/me/payroll/generate", { method: "POST", body: JSON.stringify(input) }),
+    previewPayrollGeneration: (input: GeneratePayrollInput) =>
+      request<PayrollGenerationPreview>("/organizations/me/payroll/generate/preview", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
     listPayroll: (
       params: { employeeId?: string; periodMonth?: number; periodYear?: number; status?: PayrollStatus } = {},
     ) => {
@@ -1610,6 +1620,8 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       request<MessageRecord>("/organizations/me/messages", { method: "POST", body: JSON.stringify(input) }),
     listMessages: () => request<MessageRecord[]>("/organizations/me/messages"),
     sendMessage: (messageId: string) => request<MessageRecord>(`/organizations/me/messages/${messageId}/send`, { method: "POST" }),
+    previewMessageRecipients: (messageId: string) =>
+      request<MessageRecipientPreview>(`/organizations/me/messages/${messageId}/send/preview`),
 
     // Documents & Certificates (Phase 7h) — admin-facing. Self-service
     // (a student's own documents/certificates) is under the portal

@@ -70,6 +70,12 @@ export class FinanceController {
     return this.finance.assignFeeStructure(user.organizationId, id, user.sub, dto);
   }
 
+  @Get("fee-structures/:id/assign-bulk/preview")
+  @RequirePermissions("student_fee_assignment:create")
+  previewFeeStructureBulk(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.finance.previewFeeStructureBulk(user.organizationId, id);
+  }
+
   @Post("fee-structures/:id/assign-bulk")
   @RequirePermissions("student_fee_assignment:create")
   assignFeeStructureBulk(

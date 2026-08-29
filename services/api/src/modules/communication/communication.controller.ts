@@ -54,6 +54,12 @@ export class CommunicationController {
     return this.communication.listMessages(user.organizationId);
   }
 
+  @Get("messages/:id/send/preview")
+  @RequirePermissions("communication:manage")
+  previewMessageRecipients(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.communication.previewMessageRecipients(user.organizationId, id);
+  }
+
   @Post("messages/:id/send")
   @RequirePermissions("communication:manage")
   sendMessage(@CurrentUser() user: JwtPayload, @Param("id") id: string) {

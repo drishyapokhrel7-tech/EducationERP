@@ -112,6 +112,55 @@ export class PayrollService {
 
   // ── Payroll generation ───────────────────────────────────────────────
 
+  // Read-only mirror of generatePayroll's own eligibility check (same
+  // employee/period query, no writes) — lets the frontend show the
+  // real blast radius ("N employees, NPR gross total") before a
+  // payroll run for the whole staff actually fires. The total here is
+  // the structure-based gross (basic + earning items - deduction
+  // items) and deliberately excludes the unpaid-leave deduction the
+  // real generation also applies per employee — that adjustment needs
+  // its own per-employee leave-request query, too costly to replicate
+  // here just for a preview number, and it only ever reduces the real
+  // total, never increases it, so this stays an honest upper bound.
+  async previewPayrollGeneration(organizationId: string, dto: GeneratePayrollDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const employees = await tx.employee.findMany({
+        where: { organizationId, status: EmployeeStatus.ACTIVE, salaryStructureId: { not: null } },
+        include: { salaryStructure: { include: { items: true } } },
+      });
+
+      let eligibleCount = 0;
+      let alreadyGeneratedCount = 0;
+      let grossTotal = 0;
+      for (const employee of employees) {
+        const existing = await tx.payroll.findUnique({
+          where: {
+            employeeId_periodMonth_periodYear: {
+              employeeId: employee.id,
+              periodMonth: dto.periodMonth,
+              periodYear: dto.periodYear,
+            },
+          },
+        });
+        if (existing) {
+          alreadyGeneratedCount++;
+          continue;
+        }
+        eligibleCount++;
+        const structure = employee.salaryStructure!;
+        const basicSalary = toNumber(structure.basicSalary);
+        let net = basicSalary;
+        for (const item of structure.items) {
+          const amount = item.amount != null ? toNumber(item.amount) : (basicSalary * toNumber(item.percentOfBasic!)) / 100;
+          net += item.type === PayrollItemType.DEDUCTION ? -amount : amount;
+        }
+        grossTotal += net;
+      }
+
+      return { eligibleCount, alreadyGeneratedCount, grossTotal };
+    });
+  }
+
   async generatePayroll(organizationId: string, dto: GeneratePayrollDto) {
     return this.prisma.withTenant(organizationId, async (tx) => {
       const employees = await tx.employee.findMany({

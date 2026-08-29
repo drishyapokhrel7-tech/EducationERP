@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { StatCard } from "@/components/ui/stat-card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { api } from "@/lib/api";
 import { submitAction, submitDelete } from "@/lib/submit-action";
 import type { CampusType } from "@education-erp/api-client";
@@ -37,6 +38,12 @@ export default function DashboardPage() {
     code: "",
     type: "GENERIC",
   });
+  // Deleting an Institution is the root of an entire org tree (for a
+  // single-campus school, its only campus) — the one delete button on
+  // this page that genuinely earns a confirm step, unlike the small
+  // catalog-entity deletes elsewhere which already have a legible
+  // dependency-guard error and no real "oops" risk.
+  const [deletingCampus, setDeletingCampus] = useState<{ id: string; name: string } | null>(null);
 
   // A real, persisted Campus.type now backs this picker (previously a
   // client-only cosmetic label with no stored column — see the git
@@ -154,7 +161,7 @@ export default function DashboardPage() {
                       type="button"
                       size="sm"
                       variant="destructive"
-                      onClick={() => submitDelete(() => api.deleteCampus(campus.id), () => mutateCampuses())}
+                      onClick={() => setDeletingCampus({ id: campus.id, name: campus.name })}
                     >
                       Delete
                     </Button>
@@ -263,6 +270,19 @@ export default function DashboardPage() {
           </form>
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={deletingCampus !== null}
+        onOpenChange={(open) => !open && setDeletingCampus(null)}
+        title={`Delete ${deletingCampus?.name}?`}
+        description="This removes the institution and everything underneath it — faculties, departments, programs, sections. If any of those are still referenced elsewhere, the delete is blocked instead."
+        confirmLabel="Delete institution"
+        variant="destructive"
+        onConfirm={() => {
+          if (!deletingCampus) return;
+          return submitDelete(() => api.deleteCampus(deletingCampus.id), () => mutateCampuses());
+        }}
+      />
     </div>
   );
 }
