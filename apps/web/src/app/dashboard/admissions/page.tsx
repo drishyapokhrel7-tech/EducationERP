@@ -49,9 +49,9 @@ export default function AdmissionsPage() {
     appliedDate: "",
   });
   const [statusEdits, setStatusEdits] = useState<Record<string, AdmissionStatus>>({});
-  const [enrollForms, setEnrollForms] = useState<
-    Record<string, { studentCode: string; sectionId: string; termId: string; enrollmentDate: string }>
-  >({});
+  const [enrollForms, setEnrollForms] = useState<Record<string, { sectionId: string; termId: string; enrollmentDate: string }>>(
+    {},
+  );
 
 
   return (
@@ -74,12 +74,7 @@ export default function AdmissionsPage() {
           ) : (
             <ul className="space-y-4 divide-y">
               {applications.data.map((app) => {
-                const enrollForm = enrollForms[app.id] ?? {
-                  studentCode: "",
-                  sectionId: "",
-                  termId: "",
-                  enrollmentDate: "",
-                };
+                const enrollForm = enrollForms[app.id] ?? { sectionId: "", termId: "", enrollmentDate: "" };
                 return (
                   <li key={app.id} className="space-y-2 pt-4 first:pt-0">
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -133,24 +128,12 @@ export default function AdmissionsPage() {
                           submitAction(
                             () => api.enrollApplication(app.id, enrollForm),
                             () => {
-                              setEnrollForms((f) => ({ ...f, [app.id]: { studentCode: "", sectionId: "", termId: "", enrollmentDate: "" } }));
+                              setEnrollForms((f) => ({ ...f, [app.id]: { sectionId: "", termId: "", enrollmentDate: "" } }));
                               applications.mutate();
                             },
                           );
                         }}
                       >
-                        <Input
-                          required
-                          placeholder="Student code"
-                          className="w-28"
-                          value={enrollForm.studentCode}
-                          onChange={(e) =>
-                            setEnrollForms((f) => ({
-                              ...f,
-                              [app.id]: { ...enrollForm, studentCode: e.target.value },
-                            }))
-                          }
-                        />
                         <NativeSelect
                           className="w-32"
                           placeholder="Section"
@@ -183,7 +166,7 @@ export default function AdmissionsPage() {
                         <Button
                           type="submit"
                           size="sm"
-                          disabled={!enrollForm.studentCode || !enrollForm.sectionId || !enrollForm.termId}
+                          disabled={!enrollForm.sectionId || !enrollForm.termId}
                         >
                           Enroll
                         </Button>

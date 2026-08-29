@@ -672,7 +672,8 @@ export interface UpdateAdmissionStatusInput {
 }
 
 export interface EnrollApplicationInput {
-  studentCode: string;
+  // studentCode is deliberately absent — generated server-side, same
+  // as the direct Students-page create path.
   sectionId: string;
   termId: string;
   enrollmentDate: string;

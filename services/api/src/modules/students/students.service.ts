@@ -129,7 +129,10 @@ export class StudentsService {
   // unique constraint (schema.prisma) covers the rare concurrent-create
   // race without needing a real DB sequence for what is, at this
   // project's real scale, an infrequent admin action.
-  private async nextStudentCode(tx: PrismaClient, organizationId: string): Promise<string> {
+  // Not private — AdmissionsService.enroll reuses this exact rule
+  // rather than hand-typing a code on that creation path (see that
+  // method's own comment).
+  async nextStudentCode(tx: PrismaClient, organizationId: string): Promise<string> {
     const count = await tx.student.count({ where: { organizationId } });
     return `STU-${String(count + 1).padStart(4, "0")}`;
   }

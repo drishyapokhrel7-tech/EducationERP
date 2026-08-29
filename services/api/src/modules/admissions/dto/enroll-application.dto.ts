@@ -1,10 +1,11 @@
-import { IsDateString, IsString, MinLength } from "class-validator";
+import { IsDateString, IsString } from "class-validator";
 
+// studentCode is deliberately absent — generated server-side
+// (sequential per organization, same as the direct Students-page
+// create path), not supplied by the caller. See
+// StudentsService.nextStudentCode's own comment: one rule for how a
+// student gets a code, not a different one per creation path.
 export class EnrollApplicationDto {
-  @IsString()
-  @MinLength(1)
-  studentCode!: string;
-
   @IsString()
   sectionId!: string;
 

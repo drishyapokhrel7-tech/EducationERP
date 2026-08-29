@@ -1,5 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
+import { StudentsService } from "../students/students.service";
 import { CreateAdmissionApplicationDto } from "./dto/create-admission-application.dto";
 import { UpdateAdmissionStatusDto } from "./dto/update-admission-status.dto";
 import { EnrollApplicationDto } from "./dto/enroll-application.dto";
@@ -7,7 +9,10 @@ import { EnrollApplicationDto } from "./dto/enroll-application.dto";
 /** Same load-bearing parent-guard pattern as every prior slice's service. */
 @Injectable()
 export class AdmissionsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly students: StudentsService,
+  ) {}
 
   listApplications(organizationId: string) {
     return this.prisma.withTenant(organizationId, (tx) =>
@@ -92,16 +97,32 @@ export class AdmissionsService {
       if (!section) throw new NotFoundException("Section not found");
       if (!term) throw new NotFoundException("Term not found");
 
-      const student = await tx.student.create({
-        data: {
-          organizationId,
-          studentCode: dto.studentCode,
-          firstName: application.applicantFirstName,
-          lastName: application.applicantLastName,
-          dateOfBirth: application.dateOfBirth,
-          gender: application.gender,
-        },
-      });
+      // Same generated-code rule and collision-retry as the direct
+      // Students-page create path (StudentsService.createStudent) —
+      // one rule for how a student gets a code, not a hand-typed one
+      // here that could eventually collide with the auto-sequence.
+      const student = await (async () => {
+        const maxAttempts = 5;
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+          const studentCode = await this.students.nextStudentCode(tx, organizationId);
+          try {
+            return await tx.student.create({
+              data: {
+                organizationId,
+                studentCode,
+                firstName: application.applicantFirstName,
+                lastName: application.applicantLastName,
+                dateOfBirth: application.dateOfBirth,
+                gender: application.gender,
+              },
+            });
+          } catch (err) {
+            const isUniqueViolation = err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
+            if (!isUniqueViolation || attempt === maxAttempts) throw err;
+          }
+        }
+        throw new Error("Could not generate a unique student code — please try again");
+      })();
 
       if (application.guardianName) {
         const { firstName, lastName } = splitName(application.guardianName);
