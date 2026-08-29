@@ -128,6 +128,7 @@ export default function StaffPage() {
       </div>
 
       <EntityCard
+        id="staff-types"
         title="Staff types"
         emptyLabel="No staff types yet."
         items={staffTypes.data}
@@ -237,6 +238,7 @@ export default function StaffPage() {
       </EntityCard>
 
       <EntityCard
+        id="designations"
         title="Designations"
         emptyLabel="No designations yet."
         items={designations.data}
@@ -346,6 +348,7 @@ export default function StaffPage() {
       </EntityCard>
 
       <EntityCard
+        id="employees"
         title="Employees"
         titleExtra={<EditionUsageBadge status={editionStatus.data} />}
         emptyLabel="No employees yet."

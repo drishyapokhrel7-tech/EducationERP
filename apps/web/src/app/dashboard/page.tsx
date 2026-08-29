@@ -12,15 +12,16 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { StatCard } from "@/components/ui/stat-card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { OnboardingChecklist, type OnboardingStep } from "@/components/dashboard/onboarding-checklist";
 import { api } from "@/lib/api";
 import { submitAction, submitDelete } from "@/lib/submit-action";
 import type { CampusType } from "@education-erp/api-client";
 
 export default function DashboardPage() {
   const { data: organization } = useSWR("organization", () => api.getOwnOrganization());
-  const { data: campuses = [], mutate: mutateCampuses } = useSWR("campuses", () =>
-    api.listCampuses(),
-  );
+  const campusesQuery = useSWR("campuses", () => api.listCampuses());
+  const campuses = campusesQuery.data ?? [];
+  const mutateCampuses = campusesQuery.mutate;
   // Only a count is shown (StatCard below) — fetch page 1 at the
   // smallest page size and read `.total` rather than pulling the whole
   // roster just to call `.length` on it (Phase 8 performance-
@@ -30,6 +31,91 @@ export default function DashboardPage() {
   const { data: applications = [] } = useSWR("admission-applications", () =>
     api.listAdmissionApplications(),
   );
+  // Getting-started checklist (UX audit finding) — driven entirely by
+  // real counts, same SWR keys the pages that actually own each of
+  // these already use, so a session that's visited them dedupes
+  // instead of double-fetching. Every one of these lists is a small,
+  // org-scoped catalog table (already fetched unbounded elsewhere in
+  // this app) except enrollments, which reads its own `.total` the
+  // same way the students/employees counts above do.
+  //
+  // Deliberately reading the raw (non-defaulted) `.data` here, not
+  // `data = []` — this is the exact "still loading" vs "genuinely
+  // empty" distinction the audit itself flagged for EntityCard (#06).
+  // With 11 requests firing in parallel on every dashboard load, some
+  // are still in flight for a moment; defaulting straight to `[]`
+  // would count an unloaded step as "not done," which would even
+  // flash this whole card into view on an org that's actually fully
+  // set up, right before the last request resolves and it disappears.
+  const facultiesQuery = useSWR("faculties", () => api.listFaculties());
+  const departmentsQuery = useSWR("departments", () => api.listDepartments());
+  const programsQuery = useSWR("programs", () => api.listPrograms());
+  const academicYearsQuery = useSWR("academic-years", () => api.listAcademicYears());
+  const termsQuery = useSWR("terms", () => api.listTerms());
+  const sectionsQuery = useSWR("sections", () => api.listSections());
+  const staffTypesQuery = useSWR("staff-types", () => api.listStaffTypes());
+  const designationsQuery = useSWR("designations", () => api.listDesignations());
+  const enrollmentsQuery = useSWR("enrollments-count", () => api.listAllEnrollments({ pageSize: 1 }));
+  const feeCategoriesQuery = useSWR("fee-categories", () => api.listFeeCategories());
+  const feeStructuresQuery = useSWR("fee-structures", () => api.listFeeStructures());
+
+  const onboardingDataLoaded = [
+    campusesQuery.data,
+    studentsPage,
+    employeesPage,
+    facultiesQuery.data,
+    departmentsQuery.data,
+    programsQuery.data,
+    academicYearsQuery.data,
+    termsQuery.data,
+    sectionsQuery.data,
+    staffTypesQuery.data,
+    designationsQuery.data,
+    enrollmentsQuery.data,
+    feeCategoriesQuery.data,
+    feeStructuresQuery.data,
+  ].every((d) => d !== undefined);
+
+  const onboardingSteps: OnboardingStep[] = [
+    { label: "Institution", done: campuses.length > 0 },
+    { label: "Faculty", done: (facultiesQuery.data ?? []).length > 0, href: "/dashboard/org-structure#faculties" },
+    {
+      label: "Department",
+      done: (departmentsQuery.data ?? []).length > 0,
+      href: "/dashboard/org-structure#departments",
+    },
+    { label: "Program", done: (programsQuery.data ?? []).length > 0, href: "/dashboard/org-structure#programs" },
+    {
+      label: "Academic year",
+      done: (academicYearsQuery.data ?? []).length > 0,
+      href: "/dashboard/org-structure#academic-years",
+    },
+    { label: "Term", done: (termsQuery.data ?? []).length > 0, href: "/dashboard/org-structure#terms" },
+    { label: "Section", done: (sectionsQuery.data ?? []).length > 0, href: "/dashboard/org-structure#sections" },
+    { label: "Staff type", done: (staffTypesQuery.data ?? []).length > 0, href: "/dashboard/staff#staff-types" },
+    {
+      label: "Designation",
+      done: (designationsQuery.data ?? []).length > 0,
+      href: "/dashboard/staff#designations",
+    },
+    { label: "Employee", done: (employeesPage?.total ?? 0) > 0, href: "/dashboard/staff#employees" },
+    { label: "Student", done: (studentsPage?.total ?? 0) > 0, href: "/dashboard/students#students" },
+    {
+      label: "Enrollment",
+      done: (enrollmentsQuery.data?.total ?? 0) > 0,
+      href: "/dashboard/students#enrollment",
+    },
+    {
+      label: "Fee category",
+      done: (feeCategoriesQuery.data ?? []).length > 0,
+      href: "/dashboard/finance#fee-categories",
+    },
+    {
+      label: "Fee structure",
+      done: (feeStructuresQuery.data ?? []).length > 0,
+      href: "/dashboard/finance#fee-structures",
+    },
+  ];
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({ name: "", code: "" });
   const [editingCampusId, setEditingCampusId] = useState<string | null>(null);
@@ -126,6 +212,8 @@ export default function DashboardPage() {
           icon={<ClipboardList className="size-4" />}
         />
       </div>
+
+      {onboardingDataLoaded ? <OnboardingChecklist steps={onboardingSteps} /> : null}
 
       <Card>
         <CardHeader>

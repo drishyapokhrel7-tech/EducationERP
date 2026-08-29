@@ -305,6 +305,7 @@ export default function StudentsPage() {
       </Card>
 
       <EntityCard
+        id="students"
         title="Students"
         titleExtra={<EditionUsageBadge status={editionStatus.data} />}
         emptyLabel="No students yet."
@@ -839,6 +840,7 @@ export default function StudentsPage() {
       </EntityCard>
 
       <EntityCard
+        id="enrollment"
         title="Enrollment"
         emptyLabel="No enrollments match these filters."
         items={enrollments.data?.data}

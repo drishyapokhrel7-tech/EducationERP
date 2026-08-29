@@ -115,6 +115,7 @@ export default function FinancePage() {
       </div>
 
       <EntityCard
+        id="fee-categories"
         title="Fee categories"
         emptyLabel="No fee categories yet."
         items={feeCategories.data}
@@ -234,7 +235,7 @@ export default function FinancePage() {
         </form>
       </EntityCard>
 
-      <Card>
+      <Card id="fee-structures" className="scroll-mt-16">
         <CardHeader>
           <CardTitle>Fee structures</CardTitle>
         </CardHeader>
