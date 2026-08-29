@@ -15,10 +15,83 @@ import { submitAction, submitDelete } from "@/lib/submit-action";
 import type { RoleRecord } from "@education-erp/api-client";
 
 const ACTIONS = ["VIEW", "CREATE", "UPDATE", "DELETE", "APPROVE", "EXPORT", "PRINT", "MANAGE", "ADMINISTER"] as const;
+const ACTION_LABELS: Record<(typeof ACTIONS)[number], string> = {
+  VIEW: "View",
+  CREATE: "Create",
+  UPDATE: "Update",
+  DELETE: "Delete",
+  APPROVE: "Approve",
+  EXPORT: "Export",
+  PRINT: "Print",
+  MANAGE: "Manage",
+  ADMINISTER: "Administer",
+};
 
 function permissionKey(resource: string, action: string) {
   return `${resource}:${action}`;
 }
+
+function resourceLabel(resource: string) {
+  return resource
+    .split("_")
+    .map((w) => w[0].toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+// Grouped by the same domain areas this resource list was actually
+// built in (services/api/prisma/seed.ts's own RESOURCES array, added
+// phase-by-phase with a comment naming each group) — not a generic
+// alphabetical list. A resource not found in any group here falls
+// into "Other" below, so a newly-added resource never silently
+// disappears from the matrix.
+const RESOURCE_GROUPS: { label: string; resources: string[] }[] = [
+  { label: "Organization", resources: ["organization", "campus", "user", "role"] },
+  { label: "Org Structure", resources: ["faculty", "department", "program", "academic_year", "term", "section"] },
+  {
+    label: "Staff & HR",
+    resources: ["staff_type", "designation", "employee", "employment_history", "qualification", "teacher_profile"],
+  },
+  { label: "Academics", resources: ["subject", "curriculum"] },
+  { label: "Students & Admissions", resources: ["student", "guardian", "enrollment", "admission"] },
+  { label: "Timetable", resources: ["room", "period", "teaching_assignment", "class_schedule"] },
+  { label: "Attendance", resources: ["attendance", "staff_attendance"] },
+  {
+    label: "Teaching & Learning",
+    resources: ["syllabus", "lesson_plan", "class_session", "assignment", "knowledge_check", "dashboard"],
+  },
+  {
+    label: "Examinations",
+    resources: [
+      "exam_type",
+      "grading_scheme",
+      "question_bank",
+      "question",
+      "exam",
+      "exam_subject",
+      "exam_schedule",
+      "exam_room",
+      "exam_attempt",
+      "marks",
+      "grade",
+      "report_card",
+    ],
+  },
+  { label: "Biometric & Security", resources: ["biometric_policy", "biometric_enrollment", "camera", "face_match_event"] },
+  {
+    label: "Finance",
+    resources: ["fee_category", "fee_structure", "student_fee_assignment", "invoice", "payment", "scholarship", "discount", "refund"],
+  },
+  { label: "Administration", resources: ["audit_log"] },
+  { label: "Leave", resources: ["leave_type", "leave_request"] },
+  { label: "Payroll", resources: ["salary_structure", "payroll"] },
+  { label: "Transport", resources: ["vehicle", "route"] },
+  { label: "Hostel", resources: ["hostel"] },
+  { label: "Inventory", resources: ["inventory"] },
+  { label: "Communication", resources: ["communication"] },
+  { label: "Documents", resources: ["document"] },
+  { label: "Alumni & Career", resources: ["alumni"] },
+  { label: "Analytics", resources: ["analytics"] },
+];
 
 export default function RolesPermissionsPage() {
   const roles = useSWR("rbac-roles", () => api.listRoles());
@@ -26,10 +99,6 @@ export default function RolesPermissionsPage() {
   const users = useSWR("rbac-users", () => api.listOrgUsers());
   const auditLogs = useSWR("rbac-audit-logs", () => api.listAuditLogs());
 
-  const resources = useMemo(() => {
-    const set = new Set((permissions.data ?? []).map((p) => p.resource));
-    return [...set].sort();
-  }, [permissions.data]);
   const permissionIdByKey = useMemo(() => {
     const map = new Map<string, string>();
     for (const p of permissions.data ?? []) map.set(permissionKey(p.resource, p.action), p.id);
@@ -41,10 +110,34 @@ export default function RolesPermissionsPage() {
   const [roleForm, setRoleForm] = useState({ name: "", description: "" });
   const [selectedPermissionIds, setSelectedPermissionIds] = useState<Set<string>>(new Set());
   const [cloneFromId, setCloneFromId] = useState("");
+  const [matrixSearch, setMatrixSearch] = useState("");
   // Deleting a role silently revokes access for everyone still holding
   // it, with no other on-screen effect — the one delete in this app
   // that most needs a confirm step before it fires.
   const [deletingRole, setDeletingRole] = useState<{ id: string; name: string } | null>(null);
+
+  const isViewingSystemRole = editingRoleId !== null && editingRoleId !== "__new__" && (roles.data ?? []).find((r) => r.id === editingRoleId)?.isSystem === true;
+
+  // Grouped by domain area (see RESOURCE_GROUPS), filtered by the
+  // search box, and with any resource not in a named group falling
+  // into "Other" — so a newly-added resource never silently vanishes
+  // from the matrix instead of just being uncategorized.
+  const matrixGroups = useMemo(() => {
+    const allResources = new Set((permissions.data ?? []).map((p) => p.resource));
+    const grouped = new Set<string>();
+    const query = matrixSearch.trim().toLowerCase();
+    const groups = RESOURCE_GROUPS.map((g) => {
+      const resources = g.resources.filter((r) => allResources.has(r));
+      resources.forEach((r) => grouped.add(r));
+      return { label: g.label, resources };
+    });
+    const other = [...allResources].filter((r) => !grouped.has(r)).sort();
+    if (other.length > 0) groups.push({ label: "Other", resources: other });
+    if (!query) return groups.filter((g) => g.resources.length > 0);
+    return groups
+      .map((g) => ({ label: g.label, resources: g.resources.filter((r) => resourceLabel(r).toLowerCase().includes(query)) }))
+      .filter((g) => g.resources.length > 0);
+  }, [permissions.data, matrixSearch]);
 
   function startCreate() {
     setEditingRoleId("__new__");
@@ -105,7 +198,7 @@ export default function RolesPermissionsPage() {
                   </span>
                   <div className="flex items-center gap-2">
                     <Badge variant="secondary">System</Badge>
-                    <Button type="button" size="sm" variant="outline" onClick={() => startEdit(r)} disabled>
+                    <Button type="button" size="sm" variant="outline" onClick={() => startEdit(r)}>
                       View
                     </Button>
                   </div>
@@ -178,16 +271,23 @@ export default function RolesPermissionsPage() {
                   );
                 }}
               >
-                <p className="text-sm font-medium">{editingRoleId === "__new__" ? "New custom role" : "Edit role"}</p>
+                <p className="text-sm font-medium">
+                  {editingRoleId === "__new__" ? "New custom role" : isViewingSystemRole ? "Viewing system role" : "Edit role"}
+                </p>
                 <div className="flex flex-wrap items-end gap-3">
                   <div className="space-y-1">
                     <Label className="text-xs">Name</Label>
-                    <Input value={roleForm.name} onChange={(e) => setRoleForm((f) => ({ ...f, name: e.target.value }))} />
+                    <Input
+                      disabled={isViewingSystemRole}
+                      value={roleForm.name}
+                      onChange={(e) => setRoleForm((f) => ({ ...f, name: e.target.value }))}
+                    />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Description</Label>
                     <Input
                       className="w-56"
+                      disabled={isViewingSystemRole}
                       value={roleForm.description}
                       onChange={(e) => setRoleForm((f) => ({ ...f, description: e.target.value }))}
                     />
@@ -206,47 +306,102 @@ export default function RolesPermissionsPage() {
                   ) : null}
                 </div>
 
-                <div className="max-h-96 overflow-auto rounded border">
-                  <table className="w-full text-xs">
-                    <thead className="bg-muted sticky top-0">
-                      <tr>
-                        <th className="p-2 text-left">Resource</th>
-                        {ACTIONS.map((a) => (
-                          <th key={a} className="p-2 text-center">
-                            {a.slice(0, 3)}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {resources.map((resource) => (
-                        <tr key={resource} className="border-t">
-                          <td className="p-2">{resource}</td>
-                          {ACTIONS.map((action) => {
-                            const permId = permissionIdByKey.get(permissionKey(resource, action));
-                            if (!permId) return <td key={action} className="p-2 text-center">—</td>;
-                            return (
-                              <td key={action} className="p-2 text-center">
+                <div className="space-y-1">
+                  <Label className="text-xs">Search permissions</Label>
+                  <Input
+                    className="w-56"
+                    placeholder="e.g. invoice, attendance…"
+                    value={matrixSearch}
+                    onChange={(e) => setMatrixSearch(e.target.value)}
+                  />
+                </div>
+
+                <div className="max-h-96 space-y-3 overflow-auto rounded border p-2">
+                  {matrixGroups.length === 0 ? (
+                    <p className="text-muted-foreground p-2 text-xs">No permissions match &quot;{matrixSearch}&quot;.</p>
+                  ) : (
+                    matrixGroups.map((group) => {
+                      const groupPermissionIds = group.resources.flatMap((r) =>
+                        ACTIONS.map((a) => permissionIdByKey.get(permissionKey(r, a))).filter((id): id is string => Boolean(id)),
+                      );
+                      const selectedInGroup = groupPermissionIds.filter((id) => selectedPermissionIds.has(id)).length;
+                      return (
+                        <details key={group.label} open className="rounded border">
+                          <summary className="bg-muted flex cursor-pointer items-center justify-between gap-2 p-2 text-xs font-medium select-none">
+                            <span>
+                              {group.label}{" "}
+                              <span className="text-muted-foreground font-normal">
+                                ({selectedInGroup}/{groupPermissionIds.length})
+                              </span>
+                            </span>
+                            {!isViewingSystemRole ? (
+                              <label className="flex items-center gap-1 font-normal" onClick={(e) => e.stopPropagation()}>
                                 <input
                                   type="checkbox"
-                                  checked={selectedPermissionIds.has(permId)}
-                                  onChange={() => togglePermission(permId)}
+                                  checked={groupPermissionIds.length > 0 && selectedInGroup === groupPermissionIds.length}
+                                  onChange={() => {
+                                    const turnOn = selectedInGroup !== groupPermissionIds.length;
+                                    setSelectedPermissionIds((prev) => {
+                                      const next = new Set(prev);
+                                      for (const id of groupPermissionIds) {
+                                        if (turnOn) next.add(id);
+                                        else next.delete(id);
+                                      }
+                                      return next;
+                                    });
+                                  }}
                                 />
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                                Select all
+                              </label>
+                            ) : null}
+                          </summary>
+                          <table className="w-full text-xs">
+                            <thead className="bg-muted/50">
+                              <tr>
+                                <th className="p-2 text-left">Resource</th>
+                                {ACTIONS.map((a) => (
+                                  <th key={a} className="p-2 text-center">
+                                    {ACTION_LABELS[a]}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {group.resources.map((resource) => (
+                                <tr key={resource} className="border-t">
+                                  <td className="p-2">{resourceLabel(resource)}</td>
+                                  {ACTIONS.map((action) => {
+                                    const permId = permissionIdByKey.get(permissionKey(resource, action));
+                                    if (!permId) return <td key={action} className="p-2 text-center">—</td>;
+                                    return (
+                                      <td key={action} className="p-2 text-center">
+                                        <input
+                                          type="checkbox"
+                                          disabled={isViewingSystemRole}
+                                          checked={selectedPermissionIds.has(permId)}
+                                          onChange={() => togglePermission(permId)}
+                                        />
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </details>
+                      );
+                    })
+                  )}
                 </div>
 
                 <div className="flex gap-2">
-                  <Button type="submit" size="sm" disabled={!roleForm.name}>
-                    Save role
-                  </Button>
+                  {!isViewingSystemRole ? (
+                    <Button type="submit" size="sm" disabled={!roleForm.name}>
+                      Save role
+                    </Button>
+                  ) : null}
                   <Button type="button" size="sm" variant="outline" onClick={() => setEditingRoleId(null)}>
-                    Cancel
+                    {isViewingSystemRole ? "Close" : "Cancel"}
                   </Button>
                 </div>
               </form>
