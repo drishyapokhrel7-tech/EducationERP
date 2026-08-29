@@ -62,10 +62,7 @@ interface NavGroup {
 const NAV_GROUPS: NavGroup[] = [
   {
     label: "Organization",
-    items: [
-      { href: "/dashboard/org-structure", label: "Org structure", icon: Network },
-      { href: "/dashboard/roles-permissions", label: "Roles & Permissions", icon: Shield },
-    ],
+    items: [{ href: "/dashboard/org-structure", label: "Org structure", icon: Network }],
   },
   {
     label: "People",
@@ -97,7 +94,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/dashboard/assignments", label: "Assignments", icon: ClipboardCheck },
       { href: "/dashboard/knowledge-checks", label: "Knowledge Checks", icon: ListChecks },
-      { href: "/dashboard/exam-setup", label: "Exam Setup", icon: FileQuestion },
+      { href: "/dashboard/exam-setup", label: "Exam Catalog", icon: FileQuestion },
       { href: "/dashboard/exams", label: "Exams", icon: ScrollText },
       { href: "/dashboard/learning-dashboards", label: "Learning Dashboards", icon: LayoutPanelTop },
     ],
@@ -124,6 +121,14 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/dashboard/cameras", label: "Cameras", icon: Camera },
     ],
   },
+  // Split out of "Organization" — Org structure is set up once, early;
+  // Roles & Permissions is managed on an ongoing basis, not part of
+  // that same initial setup step, so the two didn't belong in one
+  // group together (UX audit finding).
+  {
+    label: "Administration",
+    items: [{ href: "/dashboard/roles-permissions", label: "Roles & Permissions", icon: Shield }],
+  },
   {
     label: "Alumni & Career",
     items: [{ href: "/dashboard/alumni", label: "Alumni", icon: Award }],
@@ -136,6 +141,21 @@ const NAV_GROUPS: NavGroup[] = [
 
 function isActivePath(pathname: string | null, href: string) {
   return href === "/dashboard" ? pathname === href : pathname === href || pathname?.startsWith(`${href}/`);
+}
+
+// A collapsed group re-expanding on every single page navigation was
+// its own UX audit finding — this persists the per-viewer choice
+// across page loads, same "browser-local, per-viewer convenience"
+// class of state as everything else this app keeps in localStorage.
+const NAV_GROUPS_STORAGE_KEY = "education-erp.nav-groups-open";
+
+function loadStoredOpenGroups(): Record<string, boolean> | null {
+  try {
+    const raw = window.localStorage.getItem(NAV_GROUPS_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, boolean>) : null;
+  } catch {
+    return null;
+  }
 }
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
@@ -158,6 +178,28 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   // read — see comment above for why this needs to exist at all.
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => setMounted(true), []);
+
+  // Same one-shot post-hydration read as `mounted` above — localStorage
+  // doesn't exist during SSR, so this can't run until the client has
+  // actually mounted.
+  useEffect(() => {
+    const stored = loadStoredOpenGroups();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (stored) setOpenGroups((prev) => ({ ...prev, ...stored }));
+  }, []);
+
+  function toggleGroup(label: string) {
+    setOpenGroups((prev) => {
+      const next = { ...prev, [label]: !(prev[label] ?? true) };
+      try {
+        window.localStorage.setItem(NAV_GROUPS_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        // Storage unavailable (private browsing, quota) — the toggle
+        // still works for this page view, it just won't persist.
+      }
+      return next;
+    });
+  }
 
   useEffect(() => {
     if (mounted && !user) {
@@ -201,7 +243,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               <div key={group.label} className="mt-2">
                 <button
                   type="button"
-                  onClick={() => setOpenGroups((prev) => ({ ...prev, [group.label]: !isOpen }))}
+                  onClick={() => toggleGroup(group.label)}
                   className="text-sidebar-foreground/60 hover:text-sidebar-foreground flex w-full items-center justify-between px-3 py-1 text-xs font-semibold tracking-wide uppercase"
                 >
                   {group.label}
