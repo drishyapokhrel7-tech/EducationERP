@@ -5,7 +5,9 @@ import { UpdateRoomDto } from "./dto/update-room.dto";
 import { CreatePeriodDto } from "./dto/create-period.dto";
 import { UpdatePeriodDto } from "./dto/update-period.dto";
 import { CreateTeachingAssignmentDto } from "./dto/create-teaching-assignment.dto";
+import { UpdateTeachingAssignmentDto } from "./dto/update-teaching-assignment.dto";
 import { CreateClassScheduleDto } from "./dto/create-class-schedule.dto";
+import { UpdateClassScheduleDto } from "./dto/update-class-schedule.dto";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
@@ -80,6 +82,22 @@ export class TimetableController {
     return this.timetable.createTeachingAssignment(user.organizationId, dto);
   }
 
+  @Patch("teaching-assignments/:id")
+  @RequirePermissions("teaching_assignment:update")
+  updateTeachingAssignment(
+    @CurrentUser() user: JwtPayload,
+    @Param("id") id: string,
+    @Body() dto: UpdateTeachingAssignmentDto,
+  ) {
+    return this.timetable.updateTeachingAssignment(user.organizationId, id, dto);
+  }
+
+  @Delete("teaching-assignments/:id")
+  @RequirePermissions("teaching_assignment:delete")
+  deleteTeachingAssignment(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.timetable.deleteTeachingAssignment(user.organizationId, id);
+  }
+
   @Get("class-schedules")
   @RequirePermissions("class_schedule:view")
   listClassSchedules(@CurrentUser() user: JwtPayload) {
@@ -90,5 +108,17 @@ export class TimetableController {
   @RequirePermissions("class_schedule:create")
   createClassSchedule(@CurrentUser() user: JwtPayload, @Body() dto: CreateClassScheduleDto) {
     return this.timetable.createClassSchedule(user.organizationId, dto);
+  }
+
+  @Patch("class-schedules/:id")
+  @RequirePermissions("class_schedule:update")
+  updateClassSchedule(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: UpdateClassScheduleDto) {
+    return this.timetable.updateClassSchedule(user.organizationId, id, dto);
+  }
+
+  @Delete("class-schedules/:id")
+  @RequirePermissions("class_schedule:delete")
+  deleteClassSchedule(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.timetable.deleteClassSchedule(user.organizationId, id);
   }
 }

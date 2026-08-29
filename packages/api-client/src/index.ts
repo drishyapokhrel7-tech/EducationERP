@@ -91,6 +91,8 @@ import type {
   CreatePeriodInput,
   TeachingAssignment,
   CreateTeachingAssignmentInput,
+  UpdateTeachingAssignmentInput,
+  UpdateClassScheduleInput,
   ClassSchedule,
   CreateClassScheduleInput,
   AttendanceSession,
@@ -802,6 +804,13 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         method: "POST",
         body: JSON.stringify(input),
       }),
+    updateTeachingAssignment: (id: string, input: UpdateTeachingAssignmentInput) =>
+      request<TeachingAssignment>(`/organizations/me/teaching-assignments/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      }),
+    deleteTeachingAssignment: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/teaching-assignments/${id}`, { method: "DELETE" }),
 
     listClassSchedules: () => request<ClassSchedule[]>("/organizations/me/class-schedules"),
     createClassSchedule: (input: CreateClassScheduleInput) =>
@@ -809,6 +818,13 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         method: "POST",
         body: JSON.stringify(input),
       }),
+    updateClassSchedule: (id: string, input: UpdateClassScheduleInput) =>
+      request<ClassSchedule>(`/organizations/me/class-schedules/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      }),
+    deleteClassSchedule: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/class-schedules/${id}`, { method: "DELETE" }),
 
     listAttendanceSessions: () => request<AttendanceSession[]>("/organizations/me/attendance-sessions"),
     createAttendanceSession: (input: CreateAttendanceSessionInput) =>

@@ -62,6 +62,25 @@ export default function TimetablePage() {
     periodId: "",
     dayOfWeek: "",
   });
+  const [editingAssignmentId, setEditingAssignmentId] = useState<string | null>(null);
+  const [editAssignmentForm, setEditAssignmentForm] = useState({
+    employeeId: "",
+    subjectId: "",
+    sectionId: "",
+    termId: "",
+  });
+  const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
+  const [editScheduleForm, setEditScheduleForm] = useState({
+    teachingAssignmentId: "",
+    roomId: "",
+    periodId: "",
+    dayOfWeek: "",
+  });
+  // A real day×period grid (audit finding #15) needs one section
+  // picked at a time to disambiguate cells — "no section chosen"
+  // falls back to the flat list below, which stays useful for an
+  // admin auditing every entry across sections at once.
+  const [gridSectionId, setGridSectionId] = useState("");
 
 
   return (
@@ -465,16 +484,113 @@ export default function TimetablePage() {
         emptyLabel="No teaching assignments yet."
         items={teachingAssignments.data}
         renderItem={(a: {
+          id: string;
+          employeeId: string;
+          subjectId: string;
+          sectionId: string;
+          termId: string;
           employee: { firstName: string; lastName: string };
           subject: { name: string };
           section: { name: string };
           term: { name: string };
         }) => (
-          <span>
-            {a.employee.firstName} {a.employee.lastName} teaches {a.subject.name} to{" "}
-            {a.section.name} <span className="text-muted-foreground">({a.term.name})</span>
-          </span>
+          <div className="flex items-center justify-between gap-2">
+            <span>
+              {a.employee.firstName} {a.employee.lastName} teaches {a.subject.name} to{" "}
+              {a.section.name} <span className="text-muted-foreground">({a.term.name})</span>
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setEditingAssignmentId(a.id);
+                  setEditAssignmentForm({
+                    employeeId: a.employeeId,
+                    subjectId: a.subjectId,
+                    sectionId: a.sectionId,
+                    termId: a.termId,
+                  });
+                }}
+              >
+                Edit
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                onClick={() => submitDelete(() => api.deleteTeachingAssignment(a.id), () => teachingAssignments.mutate())}
+              >
+                Delete
+              </Button>
+            </div>
+          </div>
         )}
+        footer={
+          editingAssignmentId ? (
+            <form
+              className="flex flex-wrap items-end gap-3 rounded-md border p-2"
+              onSubmit={(e: FormEvent) => {
+                e.preventDefault();
+                submitAction(
+                  () => api.updateTeachingAssignment(editingAssignmentId, editAssignmentForm),
+                  () => {
+                    setEditingAssignmentId(null);
+                    teachingAssignments.mutate();
+                  },
+                );
+              }}
+            >
+              <div className="space-y-2">
+                <Label className="text-xs">Teacher</Label>
+                <NativeSelect
+                  className="w-40"
+                  placeholder="Select teacher"
+                  value={editAssignmentForm.employeeId}
+                  onChange={(v) => setEditAssignmentForm((f) => ({ ...f, employeeId: v }))}
+                  options={(employees.data ?? []).map((e) => ({ value: e.id, label: `${e.firstName} ${e.lastName}` }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs">Subject</Label>
+                <NativeSelect
+                  className="w-36"
+                  placeholder="Select subject"
+                  value={editAssignmentForm.subjectId}
+                  onChange={(v) => setEditAssignmentForm((f) => ({ ...f, subjectId: v }))}
+                  options={(subjects.data ?? []).map((s) => ({ value: s.id, label: s.name }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs">Section</Label>
+                <NativeSelect
+                  className="w-36"
+                  placeholder="Select section"
+                  value={editAssignmentForm.sectionId}
+                  onChange={(v) => setEditAssignmentForm((f) => ({ ...f, sectionId: v }))}
+                  options={(sections.data ?? []).map((s) => ({ value: s.id, label: s.name }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs">Term</Label>
+                <NativeSelect
+                  className="w-36"
+                  placeholder="Select term"
+                  value={editAssignmentForm.termId}
+                  onChange={(v) => setEditAssignmentForm((f) => ({ ...f, termId: v }))}
+                  options={(terms.data ?? []).map((t) => ({ value: t.id, label: t.name }))}
+                />
+              </div>
+              <Button type="submit" size="sm">
+                Save
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setEditingAssignmentId(null)}>
+                Cancel
+              </Button>
+            </form>
+          ) : null
+        }
       >
         <form
           className="flex flex-wrap items-end gap-3"
@@ -551,6 +667,11 @@ export default function TimetablePage() {
         emptyLabel="No schedule entries yet."
         items={classSchedules.data}
         renderItem={(c: {
+          id: string;
+          sectionId: string;
+          roomId: string;
+          periodId: string;
+          teachingAssignmentId: string;
           dayOfWeek: number;
           period: { name: string; startTime: string; endTime: string };
           room: { name: string };
@@ -558,13 +679,200 @@ export default function TimetablePage() {
           teacher: { firstName: string; lastName: string };
           teachingAssignment: { subject: { name: string } };
         }) => (
-          <span>
-            {DAYS.find((d) => d.value === c.dayOfWeek)?.label} · {c.period.name} (
-            {c.period.startTime}–{c.period.endTime}) — {c.teachingAssignment.subject.name} for{" "}
-            {c.section.name} with {c.teacher.firstName} {c.teacher.lastName} in {c.room.name}
-          </span>
+          <div className="flex items-center justify-between gap-2">
+            <span>
+              {DAYS.find((d) => d.value === c.dayOfWeek)?.label} · {c.period.name} (
+              {c.period.startTime}–{c.period.endTime}) — {c.teachingAssignment.subject.name} for{" "}
+              {c.section.name} with {c.teacher.firstName} {c.teacher.lastName} in {c.room.name}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setEditingScheduleId(c.id);
+                  setEditScheduleForm({
+                    teachingAssignmentId: c.teachingAssignmentId,
+                    roomId: c.roomId,
+                    periodId: c.periodId,
+                    dayOfWeek: String(c.dayOfWeek),
+                  });
+                }}
+              >
+                Edit
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                onClick={() => submitDelete(() => api.deleteClassSchedule(c.id), () => classSchedules.mutate())}
+              >
+                Delete
+              </Button>
+            </div>
+          </div>
         )}
+        footer={
+          editingScheduleId ? (
+            <form
+              className="flex flex-wrap items-end gap-3 rounded-md border p-2"
+              onSubmit={(e: FormEvent) => {
+                e.preventDefault();
+                submitAction(
+                  () =>
+                    api.updateClassSchedule(editingScheduleId, {
+                      teachingAssignmentId: editScheduleForm.teachingAssignmentId,
+                      roomId: editScheduleForm.roomId,
+                      periodId: editScheduleForm.periodId,
+                      dayOfWeek: Number(editScheduleForm.dayOfWeek),
+                    }),
+                  () => {
+                    setEditingScheduleId(null);
+                    classSchedules.mutate();
+                  },
+                );
+              }}
+            >
+              <div className="space-y-2">
+                <Label className="text-xs">Teaching assignment</Label>
+                <NativeSelect
+                  className="w-56"
+                  placeholder="Select assignment"
+                  value={editScheduleForm.teachingAssignmentId}
+                  onChange={(v) => setEditScheduleForm((f) => ({ ...f, teachingAssignmentId: v }))}
+                  options={(teachingAssignments.data ?? []).map((a) => ({
+                    value: a.id,
+                    label: `${a.subject.name} · ${a.section.name} · ${a.employee.firstName} ${a.employee.lastName}`,
+                  }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs">Day</Label>
+                <NativeSelect
+                  className="w-32"
+                  placeholder="Select day"
+                  value={editScheduleForm.dayOfWeek}
+                  onChange={(v) => setEditScheduleForm((f) => ({ ...f, dayOfWeek: v }))}
+                  options={DAYS.map((d) => ({ value: String(d.value), label: d.label }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs">Period</Label>
+                <NativeSelect
+                  className="w-32"
+                  placeholder="Select period"
+                  value={editScheduleForm.periodId}
+                  onChange={(v) => setEditScheduleForm((f) => ({ ...f, periodId: v }))}
+                  options={(periods.data ?? []).map((p) => ({ value: p.id, label: p.name }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs">Room</Label>
+                <NativeSelect
+                  className="w-32"
+                  placeholder="Select room"
+                  value={editScheduleForm.roomId}
+                  onChange={(v) => setEditScheduleForm((f) => ({ ...f, roomId: v }))}
+                  options={(rooms.data ?? []).map((r) => ({ value: r.id, label: r.name }))}
+                />
+              </div>
+              <Button type="submit" size="sm">
+                Save
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setEditingScheduleId(null)}>
+                Cancel
+              </Button>
+            </form>
+          ) : null
+        }
       >
+        <div className="space-y-2">
+          <Label className="text-xs">View as a grid — pick a section</Label>
+          <NativeSelect
+            className="w-56"
+            placeholder="No section selected"
+            value={gridSectionId}
+            onChange={setGridSectionId}
+            options={(sections.data ?? []).map((s) => ({ value: s.id, label: s.name }))}
+          />
+        </div>
+
+        {gridSectionId ? (
+          <div className="overflow-x-auto rounded border">
+            <table className="w-full border-collapse text-xs">
+              <thead className="bg-muted">
+                <tr>
+                  <th className="border p-2 text-left">Period</th>
+                  {DAYS.map((d) => (
+                    <th key={d.value} className="border p-2 text-center">
+                      {d.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {[...(periods.data ?? [])]
+                  .sort((a, b) => a.sequence - b.sequence)
+                  .map((period) => (
+                    <tr key={period.id}>
+                      <td className="border p-2 whitespace-nowrap">
+                        {period.name}
+                        <div className="text-muted-foreground">
+                          {period.startTime}–{period.endTime}
+                        </div>
+                      </td>
+                      {DAYS.map((day) => {
+                        const entry = (classSchedules.data ?? []).find(
+                          (c) => c.sectionId === gridSectionId && c.periodId === period.id && c.dayOfWeek === day.value,
+                        );
+                        return (
+                          <td key={day.value} className="border p-1 align-top">
+                            {entry ? (
+                              <div className="space-y-1 rounded bg-accent/40 p-1">
+                                <div className="font-medium">{entry.teachingAssignment.subject.name}</div>
+                                <div className="text-muted-foreground">
+                                  {entry.teacher.firstName} {entry.teacher.lastName}
+                                </div>
+                                <div className="text-muted-foreground">{entry.room.name}</div>
+                                <div className="flex gap-1 pt-1">
+                                  <Button
+                                    type="button"
+                                    size="xs"
+                                    variant="outline"
+                                    onClick={() => {
+                                      setEditingScheduleId(entry.id);
+                                      setEditScheduleForm({
+                                        teachingAssignmentId: entry.teachingAssignmentId,
+                                        roomId: entry.roomId,
+                                        periodId: entry.periodId,
+                                        dayOfWeek: String(entry.dayOfWeek),
+                                      });
+                                    }}
+                                  >
+                                    Edit
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="xs"
+                                    variant="destructive"
+                                    onClick={() => submitDelete(() => api.deleteClassSchedule(entry.id), () => classSchedules.mutate())}
+                                  >
+                                    Delete
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : null}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+
         <form
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e: FormEvent) => {

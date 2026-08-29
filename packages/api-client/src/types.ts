@@ -788,6 +788,13 @@ export interface CreateTeachingAssignmentInput {
   termId: string;
 }
 
+export interface UpdateTeachingAssignmentInput {
+  employeeId?: string;
+  subjectId?: string;
+  sectionId?: string;
+  termId?: string;
+}
+
 export interface ClassSchedule {
   id: string;
   organizationId: string;
@@ -810,6 +817,13 @@ export interface CreateClassScheduleInput {
   roomId: string;
   periodId: string;
   dayOfWeek: number;
+}
+
+export interface UpdateClassScheduleInput {
+  teachingAssignmentId?: string;
+  roomId?: string;
+  periodId?: string;
+  dayOfWeek?: number;
 }
 
 export type AttendanceStatus = "PRESENT" | "ABSENT" | "LATE" | "EXCUSED";
