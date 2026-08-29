@@ -30,6 +30,7 @@ import {
   Award,
   ListChecks,
   LogOut,
+  Menu,
   Network,
   NotebookText,
   Shield,
@@ -167,6 +168,17 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(NAV_GROUPS.map((g) => [g.label, true])),
   );
+  // The sidebar is a fixed 256px `<aside>` with no way to hide it —
+  // on a real phone-width viewport that leaves almost no room for
+  // page content (UX audit finding). Below md, it becomes an
+  // off-canvas drawer toggled by a hamburger button in the header;
+  // at md and up this stays permanently open and the button is
+  // hidden, matching the desktop layout exactly as it was before.
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  // Closes the drawer after following a link, so navigating on mobile
+  // doesn't leave it open over the new page.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => setMobileNavOpen(false), [pathname]);
   // On a cold full-page load, useSyncExternalStore's client snapshot isn't
   // guaranteed to have replaced the (always-null) server snapshot before
   // this component's effects run — observed in practice as a real bug:
@@ -217,7 +229,18 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen flex-1">
-      <aside className="bg-sidebar text-sidebar-foreground border-sidebar-border flex w-64 flex-col border-r p-4">
+      {mobileNavOpen ? (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          onClick={() => setMobileNavOpen(false)}
+          aria-hidden="true"
+        />
+      ) : null}
+      <aside
+        className={`bg-sidebar text-sidebar-foreground border-sidebar-border fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r p-4 transition-transform duration-200 md:static md:z-auto md:translate-x-0 ${
+          mobileNavOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
         <div className="mb-6 flex items-center gap-2 px-2">
           <div className="bg-primary text-primary-foreground flex size-7 items-center justify-center rounded-lg">
             <Building2 className="size-4" />
@@ -277,8 +300,19 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       </aside>
       <div className="flex flex-1 flex-col">
         <header className="flex items-center justify-between gap-3 border-b p-4">
-          <GlobalSearchBox />
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="shrink-0 md:hidden"
+              onClick={() => setMobileNavOpen(true)}
+              aria-label="Open menu"
+            >
+              <Menu className="size-4" />
+            </Button>
+            <GlobalSearchBox />
+          </div>
+          <div className="flex shrink-0 items-center gap-3">
             <UserProfilePopover user={user} />
             <NotificationBell />
             <Button variant="ghost" size="icon" onClick={() => logout().then(() => router.push("/login"))}>
@@ -286,7 +320,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             </Button>
           </div>
         </header>
-        <main className="flex-1 p-6">{children}</main>
+        <main className="min-w-0 flex-1 overflow-x-hidden p-4 md:p-6">{children}</main>
       </div>
     </div>
   );
