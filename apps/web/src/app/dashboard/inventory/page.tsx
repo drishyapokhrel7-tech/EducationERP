@@ -5,6 +5,7 @@ import useSWR from "swr";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageSubNav } from "@/components/dashboard/page-subnav";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -71,7 +72,18 @@ export default function InventoryPage() {
         </p>
       </div>
 
-      <Card>
+      <PageSubNav
+        sections={[
+          { id: "categories", label: "Categories" },
+          { id: "suppliers", label: "Suppliers" },
+          { id: "items", label: "Items" },
+          { id: "purchase-orders", label: "Purchase orders" },
+          { id: "stock-movements", label: "Stock movements" },
+          { id: "assets", label: "Assets" },
+        ]}
+      />
+
+      <Card id="categories" className="scroll-mt-16">
         <CardHeader>
           <CardTitle>Categories</CardTitle>
         </CardHeader>
@@ -182,7 +194,7 @@ export default function InventoryPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="suppliers" className="scroll-mt-16">
         <CardHeader>
           <CardTitle>Suppliers</CardTitle>
         </CardHeader>
@@ -350,7 +362,7 @@ export default function InventoryPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="items" className="scroll-mt-16">
         <CardHeader>
           <CardTitle>Items</CardTitle>
         </CardHeader>
@@ -432,7 +444,7 @@ export default function InventoryPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="purchase-orders" className="scroll-mt-16">
         <CardHeader>
           <CardTitle>Purchase orders</CardTitle>
         </CardHeader>
@@ -629,7 +641,7 @@ export default function InventoryPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="stock-movements" className="scroll-mt-16">
         <CardHeader>
           <CardTitle>Stock movements</CardTitle>
         </CardHeader>
@@ -699,7 +711,7 @@ export default function InventoryPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="assets" className="scroll-mt-16">
         <CardHeader>
           <CardTitle>Assets</CardTitle>
         </CardHeader>

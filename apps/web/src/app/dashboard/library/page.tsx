@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { FaceCapture, type FaceCaptureResult } from "@/components/library/face-capture";
+import { PageSubNav } from "@/components/dashboard/page-subnav";
 import { libraryStaffApi, LibraryApiError, type FineCollectionReport } from "@/lib/library-api";
 import { useLibraryStaffSession, setStoredLibraryStaffSession } from "@/lib/library-auth-storage";
 import { useAuth } from "@/lib/auth-context";
@@ -274,8 +275,21 @@ export default function LibraryDashboardPage() {
             </Button>
           </div>
 
+          <PageSubNav
+            sections={[
+              { id: "catalog-categories", label: "Categories" },
+              { id: "catalog-books", label: "Books" },
+              { id: "members", label: "Members" },
+              { id: "circulation", label: "Circulation" },
+              { id: "fines", label: "Fines" },
+              { id: "reservations", label: "Reservations" },
+              { id: "reports", label: "Reports" },
+              { id: "settings", label: "Settings" },
+            ]}
+          />
+
           {/* ── Catalog ─────────────────────────────────────────────── */}
-          <Card>
+          <Card id="catalog-categories" className="scroll-mt-16">
             <CardHeader>
               <CardTitle>Catalog — Categories</CardTitle>
             </CardHeader>
@@ -320,7 +334,7 @@ export default function LibraryDashboardPage() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card id="catalog-books" className="scroll-mt-16">
             <CardHeader>
               <CardTitle>Catalog — Books</CardTitle>
             </CardHeader>
@@ -443,7 +457,7 @@ export default function LibraryDashboardPage() {
           </Card>
 
           {/* ── Members ─────────────────────────────────────────────── */}
-          <Card>
+          <Card id="members" className="scroll-mt-16">
             <CardHeader>
               <CardTitle>Members</CardTitle>
             </CardHeader>
@@ -485,7 +499,7 @@ export default function LibraryDashboardPage() {
           </Card>
 
           {/* ── Circulation ─────────────────────────────────────────── */}
-          <Card>
+          <Card id="circulation" className="scroll-mt-16">
             <CardHeader>
               <CardTitle>Circulation</CardTitle>
             </CardHeader>
@@ -607,7 +621,7 @@ export default function LibraryDashboardPage() {
           </Card>
 
           {/* ── Fines ───────────────────────────────────────────────── */}
-          <Card>
+          <Card id="fines" className="scroll-mt-16">
             <CardHeader>
               <CardTitle>Fines</CardTitle>
             </CardHeader>
@@ -652,7 +666,7 @@ export default function LibraryDashboardPage() {
           </Card>
 
           {/* ── Reservations ────────────────────────────────────────── */}
-          <Card>
+          <Card id="reservations" className="scroll-mt-16">
             <CardHeader>
               <CardTitle>Reservations</CardTitle>
             </CardHeader>
@@ -673,7 +687,7 @@ export default function LibraryDashboardPage() {
           </Card>
 
           {/* ── Reports ─────────────────────────────────────────────── */}
-          <Card>
+          <Card id="reports" className="scroll-mt-16">
             <CardHeader>
               <CardTitle>Reports</CardTitle>
             </CardHeader>
@@ -746,7 +760,7 @@ export default function LibraryDashboardPage() {
           </Card>
 
           {/* ── Settings ────────────────────────────────────────────── */}
-          <Card>
+          <Card id="settings" className="scroll-mt-16">
             <CardHeader>
               <CardTitle>Settings</CardTitle>
             </CardHeader>

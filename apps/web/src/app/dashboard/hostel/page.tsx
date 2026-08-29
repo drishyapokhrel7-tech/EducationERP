@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
+import { PageSubNav } from "@/components/dashboard/page-subnav";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
 import { submitAction, submitDelete } from "@/lib/submit-action";
@@ -231,7 +232,19 @@ export default function HostelPage() {
         </p>
       </div>
 
-      <Card>
+      <PageSubNav
+        sections={[
+          { id: "lookups", label: "Lookups" },
+          { id: "hostels", label: "Hostels" },
+          { id: "buildings", label: "Buildings" },
+          { id: "rooms-beds", label: "Rooms & beds" },
+          { id: "allocations", label: "Allocations" },
+          { id: "complaints", label: "Complaints" },
+          { id: "maintenance", label: "Maintenance" },
+        ]}
+      />
+
+      <Card id="lookups" className="scroll-mt-16">
         <CardHeader>
           <CardTitle>Lookups</CardTitle>
         </CardHeader>
@@ -250,7 +263,7 @@ export default function HostelPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="hostels" className="scroll-mt-16">
         <CardHeader>
           <CardTitle>Hostels</CardTitle>
         </CardHeader>
@@ -305,7 +318,7 @@ export default function HostelPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="buildings" className="scroll-mt-16">
         <CardHeader>
           <CardTitle>Buildings</CardTitle>
         </CardHeader>
@@ -375,7 +388,7 @@ export default function HostelPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="rooms-beds" className="scroll-mt-16">
         <CardHeader>
           <CardTitle>Rooms &amp; beds</CardTitle>
         </CardHeader>
@@ -492,7 +505,7 @@ export default function HostelPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="allocations" className="scroll-mt-16">
         <CardHeader>
           <CardTitle>Allocations</CardTitle>
         </CardHeader>
@@ -747,7 +760,7 @@ export default function HostelPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="complaints" className="scroll-mt-16">
         <CardHeader>
           <CardTitle>Complaints</CardTitle>
         </CardHeader>
@@ -812,7 +825,7 @@ export default function HostelPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="maintenance" className="scroll-mt-16">
         <CardHeader>
           <CardTitle>Maintenance</CardTitle>
         </CardHeader>

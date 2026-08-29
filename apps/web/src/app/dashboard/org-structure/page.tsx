@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { EntityCard } from "@/components/dashboard/entity-card";
+import { PageSubNav } from "@/components/dashboard/page-subnav";
 import { api } from "@/lib/api";
 import { submitAction, submitDelete } from "@/lib/submit-action";
 
@@ -100,7 +101,19 @@ export default function OrgStructurePage() {
         </p>
       </div>
 
+      <PageSubNav
+        sections={[
+          { id: "faculties", label: "Faculties" },
+          { id: "departments", label: "Departments" },
+          { id: "programs", label: "Programs" },
+          { id: "academic-years", label: "Academic years" },
+          { id: "terms", label: "Terms" },
+          { id: "sections", label: "Sections" },
+        ]}
+      />
+
       <EntityCard
+        id="faculties"
         title="Faculties"
         emptyLabel="No faculties yet."
         items={faculties.data}
@@ -240,6 +253,7 @@ export default function OrgStructurePage() {
       </EntityCard>
 
       <EntityCard
+        id="departments"
         title="Departments"
         emptyLabel="No departments yet."
         items={departments.data}
@@ -377,6 +391,7 @@ export default function OrgStructurePage() {
       </EntityCard>
 
       <EntityCard
+        id="programs"
         title="Programs"
         emptyLabel="No programs yet."
         items={programs.data}
@@ -639,6 +654,7 @@ export default function OrgStructurePage() {
       </EntityCard>
 
       <EntityCard
+        id="academic-years"
         title="Academic years"
         emptyLabel="No academic years yet."
         items={academicYears.data}
@@ -773,6 +789,7 @@ export default function OrgStructurePage() {
       </EntityCard>
 
       <EntityCard
+        id="terms"
         title="Terms"
         emptyLabel="No terms yet."
         items={terms.data}
@@ -991,6 +1008,7 @@ export default function OrgStructurePage() {
       </EntityCard>
 
       <EntityCard
+        id="sections"
         title="Sections"
         emptyLabel="No sections yet."
         items={sections.data}

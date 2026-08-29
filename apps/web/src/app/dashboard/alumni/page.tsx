@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
+import { PageSubNav } from "@/components/dashboard/page-subnav";
 import { api } from "@/lib/api";
 import type {
   ApplicationStatus,
@@ -132,7 +133,18 @@ export default function AlumniPage() {
         </p>
       </div>
 
-      <Card>
+      <PageSubNav
+        sections={[
+          { id: "alumni-profiles", label: "Alumni profiles" },
+          { id: "companies", label: "Companies" },
+          { id: "surveys", label: "Surveys" },
+          { id: "mentorship", label: "Mentorship" },
+          { id: "career-opportunities", label: "Career opportunities" },
+          { id: "career-services", label: "Career services" },
+        ]}
+      />
+
+      <Card id="alumni-profiles" className="scroll-mt-16">
         <CardHeader>
           <CardTitle>Alumni profiles</CardTitle>
         </CardHeader>
@@ -433,7 +445,7 @@ export default function AlumniPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="companies" className="scroll-mt-16">
         <CardHeader>
           <CardTitle>Companies</CardTitle>
         </CardHeader>
@@ -483,7 +495,7 @@ export default function AlumniPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="surveys" className="scroll-mt-16">
         <CardHeader>
           <CardTitle>Surveys</CardTitle>
         </CardHeader>
@@ -655,7 +667,7 @@ export default function AlumniPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="mentorship" className="scroll-mt-16">
         <CardHeader>
           <CardTitle>Mentorship</CardTitle>
         </CardHeader>
@@ -752,7 +764,7 @@ export default function AlumniPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="career-opportunities" className="scroll-mt-16">
         <CardHeader>
           <CardTitle>Career opportunities</CardTitle>
         </CardHeader>
@@ -948,7 +960,7 @@ export default function AlumniPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="career-services" className="scroll-mt-16">
         <CardHeader>
           <CardTitle>Career services</CardTitle>
         </CardHeader>

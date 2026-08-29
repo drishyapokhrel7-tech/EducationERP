@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 
 export function EntityCard({
+  id,
   title,
   titleExtra,
   emptyLabel,
@@ -11,6 +12,10 @@ export function EntityCard({
   footer,
   children,
 }: {
+  // Optional anchor id, for the sticky in-page sub-nav on this app's
+  // few genuinely long pages (PageSubNav) — every existing caller is
+  // unaffected since this is optional.
+  id?: string;
   title: string;
   // Optional content next to the title (e.g. a usage badge) — every
   // existing caller is unaffected since this is optional.
@@ -26,7 +31,10 @@ export function EntityCard({
   children: ReactNode;
 }) {
   return (
-    <Card>
+    // scroll-mt accounts for PageSubNav's sticky height on the pages
+    // that use it — a no-op for every other page, since it only
+    // matters when this card is actually jumped to by its anchor id.
+    <Card id={id} className="scroll-mt-16">
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>{title}</CardTitle>
         {titleExtra}
