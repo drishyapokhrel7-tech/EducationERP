@@ -10,6 +10,8 @@ import { CreateGuardianDto } from "./dto/create-guardian.dto";
 import { UpdateGuardianDto } from "./dto/update-guardian.dto";
 import { AttachGuardianDto } from "./dto/attach-guardian.dto";
 import { CreateEnrollmentDto } from "./dto/create-enrollment.dto";
+import { ListEnrollmentsQueryDto } from "./dto/list-enrollments.dto";
+import { UpdateEnrollmentStatusDto } from "./dto/update-enrollment-status.dto";
 import { UpdateStudentStatusDto } from "./dto/update-student-status.dto";
 import { CreateStudentLoginDto } from "./dto/create-student-login.dto";
 import { ImportResult, ImportRowError } from "./dto/import-result.dto";
@@ -329,6 +331,49 @@ export class StudentsService {
         include: { program: true, section: true, term: true },
       }),
     );
+  }
+
+  // Org-wide, filterable, paginated — the real list view the
+  // Enrollment card was missing (it previously hardcoded `items` to
+  // nothing, so the only feedback after enrolling was a toast, with
+  // no way to see who's enrolled or spot a double-enrollment).
+  listAllEnrollments(organizationId: string, filters: ListEnrollmentsQueryDto) {
+    return this.prisma.withTenant(organizationId, (tx) => {
+      const where = {
+        organizationId,
+        ...(filters.programId ? { programId: filters.programId } : {}),
+        ...(filters.termId ? { termId: filters.termId } : {}),
+        ...(filters.sectionId ? { sectionId: filters.sectionId } : {}),
+        ...(filters.status ? { status: filters.status } : {}),
+      };
+      return paginate(
+        () =>
+          tx.studentEnrollment.findMany({
+            where,
+            include: { student: true, program: true, section: true, term: true },
+            orderBy: [{ student: { firstName: "asc" } }, { student: { lastName: "asc" } }],
+            skip: ((filters.page ?? 1) - 1) * (filters.pageSize ?? 25),
+            take: filters.pageSize ?? 25,
+          }),
+        () => tx.studentEnrollment.count({ where }),
+        filters.page ?? 1,
+        filters.pageSize ?? 25,
+      );
+    });
+  }
+
+  // "Un-enroll" is a status transition, not a delete — see
+  // UpdateEnrollmentStatusDto's own comment.
+  async updateEnrollmentStatus(organizationId: string, id: string, dto: UpdateEnrollmentStatusDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const enrollment = await tx.studentEnrollment.findUnique({ where: { id } });
+      if (!enrollment || enrollment.organizationId !== organizationId) throw new NotFoundException("Enrollment not found");
+      return tx.studentEnrollment.update({
+        where: { id },
+        data: { status: dto.status },
+        include: { student: true, program: true, section: true, term: true },
+      });
+    });
   }
 
   async createEnrollment(organizationId: string, studentId: string, dto: CreateEnrollmentDto) {

@@ -24,6 +24,8 @@ import { CreateGuardianDto } from "./dto/create-guardian.dto";
 import { UpdateGuardianDto } from "./dto/update-guardian.dto";
 import { AttachGuardianDto } from "./dto/attach-guardian.dto";
 import { CreateEnrollmentDto } from "./dto/create-enrollment.dto";
+import { ListEnrollmentsQueryDto } from "./dto/list-enrollments.dto";
+import { UpdateEnrollmentStatusDto } from "./dto/update-enrollment-status.dto";
 import { UpdateStudentStatusDto } from "./dto/update-student-status.dto";
 import { CreateStudentLoginDto } from "./dto/create-student-login.dto";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
@@ -125,6 +127,24 @@ export class StudentsController {
   @RequirePermissions("student:view")
   listStatusHistory(@CurrentUser() user: JwtPayload, @Param("studentId") studentId: string) {
     return this.students.listStatusHistory(user.organizationId, studentId);
+  }
+
+  // Org-wide, not per-student — the real list view behind the
+  // Enrollment card, filterable by program/term/section/status.
+  @Get("enrollments")
+  @RequirePermissions("enrollment:view")
+  listAllEnrollments(@CurrentUser() user: JwtPayload, @Query() filters: ListEnrollmentsQueryDto) {
+    return this.students.listAllEnrollments(user.organizationId, filters);
+  }
+
+  @Patch("enrollments/:id/status")
+  @RequirePermissions("enrollment:update")
+  updateEnrollmentStatus(
+    @CurrentUser() user: JwtPayload,
+    @Param("id") id: string,
+    @Body() dto: UpdateEnrollmentStatusDto,
+  ) {
+    return this.students.updateEnrollmentStatus(user.organizationId, id, dto);
   }
 
   @Put("students/:studentId/status")

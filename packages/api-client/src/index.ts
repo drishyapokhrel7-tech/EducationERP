@@ -19,6 +19,9 @@ import type {
   UpdateEmployeeInput,
   CreateEmploymentHistoryInput,
   CreateEnrollmentInput,
+  EnrollmentListItem,
+  ListEnrollmentsParams,
+  EnrollmentStatus,
   CreateFacultyInput,
   CreateGuardianInput,
   UpdateGuardianInput,
@@ -719,6 +722,25 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       request<StudentEnrollment>(`/organizations/me/students/${studentId}/enrollments`, {
         method: "POST",
         body: JSON.stringify(input),
+      }),
+    // Org-wide, filterable, paginated — the real list behind the
+    // Enrollment card (was previously create-only, no way to see who's
+    // enrolled afterward).
+    listAllEnrollments: (params: ListEnrollmentsParams = {}) => {
+      const q = new URLSearchParams();
+      if (params.page) q.set("page", String(params.page));
+      if (params.pageSize) q.set("pageSize", String(params.pageSize));
+      if (params.programId) q.set("programId", params.programId);
+      if (params.termId) q.set("termId", params.termId);
+      if (params.sectionId) q.set("sectionId", params.sectionId);
+      if (params.status) q.set("status", params.status);
+      const qs = q.toString();
+      return request<PaginatedResult<EnrollmentListItem>>(`/organizations/me/enrollments${qs ? `?${qs}` : ""}`);
+    },
+    updateEnrollmentStatus: (id: string, status: EnrollmentStatus) =>
+      request<EnrollmentListItem>(`/organizations/me/enrollments/${id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
       }),
 
     listStatusHistory: (studentId: string) =>

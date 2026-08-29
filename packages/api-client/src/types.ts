@@ -604,6 +604,32 @@ export interface CreateEnrollmentInput {
   enrollmentDate: string;
 }
 
+// Org-wide enrollment list row (GET /organizations/me/enrollments) —
+// same fields as StudentEnrollment plus the student it belongs to,
+// since that list isn't scoped to one student's own page.
+export interface EnrollmentListItem {
+  id: string;
+  studentId: string;
+  programId: string;
+  sectionId: string;
+  termId: string;
+  enrollmentDate: string;
+  status: EnrollmentStatus;
+  student: StudentPicker;
+  program: Program;
+  section: Section;
+  term: Term;
+}
+
+export interface ListEnrollmentsParams {
+  page?: number;
+  pageSize?: number;
+  programId?: string;
+  termId?: string;
+  sectionId?: string;
+  status?: EnrollmentStatus;
+}
+
 export interface StudentStatusHistoryEntry {
   id: string;
   studentId: string;

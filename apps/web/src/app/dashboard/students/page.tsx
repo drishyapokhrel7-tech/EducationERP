@@ -21,7 +21,7 @@ import { statusVariant } from "@/lib/status-variant";
 import { useHighlightFromSearch } from "@/lib/use-highlight-from-search";
 import { isEditionLimitError } from "@/lib/edition-limit-error";
 import { submitAction, submitDelete, errorMessage } from "@/lib/submit-action";
-import { ApiError, type Edition, type ImportResult } from "@education-erp/api-client";
+import { ApiError, type Edition, type EnrollmentStatus, type ImportResult } from "@education-erp/api-client";
 
 // Matches the backend's GENDER_OPTIONS
 // (services/api/src/modules/students/students.service.ts) exactly —
@@ -133,6 +133,21 @@ export default function StudentsPage() {
     termId: "",
     enrollmentDate: "",
   });
+  // Real list view behind the Enrollment card (audit finding #09) —
+  // was previously create-only, with no way to see who's enrolled or
+  // spot a double-enrollment afterward.
+  const [enrollmentsPage, setEnrollmentsPage] = useState(1);
+  const [enrollmentFilters, setEnrollmentFilters] = useState({ programId: "", termId: "", sectionId: "", status: "" });
+  const enrollments = useSWR(["enrollments", enrollmentsPage, enrollmentFilters], () =>
+    api.listAllEnrollments({
+      page: enrollmentsPage,
+      programId: enrollmentFilters.programId || undefined,
+      termId: enrollmentFilters.termId || undefined,
+      sectionId: enrollmentFilters.sectionId || undefined,
+      status: (enrollmentFilters.status || undefined) as EnrollmentStatus | undefined,
+    }),
+  );
+  const [enrollmentStatusEdits, setEnrollmentStatusEdits] = useState<Record<string, EnrollmentStatus>>({});
 
   const importFileRef = useRef<HTMLInputElement>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
@@ -825,10 +840,132 @@ export default function StudentsPage() {
 
       <EntityCard
         title="Enrollment"
-        emptyLabel="Enroll a student in a program, section and term."
-        items={undefined}
-        renderItem={() => null}
+        emptyLabel="No enrollments match these filters."
+        items={enrollments.data?.data}
+        footer={
+          enrollments.data ? (
+            <ListPager
+              page={enrollments.data.page}
+              totalPages={enrollments.data.totalPages}
+              onPrev={() => setEnrollmentsPage((p) => Math.max(1, p - 1))}
+              onNext={() => setEnrollmentsPage((p) => p + 1)}
+            />
+          ) : null
+        }
+        renderItem={(en: {
+          id: string;
+          status: EnrollmentStatus;
+          student: { firstName: string; lastName: string; studentCode: string };
+          program: { name: string };
+          section: { name: string };
+          term: { name: string };
+        }) => (
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span>
+              {en.student.firstName} {en.student.lastName}{" "}
+              <span className="text-muted-foreground">({en.student.studentCode})</span> — {en.program.name} ·{" "}
+              {en.section.name} · {en.term.name}
+            </span>
+            <div className="flex items-center gap-2">
+              <Badge variant={statusVariant(en.status)}>{en.status}</Badge>
+              <NativeSelect
+                className="h-7 w-32"
+                placeholder="Change status"
+                value={enrollmentStatusEdits[en.id] ?? ""}
+                onChange={(v) => setEnrollmentStatusEdits((f) => ({ ...f, [en.id]: v as EnrollmentStatus }))}
+                options={[
+                  { value: "ACTIVE", label: "Active" },
+                  { value: "COMPLETED", label: "Completed" },
+                  { value: "WITHDRAWN", label: "Withdrawn" },
+                ].filter((o) => o.value !== en.status)}
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7"
+                disabled={!enrollmentStatusEdits[en.id]}
+                onClick={() =>
+                  submitAction(
+                    () => api.updateEnrollmentStatus(en.id, enrollmentStatusEdits[en.id]),
+                    () => {
+                      setEnrollmentStatusEdits((f) => {
+                        const next = { ...f };
+                        delete next[en.id];
+                        return next;
+                      });
+                      enrollments.mutate();
+                    },
+                  )
+                }
+              >
+                Update
+              </Button>
+            </div>
+          </div>
+        )}
       >
+        <div className="flex flex-wrap items-end gap-3 pb-3">
+          <div className="space-y-1">
+            <Label className="text-xs">Filter by program</Label>
+            <NativeSelect
+              className="h-8 w-40"
+              placeholder="All programs"
+              value={enrollmentFilters.programId}
+              onChange={(v) => {
+                setEnrollmentFilters((f) => ({ ...f, programId: v }));
+                setEnrollmentsPage(1);
+              }}
+              options={(programs.data ?? []).map((p) => ({ value: p.id, label: p.name }))}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Filter by term</Label>
+            <NativeSelect
+              className="h-8 w-32"
+              placeholder="All terms"
+              value={enrollmentFilters.termId}
+              onChange={(v) => {
+                setEnrollmentFilters((f) => ({ ...f, termId: v }));
+                setEnrollmentsPage(1);
+              }}
+              options={(terms.data ?? []).map((t) => ({ value: t.id, label: t.name }))}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Filter by section</Label>
+            <NativeSelect
+              className="h-8 w-32"
+              placeholder="All sections"
+              value={enrollmentFilters.sectionId}
+              onChange={(v) => {
+                setEnrollmentFilters((f) => ({ ...f, sectionId: v }));
+                setEnrollmentsPage(1);
+              }}
+              options={(sections.data ?? []).map((s) => ({ value: s.id, label: s.name }))}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Filter by status</Label>
+            <NativeSelect
+              className="h-8 w-32"
+              placeholder="All statuses"
+              value={enrollmentFilters.status}
+              onChange={(v) => {
+                setEnrollmentFilters((f) => ({ ...f, status: v }));
+                setEnrollmentsPage(1);
+              }}
+              options={[
+                { value: "ACTIVE", label: "Active" },
+                { value: "COMPLETED", label: "Completed" },
+                { value: "WITHDRAWN", label: "Withdrawn" },
+              ]}
+            />
+          </div>
+        </div>
+
+        <Separator className="mb-3" />
+
         <form
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e: FormEvent) => {
@@ -843,6 +980,7 @@ export default function StudentsPage() {
                 }),
               () => {
                 setEnrollForm((f) => ({ ...f, programId: "", sectionId: "", termId: "", enrollmentDate: "" }));
+                enrollments.mutate();
               },
             );
           }}
@@ -866,8 +1004,18 @@ export default function StudentsPage() {
               className="w-40"
               placeholder="Select program"
               value={enrollForm.programId}
-              onChange={(v) => setEnrollForm((f) => ({ ...f, programId: v }))}
+              onChange={(v) => setEnrollForm((f) => ({ ...f, programId: v, sectionId: "" }))}
               options={(programs.data ?? []).map((p) => ({ value: p.id, label: p.name }))}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Term</Label>
+            <NativeSelect
+              className="w-40"
+              placeholder="Select term"
+              value={enrollForm.termId}
+              onChange={(v) => setEnrollForm((f) => ({ ...f, termId: v, sectionId: "" }))}
+              options={(terms.data ?? []).map((t) => ({ value: t.id, label: t.name }))}
             />
           </div>
           <div className="space-y-2">
@@ -877,17 +1025,16 @@ export default function StudentsPage() {
               placeholder="Select section"
               value={enrollForm.sectionId}
               onChange={(v) => setEnrollForm((f) => ({ ...f, sectionId: v }))}
-              options={(sections.data ?? []).map((s) => ({ value: s.id, label: s.name }))}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Term</Label>
-            <NativeSelect
-              className="w-40"
-              placeholder="Select term"
-              value={enrollForm.termId}
-              onChange={(v) => setEnrollForm((f) => ({ ...f, termId: v }))}
-              options={(terms.data ?? []).map((t) => ({ value: t.id, label: t.name }))}
+              // Filtered by the chosen Program/Term above — previously
+              // this listed every section in the org regardless of
+              // what was picked (audit finding #09's own footnote).
+              options={(sections.data ?? [])
+                .filter(
+                  (s) =>
+                    (!enrollForm.programId || s.programId === enrollForm.programId) &&
+                    (!enrollForm.termId || s.termId === enrollForm.termId),
+                )
+                .map((s) => ({ value: s.id, label: s.name }))}
             />
           </div>
           <div className="space-y-2">
