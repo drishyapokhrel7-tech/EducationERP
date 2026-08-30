@@ -72,3 +72,4 @@ pnpm --filter @education-erp/api test        # unit
 pnpm --filter @education-erp/api test:e2e    # e2e, including the RLS/tenant-isolation suite
 pnpm typecheck && pnpm lint && pnpm build     # everything, via Turborepo
 ```
+# EducationERP
