@@ -150,18 +150,49 @@ creates the one cross-org `PlatformAdmin` account (see
 no self-registration endpoint for this table, so a fresh environment has
 no way into `/platform/login` without this step.
 
+## Deploying `services/ai`
+
+`services/ai/Dockerfile` builds a real, verified image (CPU-only —
+`face_model.py` pins `providers=["CPUExecutionProvider"]`, so no GPU
+host is needed) with the InsightFace model **baked in at build time**
+rather than left to download on the first real request — every
+container starts already warm. Confirmed by actually building and
+running it: `docker build`, then a container serving `GET /health` →
+`{"status":"ok"}`, rejecting an unauthenticated `POST /v1/face/embed`
+with 401, and returning a well-formed `200` with real ONNX inference
+output on a valid image. This is a persistent, long-running process —
+that's *why* it's a plain Dockerfile/host rather than a Vercel function
+like the other two services, not an oversight.
+
+Standing up real hosting is the one step only the account holder can
+do — provisioning a host and setting its secrets is outside what this
+session can perform on your behalf. Any Dockerfile-based host works;
+two that fit this project's existing lightweight/no-paid-hard-dependency
+posture (see `docs/PHASE_0_ARCHITECTURE.md` §2.3's AI-provider rule) and
+need no separate container registry:
+
+- **Railway**: `railway init`, then `railway up` from `services/ai/` —
+  it builds the Dockerfile directly and assigns a public URL. Set
+  `AI_SERVICE_API_KEY` (and optionally `FACE_MODEL_NAME`) in the
+  project's **Variables** tab.
+- **Fly.io**: `fly launch` from `services/ai/` (accept the detected
+  Dockerfile, decline a Postgres/Redis add-on — this service needs
+  neither), then `fly secrets set AI_SERVICE_API_KEY=...`.
+
+Either way, the last step is updating `AI_SERVICE_URL` and
+`AI_SERVICE_API_KEY` in `education-erp-api`'s Vercel environment
+variables (see above) to point at the new host instead of
+`localhost:8001`, then redeploying the API.
+
 ## What's not deployed yet
 
-- **`services/ai`** (Python/FastAPI, face-match for the biometric
-  attendance feature) has no deployment configuration at all —
-  `AI_SERVICE_URL` in `services/api/.env` still points at
-  `localhost:8001` even outside local dev. This is a real, stated gap,
-  not an oversight to be silently worked around: the face-match feature
-  path (`biometric-policy`/`camera-events` modules) genuinely cannot
-  reach a real AI service in the current production deployment. Standing
-  it up is future work — likely a Docker-based host (Railway/Fly.io/a
-  small VM) rather than Vercel, since it needs a persistent process and
-  a loaded ML model, not a cold-starting serverless function.
+- **`services/ai` still has no *hosting* provisioned** — the Dockerfile
+  above is real and verified, but nobody has run it against a real
+  account yet, so `AI_SERVICE_URL` in `services/api/.env` still points
+  at `localhost:8001` even outside local dev, and the face-match
+  feature path (`biometric-policy`/`camera-events` modules) genuinely
+  cannot reach a real AI service in production today. This is a stated
+  gap, not something silently worked around.
 - **Redis**, in production, needs its own managed instance (Upstash is
   the natural Vercel-ecosystem fit, given `REDIS_URL`'s plain
   connection-string shape) — not itself deployed by this repo, just a

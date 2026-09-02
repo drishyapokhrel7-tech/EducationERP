@@ -34,3 +34,16 @@ uvicorn app.main:app --port ${PORT:-8001}
 source .venv/bin/activate
 pytest
 ```
+
+## Docker
+
+`Dockerfile` builds a CPU-only image with the model baked in at build
+time (no first-request download in production — see the Dockerfile's
+own comments for why). See `../../docs/DEPLOYMENT.md` for the real
+hosting story (this service needs a persistent host, not a
+cold-starting serverless function).
+
+```bash
+docker build -t erp-ai .
+docker run -p 8001:8001 -e AI_SERVICE_API_KEY=change-me erp-ai
+```
