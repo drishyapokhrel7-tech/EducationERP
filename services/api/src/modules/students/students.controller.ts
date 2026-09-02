@@ -34,6 +34,7 @@ import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtPayload } from "../../common/auth/jwt-payload";
 import { PaginationQueryDto } from "../../common/dto/pagination.dto";
+import { IMPORT_UPLOAD_OPTIONS } from "../../common/upload-limits";
 
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller("organizations/me")
@@ -175,7 +176,7 @@ export class StudentsController {
   // uploaded filename's extension.
   @Post("students/import")
   @RequirePermissions("student:create")
-  @UseInterceptors(FileInterceptor("file"))
+  @UseInterceptors(FileInterceptor("file", IMPORT_UPLOAD_OPTIONS))
   importStudents(
     @CurrentUser() user: JwtPayload,
     @UploadedFile() file: Express.Multer.File | undefined,

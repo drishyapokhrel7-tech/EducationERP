@@ -5,6 +5,7 @@ import type { Express } from "express";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtPayload } from "../../common/auth/jwt-payload";
+import { GENERAL_UPLOAD_OPTIONS } from "../../common/upload-limits";
 import { StorageService } from "./storage.service";
 
 // Deliberately JwtAuthGuard only, no @RequirePermissions — any
@@ -21,7 +22,7 @@ export class UploadsController {
   constructor(private readonly storage: StorageService) {}
 
   @Post()
-  @UseInterceptors(FileInterceptor("file", { storage: memoryStorage() }))
+  @UseInterceptors(FileInterceptor("file", { storage: memoryStorage(), ...GENERAL_UPLOAD_OPTIONS }))
   async upload(@CurrentUser() user: JwtPayload, @UploadedFile() file?: Express.Multer.File) {
     if (!file) throw new BadRequestException("No file provided");
     return this.storage.upload(user.organizationId, {

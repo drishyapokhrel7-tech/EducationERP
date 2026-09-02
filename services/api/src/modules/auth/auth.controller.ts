@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Post, Req, UseGuards } from "@nestjs/common";
+import { Throttle } from "@nestjs/throttler";
 import type { Request } from "express";
 import { AuthService } from "./auth.service";
 import { RegisterOrganizationDto } from "./dto/register-organization.dto";
@@ -20,17 +21,28 @@ export class AuthController {
   ) {}
 
   // No auth guard — this happens before login. Reused by both the
-  // tenant login page and /platform/login.
+  // tenant login page and /platform/login. Rate-limited on top of the
+  // global default — repeatedly re-fetching a fresh challenge is
+  // itself a captcha-solving-automation signal, not just noise.
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Get("captcha")
   getCaptcha() {
     return this.captchaService.generate();
   }
 
+  // Rate-limited well below the global default — a brand-new
+  // organization is a rare, deliberate action, and this endpoint is
+  // the one place a bare POST creates a real tenant + admin account.
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post("register-organization")
   registerOrganization(@Body() dto: RegisterOrganizationDto) {
     return this.authService.registerOrganization(dto);
   }
 
+  // CAPTCHA already gates a wrong password from even reaching
+  // credential comparison — this is a second, independent layer
+  // against distributed/slow brute force, not a replacement for it.
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post("login")
   login(@Body() dto: LoginDto, @Req() req: Request) {
     return this.authService.login(dto, {
@@ -71,11 +83,16 @@ export class AuthController {
   // No auth guard — the whole point is the user is locked out.
   // Main tenant login only (matches the login page's own scope) —
   // student/staff self-service and /platform/login are unaffected.
+  // Rate-limited well below the default — also the one place a bare
+  // identifier triggers a real email send, so this doubles as spam
+  // protection for whoever's inbox that identifier belongs to.
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post("forgot-password")
   forgotPassword(@Body() dto: ForgotPasswordDto) {
     return this.authService.forgotPassword(dto.identifier, dto.captchaId, dto.captchaAnswer);
   }
 
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post("reset-password")
   async resetPassword(@Body() dto: ResetPasswordDto) {
     await this.authService.resetPassword(dto.codeId, dto.code, dto.newPassword);

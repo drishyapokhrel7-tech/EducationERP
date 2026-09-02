@@ -1,5 +1,7 @@
 import { Module } from "@nestjs/common";
+import { APP_GUARD } from "@nestjs/core";
 import { ConfigModule } from "@nestjs/config";
+import { ThrottlerModule, ThrottlerGuard } from "@nestjs/throttler";
 import { PrismaModule } from "./prisma/prisma.module";
 import { AuthModule } from "./modules/auth/auth.module";
 import { OrganizationsModule } from "./modules/organizations/organizations.module";
@@ -55,6 +57,20 @@ const queueModuleImports = process.env.REDIS_URL ? [QueueModule] : [];
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    // Global default: 300 requests/minute per IP — generous enough
+    // that a real admin session's normal parallel-fetch pages (the
+    // onboarding checklist alone fires ~17 at once) never come close,
+    // but a real limit against scripted abuse. Auth-sensitive routes
+    // (login, register, forgot-password, captcha) override this with
+    // a much tighter limit via @Throttle, on top of the CAPTCHA those
+    // same routes already require — two independent layers, not one
+    // relied on alone. In-memory storage (the default) is best-effort
+    // on serverless — it resets on a cold start and isn't shared
+    // across concurrent instances — same disclosed limitation this
+    // project's own QueueModule already has for BullMQ/Redis, which
+    // is genuinely unavailable in that environment rather than a gap
+    // to silently pretend isn't there.
+    ThrottlerModule.forRoot([{ name: "default", ttl: 60_000, limit: 300 }]),
     PrismaModule,
     AuthModule,
     OrganizationsModule,
@@ -99,5 +115,6 @@ const queueModuleImports = process.env.REDIS_URL ? [QueueModule] : [];
     ...queueModuleImports,
   ],
   controllers: [HealthController],
+  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

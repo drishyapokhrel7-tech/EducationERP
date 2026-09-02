@@ -1,0 +1,7 @@
+.vercel
+.env*
+
+# Runtime output of the local-disk storage driver (STORAGE_DRIVER=local,
+# local-disk.storage.ts) — actual uploaded files written to this dev
+# machine's disk during local testing, not source.
+uploads/

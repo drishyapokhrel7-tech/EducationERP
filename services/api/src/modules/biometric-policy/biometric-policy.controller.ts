@@ -19,6 +19,7 @@ import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtPayload } from "../../common/auth/jwt-payload";
+import { IMAGE_UPLOAD_OPTIONS } from "../../common/upload-limits";
 
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller("organizations/me")
@@ -57,7 +58,7 @@ export class BiometricPolicyController {
 
   @Post("biometric/enrollments/:id/photo")
   @RequirePermissions("biometric_enrollment:update")
-  @UseInterceptors(FileInterceptor("image"))
+  @UseInterceptors(FileInterceptor("image", IMAGE_UPLOAD_OPTIONS))
   addEnrollmentPhoto(
     @CurrentUser() user: JwtPayload,
     @Param("id") id: string,

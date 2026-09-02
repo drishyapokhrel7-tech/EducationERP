@@ -20,6 +20,7 @@ import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtPayload } from "../../common/auth/jwt-payload";
+import { IMAGE_UPLOAD_OPTIONS } from "../../common/upload-limits";
 
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller("organizations/me")
@@ -44,7 +45,7 @@ export class CameraEventsController {
   // exercises the full capture→match pipeline.
   @Post("cameras/:cameraId/events")
   @RequirePermissions("camera:create")
-  @UseInterceptors(FileInterceptor("image"))
+  @UseInterceptors(FileInterceptor("image", IMAGE_UPLOAD_OPTIONS))
   ingestEvent(
     @CurrentUser() user: JwtPayload,
     @Param("cameraId") cameraId: string,

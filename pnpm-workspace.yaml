@@ -2,6 +2,14 @@ packages:
   - "apps/*"
   - "services/*"
   - "packages/*"
+overrides:
+  # qs is a transitive dep shared by shadcn (devDependency CLI) and the
+  # real runtime chain body-parser > express > @nestjs/platform-express
+  # (services/api's own direct dependency) — genuinely reachable on
+  # every HTTP request (qs parses Express query strings). Pinned past
+  # the array-limit-bypass and isBuffer-DoS advisories flagged by
+  # `pnpm audit --prod`.
+  qs: "^6.16.0"
 allowBuilds:
   '@prisma/client': true
   '@prisma/engines': true
