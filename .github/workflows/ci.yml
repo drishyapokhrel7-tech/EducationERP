@@ -1,0 +1,64 @@
+name: CI
+
+# Phase 8 release-management gate (docs/CLAUDE_CODE_DEVELOPMENT_PLAN.docx
+# §22 Production: "...release documentation complete") — the concrete,
+# bounded piece of "release management" this repo had genuinely zero of
+# before this workflow: no .github/workflows existed at all. Scope is
+# deliberately typecheck/lint/build/unit-test only, not the e2e suite —
+# see the comment on the last step for why.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # @prisma/client's generated types are required for services/api to
+      # typecheck/build at all, and aren't produced by `pnpm install`
+      # (see services/api/package.json — no postinstall hook, by design,
+      # matching this repo's own README "Getting started" which relies
+      # on `prisma migrate dev` to generate as a side effect locally).
+      # `prisma generate` only reads schema.prisma; it needs DATABASE_URL
+      # to be *set* to satisfy the datasource block's env() reference,
+      # but never connects to it, so a dummy value is correct here, not
+      # a workaround.
+      - name: Generate Prisma client
+        working-directory: services/api
+        run: pnpm run prisma:generate
+        env:
+          DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci"
+
+      - run: pnpm -r typecheck
+      - run: pnpm -r lint
+      - run: pnpm -r build
+
+      # Unit tests only (services/api's `test` script — auth.service.spec
+      # and shuffle.spec, both fully mocked, no live database). The
+      # separate `test:e2e` suite (tenant-isolation.e2e-spec.ts and the
+      # rest) exercises real Row-Level-Security policies against a real
+      # Postgres instance with the project's actual two-role
+      # (DATABASE_URL/RUNTIME_DATABASE_URL) setup — standing that up
+      # safely in CI (a disposable Postgres service container still
+      # needs the RLS migration's runtime-role grant applied correctly)
+      # is real, separate infrastructure work, not something to fold in
+      # here silently. Run it locally before merging anything that
+      # touches auth/RLS/tenant isolation, per this project's own
+      # established practice throughout Phase 7/8.
+      - run: pnpm --filter @education-erp/api test

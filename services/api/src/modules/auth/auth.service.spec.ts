@@ -5,6 +5,9 @@ import { UnauthorizedException } from "@nestjs/common";
 import * as argon2 from "argon2";
 import { AuthService } from "./auth.service";
 import { PrismaService } from "../../prisma/prisma.service";
+import { CaptchaService } from "../captcha/captcha.service";
+import { EmailVerificationService } from "./email-verification.service";
+import { PasswordResetService } from "./password-reset.service";
 
 describe("AuthService", () => {
   let authService: AuthService;
@@ -41,6 +44,18 @@ describe("AuthService", () => {
           provide: ConfigService,
           useValue: { get: jest.fn().mockReturnValue(undefined) },
         },
+        // login() calls captcha.requireValid before any credential
+        // check (see AuthService.login) — the real CaptchaService
+        // already bypasses this under NODE_ENV=test/DISABLE_CAPTCHA,
+        // but that bypass lives inside the real implementation, which
+        // isn't constructed here; a plain always-succeeds mock is the
+        // direct equivalent for a unit test that isn't testing captcha
+        // behavior itself. emailVerification/passwordReset are
+        // constructor dependencies AuthService.login never calls, but
+        // Nest's DI still needs a provider for them to build the class.
+        { provide: CaptchaService, useValue: { requireValid: jest.fn().mockResolvedValue(undefined) } },
+        { provide: EmailVerificationService, useValue: {} },
+        { provide: PasswordResetService, useValue: {} },
       ],
     }).compile();
 
