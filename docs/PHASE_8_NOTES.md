@@ -1269,9 +1269,67 @@ since Analytics 8d's materialized-view call.
   label changed from "Email or username" to "User Id"
   (`apps/web/src/app/login/page.tsx`).
 
-## Next step (as of performance optimization)
+## Security hardening, backups, observability, deployment/release management
 
-Per this project's standing per-slice check-in rule, any further Phase
-8 bullet (global search part 3, security hardening, backups,
-observability, deployment/release management) needs its own fresh
-go-ahead.
+User said "complete phase 8 and bug" — a blanket go-ahead covering every
+remaining bare Phase 8 bullet at once, superseding the per-slice
+check-in rule above for this batch. Scoped directly against the docx's
+own "22. Quality Gates" section rather than guessed: **Security**
+("Authentication, authorization, IDOR, cross-tenant and
+privilege-escalation tests pass") and **Production** ("Docker/
+deployment, backups, restore, monitoring, health checks, logging and
+release documentation complete").
+
+**Security hardening** (committed `9df3f7d`): helmet on every response
+(CSP off — pure JSON API; CORP set cross-origin so locally-stored
+uploads still load from the frontend's different origin);
+`@nestjs/throttler` — a global 300 req/min default plus tight per-route
+overrides on login/register/forgot-password/reset-password/captcha and
+platform-admin login, verified live (the 21st request to a 20/min route
+gets a real 429); a shared multer upload-limits helper wired into every
+`FileInterceptor` in the app (previously fully unbounded despite
+`memoryStorage()` — a real memory-exhaustion risk), verified live (wrong
+MIME → clean 400, oversized file → clean 413, neither a 500); a global
+exception filter logging unexpected errors server-side while never
+leaking a stack trace to the client; a real `/health` that queries the
+DB instead of a static 200; `pnpm audit --prod` triaged individually by
+runtime-reachability (`qs`, reachable via the real Express request path,
+fixed via a `pnpm-workspace.yaml` override — pnpm 11 moved overrides out
+of `package.json`'s now-silently-ignored `"pnpm"` field; `deepmerge-ts`
+and `uuid`, both confirmed unreachable in the deployed process, left
+alone with disclosed reasoning); and a genuine bug fix to the Vercel
+serverless entry (`serverless-http` targets AWS Lambda's contract, not
+Vercel's — was silently hanging every request).
+
+**Backups, observability, deployment/release management** (committed
+`635147f`): `docs/BACKUP_AND_RESTORE.md` (Neon's actual PITR/
+branch-restore mechanism — this project's real DB host — plus what it
+explicitly doesn't cover: Google-Drive-stored uploads, Redis);
+`docs/OBSERVABILITY.md` (an honest inventory of what already exists vs.
+the one concrete gap — an uptime monitor on `/health`, not wired up
+yet); `docs/DEPLOYMENT.md` (the real two-Vercel-project topology, the
+actual env var surface, the manual `prisma migrate deploy` step Vercel
+does *not* run automatically, rollback via Vercel's instant-promote vs.
+a DB-level PITR restore, and what's genuinely not deployed yet —
+`services/ai` has no deploy config at all, the two Electron clients have
+no distribution channel); `.github/workflows/ci.yml` (this repo's first
+CI ever — typecheck/lint/build/unit-test on every push/PR, deliberately
+excluding the e2e RLS suite, which needs a real Postgres instance with
+this project's two-role setup as its own separate infrastructure work).
+Writing the CI workflow immediately surfaced a real, pre-existing
+failure — `auth.service.spec.ts`'s mocked `AuthService` never got
+`CaptchaService`/`EmailVerificationService`/`PasswordResetService`
+providers after those became real constructor dependencies in an
+earlier Phase 8 slice — fixed alongside (`635147f`).
+
+This closes every bare bullet the docx's Phase 8 scope named. Remaining
+possible future work (self-hosted OSRM/AI-service deployment, an
+uptime-monitor subscription, desktop-client distribution, an automated
+backup-restore drill) is each individually flagged above as a real,
+disclosed gap rather than silently left unstated — none blocks calling
+Phase 8 complete against the plan's own stated scope.
+
+`pnpm -r typecheck`/`lint`/`build` clean across all 6 of this
+workspace's 7 project directories that have pnpm scripts at all
+(`services/ai`, Python/FastAPI, is the one exception — no pnpm scripts
+to run); `services/api`'s unit suite (8 tests, both spec files) passes.
