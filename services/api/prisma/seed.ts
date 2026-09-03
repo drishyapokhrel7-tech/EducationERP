@@ -175,6 +175,13 @@ const RESOURCES = [
   // capability distinct from every existing per-individual
   // "dashboard" resource; only view/export are meaningfully used.
   "analytics",
+  // Phase 8 — Biometric/Device Gateway client. Folds card-binding and
+  // scan-event actions in too (closely-related concepts sharing one
+  // resource, matching payroll folding payroll_items) — unlike
+  // camera/face_match_event's two-resource split, there's no separate
+  // human-review workflow here to justify a second resource. Only
+  // create/view are meaningfully used, same as camera/biometric_*.
+  "gateway_device",
 ];
 const ACTIONS = Object.values(PermissionAction);
 

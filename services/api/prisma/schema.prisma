@@ -173,6 +173,9 @@ model Organization {
   careerApplications          CareerApplication[]
   careerServices              CareerService[]
   graduateOutcomes            GraduateOutcome[]
+  gatewayDevices              GatewayDevice[]
+  gatewayCardBindings         GatewayCardBinding[]
+  gatewayScanEvents           GatewayScanEvent[]
 
   @@map("organizations")
 }
@@ -476,6 +479,7 @@ model User {
   studentDocumentsReviewed   StudentDocument[]       @relation("StudentDocumentsReviewed")
   staffDocumentsReviewed     StaffDocument[]         @relation("StaffDocumentsReviewed")
   certificatesIssued         Certificate[]           @relation("CertificatesIssued")
+  gatewayCardBindingsMade    GatewayCardBinding[]
 
   @@index([organizationId])
   @@map("users")
@@ -767,6 +771,8 @@ model Employee {
   discussionPosts         DiscussionPost[]
   assetAssignments        AssetAssignment[]
   documents               StaffDocument[]
+  gatewayCardBindings     GatewayCardBinding[]
+  gatewayScanEvents       GatewayScanEvent[]
 
   @@unique([organizationId, employeeCode])
   @@unique([organizationId, email])
@@ -903,6 +909,8 @@ model Student {
   alumniProfile               AlumniProfile?
   alumniMentorships           AlumniMentorship[]
   careerApplications          CareerApplication[]
+  gatewayCardBindings         GatewayCardBinding[]
+  gatewayScanEvents           GatewayScanEvent[]
 
   @@unique([organizationId, studentCode])
   @@index([organizationId])
@@ -1242,11 +1250,12 @@ model StudentAttendance {
   createdAt           DateTime         @default(now())
   updatedAt           DateTime         @updatedAt
 
-  organization         Organization          @relation(fields: [organizationId], references: [id])
-  session              AttendanceSession     @relation(fields: [attendanceSessionId], references: [id])
-  student              Student               @relation(fields: [studentId], references: [id])
-  exceptions           AttendanceException[]
-  reconciledFromEvents FaceMatchEvent[]
+  organization               Organization          @relation(fields: [organizationId], references: [id])
+  session                    AttendanceSession     @relation(fields: [attendanceSessionId], references: [id])
+  student                    Student               @relation(fields: [studentId], references: [id])
+  exceptions                 AttendanceException[]
+  reconciledFromEvents       FaceMatchEvent[]
+  reconciledFromGatewayScans GatewayScanEvent[]
 
   @@unique([attendanceSessionId, studentId])
   @@index([organizationId])
@@ -1294,9 +1303,10 @@ model StaffAttendance {
   createdAt      DateTime              @default(now())
   updatedAt      DateTime              @updatedAt
 
-  organization         Organization     @relation(fields: [organizationId], references: [id])
-  employee             Employee         @relation(fields: [employeeId], references: [id])
-  reconciledFromEvents FaceMatchEvent[]
+  organization               Organization       @relation(fields: [organizationId], references: [id])
+  employee                   Employee           @relation(fields: [employeeId], references: [id])
+  reconciledFromEvents       FaceMatchEvent[]
+  reconciledFromGatewayScans GatewayScanEvent[]
 
   @@unique([employeeId, date])
   @@index([organizationId])
@@ -1509,6 +1519,103 @@ model FaceMatchEvent {
   @@index([organizationId])
   @@index([cameraEventId])
   @@map("face_match_events")
+}
+
+// ── Biometric/Device Gateway — barcode/RFID/smart-card scan-in
+// (Phase 8, docx §12 "Biometric/Device Gateway") ──────────────────────────
+// Deliberately one scan-event table, not a Camera/CameraEvent-style
+// split — a scanned code string has no extra processing step between
+// capture and lookup the way an image needs embedding, so there's no
+// "raw capture, then matched separately" boundary worth modeling here.
+// GatewayCardBinding exists specifically for the RFID/smart-card case:
+// a cheap card's UID is usually a fixed factory value with no inherent
+// relationship to the person later assigned to it (unlike a barcode,
+// which can simply be printed with an existing studentCode/
+// employeeCode) — POST .../scan tries a card binding first, then falls
+// back to treating the scanned code as a literal student/employee code.
+
+enum GatewayDeviceType {
+  BARCODE_SCANNER
+  RFID_READER
+  SMART_CARD_READER
+  FINGERPRINT_SCANNER
+  PRINTER
+}
+
+model GatewayDevice {
+  id             String            @id @default(uuid())
+  organizationId String
+  name           String
+  deviceType     GatewayDeviceType
+  location       String?
+  // Device health, same precedent as Camera.lastSeenAt (slice 6e) —
+  // set on every scan, "healthy" vs "stale" computed on read, not
+  // stored.
+  lastSeenAt     DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id])
+  scanEvents   GatewayScanEvent[]
+
+  @@index([organizationId])
+  @@map("gateway_devices")
+}
+
+model GatewayCardBinding {
+  id             String   @id @default(uuid())
+  organizationId String
+  rawCode        String
+  // Exactly one of these two is set — same XOR-by-service-layer
+  // precedent as FaceEnrollment.studentId/staffId.
+  studentId      String?
+  staffId        String?
+  boundAt        DateTime @default(now())
+  boundBy        String
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  student      Student?     @relation(fields: [studentId], references: [id])
+  staff        Employee?    @relation(fields: [staffId], references: [id])
+  boundByUser  User         @relation(fields: [boundBy], references: [id])
+
+  @@unique([organizationId, rawCode])
+  @@index([organizationId])
+  @@index([studentId])
+  @@index([staffId])
+  @@map("gateway_card_bindings")
+}
+
+enum GatewayScanResult {
+  IDENTIFIED
+  NOT_FOUND
+}
+
+model GatewayScanEvent {
+  id                            String            @id @default(uuid())
+  organizationId                String
+  deviceId                      String
+  rawCode                       String
+  matchedStudentId              String?
+  matchedEmployeeId             String?
+  result                        GatewayScanResult
+  // Attendance reconciliation, same precedent as
+  // FaceMatchEvent.reconciledStudentAttendanceId/reconciledStaffAttendanceId
+  // (slice 6d) — set only when this exact scan is what caused the
+  // row to be created, never on one that already existed.
+  reconciledStudentAttendanceId String?
+  reconciledStaffAttendanceId   String?
+  createdAt                     DateTime          @default(now())
+
+  organization                Organization       @relation(fields: [organizationId], references: [id])
+  device                      GatewayDevice      @relation(fields: [deviceId], references: [id])
+  matchedStudent              Student?           @relation(fields: [matchedStudentId], references: [id])
+  matchedEmployee             Employee?          @relation(fields: [matchedEmployeeId], references: [id])
+  reconciledStudentAttendance StudentAttendance? @relation(fields: [reconciledStudentAttendanceId], references: [id])
+  reconciledStaffAttendance   StaffAttendance?   @relation(fields: [reconciledStaffAttendanceId], references: [id])
+
+  @@index([organizationId])
+  @@index([deviceId])
+  @@map("gateway_scan_events")
 }
 
 // ── Syllabus & Lesson Plans (plan §6 "Teaching & Learning" — Phase 3

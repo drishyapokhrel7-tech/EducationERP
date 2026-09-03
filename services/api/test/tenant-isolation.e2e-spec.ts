@@ -340,6 +340,12 @@ describe("Tenant isolation (e2e)", () => {
         "alumniCertification",
         "alumniProfile",
         "alumniCompany",
+        // gatewayScanEvent references gatewayDevice (RESTRICT) and
+        // gatewayCardBinding.boundBy references users (RESTRICT) — both
+        // must clear before student/user delete further down.
+        "gatewayScanEvent",
+        "gatewayCardBinding",
+        "gatewayDevice",
         "studentEnrollment",
         "studentGuardian",
         "student",
@@ -4488,6 +4494,138 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(tokenB))
         .expect(200);
       expect(staffListB.body.find((a: { employeeId: string }) => a.employeeId === t.employeeId)).toBeUndefined();
+    }, 90000);
+
+    it("Device Gateway: scan-in identifies by literal code or card binding, reconciles attendance the same way biometric identification does, and stays tenant-isolated", async () => {
+      const t = await buildReconciliationTarget(tokenA, `GW${run}`);
+
+      const student = await request(app.getHttpServer())
+        .post("/organizations/me/students")
+        .set(...auth(tokenA))
+        .send({ firstName: "Gate", lastName: "Way", dateOfBirth: "2015-01-01", photoUrl: "https://example.com/photo.jpg" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/me/students/${student.body.id}/enrollments`)
+        .set(...auth(tokenA))
+        .send({ programId: t.programId, sectionId: t.sectionId, termId: t.termId, enrollmentDate: "2020-01-01" })
+        .expect(201);
+
+      const device = await request(app.getHttpServer())
+        .post("/organizations/me/gateway/devices")
+        .set(...auth(tokenA))
+        .send({ name: `Gateway Device ${run}`, deviceType: "BARCODE_SCANNER", location: "Main Gate" })
+        .expect(201);
+      expect(device.body.lastSeenAt).toBeNull();
+
+      // Literal studentCode, no binding needed — the simple barcode
+      // case. Also the currently-scheduled period (buildReconciliationTarget's
+      // wide-open period), so this must reconcile real attendance, with
+      // a scan-specific remarks string, not the biometric one.
+      const scan1 = await request(app.getHttpServer())
+        .post(`/organizations/me/gateway/devices/${device.body.id}/scan`)
+        .set(...auth(tokenA))
+        .send({ rawCode: student.body.studentCode })
+        .expect(201);
+      expect(scan1.body.result).toBe("IDENTIFIED");
+      expect(scan1.body.reconciled).toBe(true);
+      expect(scan1.body.event.matchedStudentId).toBe(student.body.id);
+      expect(scan1.body.event.reconciledStudentAttendanceId).toBeTruthy();
+
+      const attendanceList = await request(app.getHttpServer())
+        .get("/organizations/me/attendance-sessions")
+        .set(...auth(tokenA))
+        .expect(200);
+      const gwSession = attendanceList.body.find((s: { classScheduleId: string }) => s.classScheduleId === t.classScheduleId);
+      expect(gwSession).toBeTruthy();
+      const sessionDetail = await request(app.getHttpServer())
+        .get(`/organizations/me/attendance-sessions/${gwSession.id}`)
+        .set(...auth(tokenA))
+        .expect(200);
+      const gwMark = sessionDetail.body.studentAttendance.find(
+        (r: { studentId: string }) => r.studentId === student.body.id,
+      );
+      expect(gwMark.remarks).toContain("gateway scan");
+
+      const deviceAfter = await request(app.getHttpServer())
+        .get("/organizations/me/gateway/devices")
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(deviceAfter.body.find((d: { id: string }) => d.id === device.body.id).lastSeenAt).toBeTruthy();
+
+      // A second scan the same day must not create a duplicate
+      // reconciliation, same "augments, never replaces" guarantee as
+      // the biometric path above.
+      const scan2 = await request(app.getHttpServer())
+        .post(`/organizations/me/gateway/devices/${device.body.id}/scan`)
+        .set(...auth(tokenA))
+        .send({ rawCode: student.body.studentCode })
+        .expect(201);
+      expect(scan2.body.reconciled).toBe(false);
+
+      // An unrecognized RFID UID — not a literal code, not bound yet.
+      const rawUid = `RFID-${run}-UNBOUND`;
+      const scan3 = await request(app.getHttpServer())
+        .post(`/organizations/me/gateway/devices/${device.body.id}/scan`)
+        .set(...auth(tokenA))
+        .send({ rawCode: rawUid })
+        .expect(201);
+      expect(scan3.body.result).toBe("NOT_FOUND");
+      expect(scan3.body.event.matchedStudentId).toBeNull();
+
+      // Bind it, then re-scan — now resolves via GatewayCardBinding,
+      // not the literal-code fallback.
+      await request(app.getHttpServer())
+        .post("/organizations/me/gateway/card-bindings")
+        .set(...auth(tokenA))
+        .send({ rawCode: rawUid, studentId: student.body.id })
+        .expect(201);
+      const scan4 = await request(app.getHttpServer())
+        .post(`/organizations/me/gateway/devices/${device.body.id}/scan`)
+        .set(...auth(tokenA))
+        .send({ rawCode: rawUid })
+        .expect(201);
+      expect(scan4.body.result).toBe("IDENTIFIED");
+      expect(scan4.body.event.matchedStudentId).toBe(student.body.id);
+
+      // Binding both studentId and staffId (or neither) is rejected.
+      await request(app.getHttpServer())
+        .post("/organizations/me/gateway/card-bindings")
+        .set(...auth(tokenA))
+        .send({ rawCode: `RFID-${run}-BOTH`, studentId: student.body.id, staffId: t.employeeId })
+        .expect(400);
+      await request(app.getHttpServer())
+        .post("/organizations/me/gateway/card-bindings")
+        .set(...auth(tokenA))
+        .send({ rawCode: `RFID-${run}-NEITHER` })
+        .expect(400);
+
+      // Cross-tenant: org B never sees org A's device, and org A's now-
+      // bound rawCode resolves to nothing under org B (a different
+      // org's device scanning the identical string finds no binding
+      // and no matching student/employee code of its own).
+      const devicesB = await request(app.getHttpServer())
+        .get("/organizations/me/gateway/devices")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(devicesB.body.find((d: { id: string }) => d.id === device.body.id)).toBeUndefined();
+
+      const deviceB = await request(app.getHttpServer())
+        .post("/organizations/me/gateway/devices")
+        .set(...auth(tokenB))
+        .send({ name: `Gateway Device B ${run}`, deviceType: "RFID_READER" })
+        .expect(201);
+      const scanB = await request(app.getHttpServer())
+        .post(`/organizations/me/gateway/devices/${deviceB.body.id}/scan`)
+        .set(...auth(tokenB))
+        .send({ rawCode: rawUid })
+        .expect(201);
+      expect(scanB.body.result).toBe("NOT_FOUND");
+
+      const scanEventsB = await request(app.getHttpServer())
+        .get("/organizations/me/gateway/scan-events")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(scanEventsB.body.find((e: { rawCode: string }) => e.rawCode === student.body.studentCode)).toBeUndefined();
     }, 90000);
   });
 

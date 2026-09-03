@@ -125,6 +125,7 @@ export class CameraEventsService {
             organizationId,
             cameraEvent.capturedAt,
             match.matchedEnrollment,
+            "biometric identification",
           );
           if (reconciled.studentAttendanceId || reconciled.staffAttendanceId) {
             match = await tx.faceMatchEvent.update({
@@ -214,6 +215,7 @@ export class CameraEventsService {
           organizationId,
           match.cameraEvent.capturedAt,
           match.matchedEnrollment,
+          "biometric identification",
         );
         if (reconciled.studentAttendanceId || reconciled.staffAttendanceId) {
           updated = await tx.faceMatchEvent.update({

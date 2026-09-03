@@ -26,6 +26,7 @@ import { ExamTakingModule } from "./modules/exam-taking/exam-taking.module";
 import { BiometricPolicyModule } from "./modules/biometric-policy/biometric-policy.module";
 import { AiGatewayModule } from "./modules/ai-gateway/ai-gateway.module";
 import { CameraEventsModule } from "./modules/camera-events/camera-events.module";
+import { DeviceGatewayModule } from "./modules/device-gateway/device-gateway.module";
 import { FinanceModule } from "./modules/finance/finance.module";
 import { RbacModule } from "./modules/rbac/rbac.module";
 import { LeaveModule } from "./modules/leave/leave.module";
@@ -114,6 +115,7 @@ const queueModuleImports = process.env.REDIS_URL ? [QueueModule] : [];
     PlatformAuthModule,
     PlatformOrganizationsModule,
     HealthWatchdogModule,
+    DeviceGatewayModule,
     ...queueModuleImports,
   ],
   controllers: [HealthController],

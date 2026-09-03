@@ -1,5 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { FaceEnrollment, Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 
 const P2002_UNIQUE_CONSTRAINT = "P2002";
 
@@ -37,11 +37,25 @@ export interface ReconciliationResult {
   staffAttendanceId?: string;
 }
 
+// A structural subset of FaceEnrollment (and of GatewayScanEvent's own
+// matched-identity shape) — every existing FaceEnrollment call site
+// already satisfies this narrower type with zero changes, since the
+// only two fields ever read here are studentId/staffId.
+export interface ReconcilableIdentity {
+  studentId?: string | null;
+  staffId?: string | null;
+}
+
 /**
- * Wires a confirmed biometric identification (Phase 6 slice 6c) into the
- * existing attendance system (slice 3b) — the "Attendance Event → ERP"
- * step of the architecture doc's CCTV flow diagram. Only ever called for
- * an IDENTIFIED match, or a POSSIBLE_MATCH once a human has CONFIRMED it.
+ * Wires a confirmed identification — biometric (Phase 6 slice 6c) or,
+ * as of Phase 8's Device Gateway client, a barcode/RFID/smart-card
+ * scan — into the existing attendance system (slice 3b) — the
+ * "Attendance Event → ERP" step of the architecture doc's CCTV flow
+ * diagram, reused verbatim for the scan-in case since the actual
+ * reconciliation rule ("does this person have a real class in session
+ * right now") doesn't care how the person was identified. Only ever
+ * called for an IDENTIFIED match, or a POSSIBLE_MATCH once a human has
+ * CONFIRMED it.
  *
  * "Augments, never replaces": every write here is create-only, guarded
  * by an existence check first — an already-marked session/day is left
@@ -58,14 +72,27 @@ export class AttendanceReconciliationService {
     tx: PrismaClient,
     organizationId: string,
     capturedAt: Date,
-    enrollment: FaceEnrollment,
+    identity: ReconcilableIdentity,
+    // The remarks text on any row this creates — callers pass their
+    // own actual identification source (e.g. "biometric identification"
+    // vs "gateway scan") so the audit trail stays honest about how a
+    // student/staff member was actually marked present, rather than
+    // every caller inheriting a hardcoded "biometric" wording that
+    // would be simply wrong for a barcode/RFID-caused row.
+    source = "identification",
   ): Promise<ReconciliationResult> {
-    if (enrollment.studentId) {
-      const studentAttendanceId = await this.reconcileStudent(tx, organizationId, capturedAt, enrollment.studentId);
+    if (identity.studentId) {
+      const studentAttendanceId = await this.reconcileStudent(
+        tx,
+        organizationId,
+        capturedAt,
+        identity.studentId,
+        source,
+      );
       return studentAttendanceId ? { studentAttendanceId } : {};
     }
-    if (enrollment.staffId) {
-      const staffAttendanceId = await this.reconcileStaff(tx, organizationId, capturedAt, enrollment.staffId);
+    if (identity.staffId) {
+      const staffAttendanceId = await this.reconcileStaff(tx, organizationId, capturedAt, identity.staffId, source);
       return staffAttendanceId ? { staffAttendanceId } : {};
     }
     return {};
@@ -76,6 +103,7 @@ export class AttendanceReconciliationService {
     organizationId: string,
     capturedAt: Date,
     studentId: string,
+    source: string,
   ): Promise<string | undefined> {
     const enrollment = await tx.studentEnrollment.findFirst({
       where: {
@@ -126,7 +154,7 @@ export class AttendanceReconciliationService {
           attendanceSessionId: session.id,
           studentId,
           status: "PRESENT",
-          remarks: "Auto-marked via biometric identification",
+          remarks: `Auto-marked via ${source}`,
         },
       });
       return created.id;
@@ -142,6 +170,7 @@ export class AttendanceReconciliationService {
     organizationId: string,
     capturedAt: Date,
     employeeId: string,
+    source: string,
   ): Promise<string | undefined> {
     const date = startOfDay(capturedAt);
     const existing = await tx.staffAttendance.findUnique({ where: { employeeId_date: { employeeId, date } } });
@@ -154,7 +183,7 @@ export class AttendanceReconciliationService {
           employeeId,
           date,
           status: "PRESENT",
-          remarks: "Auto-marked via biometric identification",
+          remarks: `Auto-marked via ${source}`,
         },
       });
       return created.id;
