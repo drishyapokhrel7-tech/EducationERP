@@ -127,6 +127,55 @@ const COLLEGE_PROGRAMS = [
     creditHours: 60,
     entranceExam: "CMAT (MBS)",
   },
+  // Humanities/Arts and Education, sourced from Tribhuvan University's
+  // own faculty sites (fohss.tu.edu.np, foe.tu.edu.np) — same "real
+  // structural facts, fictional org identity" precedent as every other
+  // program above. BA is TU's real current 4-year (8-semester)
+  // syllabus (in effect since AY 2076/077, 2,000 marks total across
+  // compulsory English/Nepali/Nepal Studies plus two major and two
+  // elective subjects — not credit-hour based, same "creditHours: null"
+  // precedent as BBS above for a marks-based program). Faculty of
+  // Education runs Bachelor's on the identical 8-semester structure
+  // (confirmed via its own semester-numbered exam notices); Master's
+  // level at both faculties has moved to a semester system too (MA
+  // Economics/Sociology results and MSSEd results both published by
+  // semester on their respective sites), so MA/M.Ed. follow the same
+  // 4-semester shape as this org's existing MBS. Neither BA nor
+  // Education entry has an entrance exam per TU's own eligibility
+  // page (grade-based admission only), matching BBS's existing "None"
+  // precedent rather than BBA/BCA's entrance-exam-gated ones.
+  {
+    code: "BA",
+    name: "Bachelor of Arts",
+    level: "Bachelor",
+    durationSemesters: 8,
+    creditHours: null,
+    entranceExam: "None",
+  },
+  {
+    code: "MA",
+    name: "Master of Arts",
+    level: "Master",
+    durationSemesters: 4,
+    creditHours: null,
+    entranceExam: "None",
+  },
+  {
+    code: "BED",
+    name: "Bachelor of Education",
+    level: "Bachelor",
+    durationSemesters: 8,
+    creditHours: null,
+    entranceExam: "None",
+  },
+  {
+    code: "MED",
+    name: "Master of Education",
+    level: "Master",
+    durationSemesters: 4,
+    creditHours: null,
+    entranceExam: "None",
+  },
 ];
 
 // A handful of synthetic students (fictional names, not real people)
