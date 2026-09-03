@@ -303,3 +303,48 @@ confirmed Finance unlocked while Analytics (Ultra) still locked and the
 profile badge updated; bumped to Ultra and confirmed Analytics
 unlocked too; restored the org to Free afterward. `pnpm -r typecheck/
 lint/build` clean across all 7 pnpm-scripted workspace projects.
+
+## Backend enforcement (commit `d8ac169`)
+
+User confirmed ("yes") wanting real server-side enforcement as a
+follow-up to the frontend-only slice above — a Free-tier org's own
+valid session could otherwise still reach a gated endpoint directly.
+New `RequireEditionGuard`/`@RequireEdition()`
+(`services/api/src/common/auth/`), mirroring `PermissionsGuard`'s
+exact precedent, applied to 22 controllers — the backend equivalents
+of 20 of the 21 frontend-gated dashboard pages (Library is the one
+exception: it has no `services/api` controller at all, since it fully
+proxies to the separate `~/librarysystem` service, a cross-repo change
+disclosed as out of scope here; "Exams" alone maps to 3 controllers —
+exam-scheduling/exam-evaluation/exam-grading — which is why 22
+controllers cover 20 pages). Each mapping was checked directly against
+what the frontend page actually calls, not assumed — confirmed alumni
+and syllabus-progress self-service routes live in entirely separate
+controllers (`student-portal.controller.ts`), so `/portal` is
+untouched.
+
+**Bypasses under `NODE_ENV=test`** — same established precedent as
+`CaptchaService.requireValid` and `DeliveryProvider.sendEmail`'s Gmail
+branch: every e2e/integration test registers fresh orgs (defaulting to
+FREE) to exercise real business logic, not edition gating specifically,
+and retrofitting an edition bump into every fixture would be needlessly
+invasive. Confirmed this doesn't mask anything: ran the full e2e suite
+twice (1284s/1108s, both under this session's own severe ambient Neon
+degradation — a genuine P1017 "server has closed the connection" and
+P2028 transaction timeouts mid-run) plus one targeted subset — zero
+"got 403" across all three; every failure was a 401 (JWT TTL outlived
+by the run's own length, a well-documented class already in this file's
+history) or a Neon connectivity error, none traceable to this change.
+One unrelated flaky 400 in an Analytics fixture step spun off separately
+(`task_da64b556`) rather than chased here.
+
+Since the jest bypass means the suite structurally can't prove the
+guard actually blocks anything (identical to why `CaptchaService` has
+no jest coverage for its own real rejection behavior), verified live
+against a real dev server instead: Free-tier demo org got a real 403
+(`{"message":"This feature requires PROFESSIONAL edition or
+higher",...}`) on Leave and on Analytics, a normal 200 on the ungated
+Students endpoint; bumped to Professional — Leave unlocked, Analytics
+still 403; bumped to Ultra — Analytics and Biometric Policy both
+unlocked; restored to Free afterward. `pnpm -r typecheck/lint/build`
+clean; the unit suite (8 tests) passes unaffected.
