@@ -16,6 +16,23 @@ export function editionLimit(edition: Edition): number | null {
   return EDITION_LIMITS[edition];
 }
 
+// Backend counterpart to apps/web/src/lib/edition-features.ts's own
+// EDITION_RANK/meetsEdition (same shape, duplicated rather than
+// shared across the frontend/backend package boundary — there's no
+// existing mechanism for these two apps to share a plain constant,
+// and this is small enough that inventing one isn't worth it). Used
+// by RequireEditionGuard (../../common/auth/require-edition.guard.ts)
+// for the server-side half of module gating — the frontend's
+// FeatureLock component already prevents a normal user from ever
+// generating a request to a gated route, so this guard is a defense-
+// in-depth backstop against a client bypassing the UI (curl, a
+// modified request), not the primary UX.
+const EDITION_RANK: Record<Edition, number> = { FREE: 0, PROFESSIONAL: 1, ULTRA: 2 };
+
+export function meetsEdition(current: Edition, required: Edition): boolean {
+  return EDITION_RANK[current] >= EDITION_RANK[required];
+}
+
 // The combined-count enforcement point — called by both
 // StudentsService.createStudent and StaffService.createEmployee
 // (the two places that add to what this session's clarified scope

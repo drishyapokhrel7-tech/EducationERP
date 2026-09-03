@@ -10,7 +10,11 @@ import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtPayload } from "../../common/auth/jwt-payload";
 
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+import { RequireEditionGuard } from "../../common/auth/require-edition.guard";
+import { RequireEdition } from "../../common/auth/require-edition.decorator";
+
+@UseGuards(JwtAuthGuard, PermissionsGuard, RequireEditionGuard)
+@RequireEdition("PROFESSIONAL")
 @Controller("organizations/me")
 export class ExamSchedulingController {
   constructor(private readonly examScheduling: ExamSchedulingService) {}

@@ -19,7 +19,11 @@ import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtPayload } from "../../common/auth/jwt-payload";
 import { PaginationQueryDto } from "../../common/dto/pagination.dto";
 
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+import { RequireEditionGuard } from "../../common/auth/require-edition.guard";
+import { RequireEdition } from "../../common/auth/require-edition.decorator";
+
+@UseGuards(JwtAuthGuard, PermissionsGuard, RequireEditionGuard)
+@RequireEdition("PROFESSIONAL")
 @Controller("organizations/me")
 export class FinanceController {
   constructor(private readonly finance: FinanceService) {}
