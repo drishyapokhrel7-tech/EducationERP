@@ -407,6 +407,23 @@ export class ApiError extends Error {
   }
 }
 
+// A hung backend request — this project's own documented ambient-Neon-
+// latency failure mode, where the API's own handler can genuinely
+// block for a long time on a stuck DB connection rather than ever
+// responding — never resolves OR rejects a plain `fetch()`'s promise.
+// Without a bound, a caller waiting on that promise (an SWR hook,
+// most of the time) never gets an error either — the UI can't tell
+// "still loading" from "stuck forever" apart, no matter how long a
+// user waits. This gives every request a fixed ceiling so a truly
+// stuck one eventually rejects instead of hanging indefinitely.
+const REQUEST_TIMEOUT_MS = 30_000;
+
+function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  return fetch(url, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 export interface ApiClientOptions {
   baseUrl: string;
   getAccessToken?: () => string | null | undefined;
@@ -423,7 +440,7 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       headers.Authorization = `Bearer ${token}`;
     }
 
-    const res = await fetch(`${baseUrl}${path}`, { ...init, headers });
+    const res = await fetchWithTimeout(`${baseUrl}${path}`, { ...init, headers });
     const body = res.status === 204 ? undefined : await res.json().catch(() => undefined);
     if (!res.ok) {
       throw new ApiError(res.status, body);
@@ -438,7 +455,7 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
     const token = getAccessToken?.();
     const headers: Record<string, string> = {};
     if (token) headers.Authorization = `Bearer ${token}`;
-    const res = await fetch(`${baseUrl}${path}`, { method: "POST", body: form, headers });
+    const res = await fetchWithTimeout(`${baseUrl}${path}`, { method: "POST", body: form, headers });
     const body = await res.json().catch(() => undefined);
     if (!res.ok) throw new ApiError(res.status, body);
     return body as T;
@@ -460,7 +477,7 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
     const token = getAccessToken?.();
     const headers: Record<string, string> = {};
     if (token) headers.Authorization = `Bearer ${token}`;
-    const res = await fetch(`${baseUrl}${path}`, { headers });
+    const res = await fetchWithTimeout(`${baseUrl}${path}`, { headers });
     if (!res.ok) {
       const body = await res.json().catch(() => undefined);
       throw new ApiError(res.status, body);

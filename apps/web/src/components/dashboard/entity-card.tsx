@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/ui/button";
 
 export function EntityCard({
   id,
@@ -11,6 +12,8 @@ export function EntityCard({
   renderItem,
   footer,
   children,
+  error,
+  onRetry,
 }: {
   // Optional anchor id, for the sticky in-page sub-nav on this app's
   // few genuinely long pages (PageSubNav) — every existing caller is
@@ -29,6 +32,16 @@ export function EntityCard({
   // this is optional.
   footer?: ReactNode;
   children: ReactNode;
+  // Optional — true when the underlying SWR fetch has failed rather
+  // than still being in flight. SWR leaves `.data` `undefined` in
+  // BOTH cases, so without this a request that failed (e.g. this
+  // project's own well-documented ambient Neon latency) looked
+  // identical to one that's merely slow: a "Loading…" label that
+  // never resolved, with no explanation and no way to recover short
+  // of a full page reload. Every existing caller that doesn't pass
+  // this keeps today's exact "Loading…"-while-undefined behavior.
+  error?: boolean;
+  onRetry?: () => void;
 }) {
   return (
     // scroll-mt accounts for PageSubNav's sticky height on the pages
@@ -40,7 +53,16 @@ export function EntityCard({
         {titleExtra}
       </CardHeader>
       <CardContent className="space-y-4">
-        {items === undefined ? (
+        {items === undefined && error ? (
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-destructive text-sm">Couldn&apos;t load — try again.</p>
+            {onRetry ? (
+              <Button type="button" size="sm" variant="outline" onClick={onRetry}>
+                Retry
+              </Button>
+            ) : null}
+          </div>
+        ) : items === undefined ? (
           // Distinct from "genuinely empty" below — items is undefined
           // only while the initial fetch is still in flight (SWR's own
           // convention), so a still-loading list never claims to be

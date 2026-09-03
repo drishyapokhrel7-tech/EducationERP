@@ -18,7 +18,8 @@ import { submitAction, submitDelete } from "@/lib/submit-action";
 import type { CampusType } from "@education-erp/api-client";
 
 export default function DashboardPage() {
-  const { data: organization } = useSWR("organization", () => api.getOwnOrganization());
+  const organizationQuery = useSWR("organization", () => api.getOwnOrganization());
+  const organization = organizationQuery.data;
   const campusesQuery = useSWR("campuses", () => api.listCampuses());
   const campuses = campusesQuery.data ?? [];
   const mutateCampuses = campusesQuery.mutate;
@@ -26,11 +27,12 @@ export default function DashboardPage() {
   // smallest page size and read `.total` rather than pulling the whole
   // roster just to call `.length` on it (Phase 8 performance-
   // optimization slice).
-  const { data: studentsPage } = useSWR("students-count", () => api.listStudents({ pageSize: 1 }));
-  const { data: employeesPage } = useSWR("employees-count", () => api.listEmployees({ pageSize: 1 }));
-  const { data: applications = [] } = useSWR("admission-applications", () =>
-    api.listAdmissionApplications(),
-  );
+  const studentsQuery = useSWR("students-count", () => api.listStudents({ pageSize: 1 }));
+  const studentsPage = studentsQuery.data;
+  const employeesQuery = useSWR("employees-count", () => api.listEmployees({ pageSize: 1 }));
+  const employeesPage = employeesQuery.data;
+  const applicationsQuery = useSWR("admission-applications", () => api.listAdmissionApplications());
+  const applications = applicationsQuery.data ?? [];
   // Getting-started checklist (UX audit finding) — driven entirely by
   // real counts, same SWR keys the pages that actually own each of
   // these already use, so a session that's visited them dedupes
@@ -196,20 +198,55 @@ export default function DashboardPage() {
   return (
     <div className="max-w-5xl space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">{organization?.name ?? "Loading…"}</h1>
+        {organization ? (
+          <h1 className="text-2xl font-semibold">{organization.name}</h1>
+        ) : organizationQuery.error ? (
+          <h1 className="text-destructive text-2xl font-semibold">
+            Couldn&apos;t load —{" "}
+            <button
+              type="button"
+              onClick={() => organizationQuery.mutate()}
+              className="underline underline-offset-2"
+            >
+              retry
+            </button>
+          </h1>
+        ) : (
+          <h1 className="text-2xl font-semibold">Loading…</h1>
+        )}
         <p className="text-muted-foreground text-sm">
           Your organization&apos;s data is private — nothing here is visible to any other school on this platform.
         </p>
       </div>
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        <StatCard label={existingCampusLabel} value={campuses.length} icon={<Building2 className="size-4" />} />
-        <StatCard label="Students" value={studentsPage?.total ?? 0} icon={<GraduationCap className="size-4" />} />
-        <StatCard label="Staff" value={employeesPage?.total ?? 0} icon={<Users className="size-4" />} />
+        <StatCard
+          label={existingCampusLabel}
+          value={campuses.length}
+          icon={<Building2 className="size-4" />}
+          error={!!campusesQuery.error}
+          onRetry={() => campusesQuery.mutate()}
+        />
+        <StatCard
+          label="Students"
+          value={studentsPage?.total ?? 0}
+          icon={<GraduationCap className="size-4" />}
+          error={!!studentsQuery.error}
+          onRetry={() => studentsQuery.mutate()}
+        />
+        <StatCard
+          label="Staff"
+          value={employeesPage?.total ?? 0}
+          icon={<Users className="size-4" />}
+          error={!!employeesQuery.error}
+          onRetry={() => employeesQuery.mutate()}
+        />
         <StatCard
           label="Admissions"
           value={applications.length}
           icon={<ClipboardList className="size-4" />}
+          error={!!applicationsQuery.error}
+          onRetry={() => applicationsQuery.mutate()}
         />
       </div>
 

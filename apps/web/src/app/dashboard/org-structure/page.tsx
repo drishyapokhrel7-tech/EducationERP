@@ -117,6 +117,16 @@ export default function OrgStructurePage() {
         title="Faculties"
         emptyLabel="No faculties yet."
         items={faculties.data}
+        error={!!faculties.error}
+        // Also retries `campuses` — the Institution name shown next to
+        // each faculty below comes from that separate query, so a
+        // failure there alone (faculties itself loaded fine) would
+        // otherwise show "Unknown institution" with no way to recover
+        // it from this card's own retry.
+        onRetry={() => {
+          faculties.mutate();
+          campuses.mutate();
+        }}
         renderItem={(f: { id: string; campusId: string; name: string; code: string }) => (
           <div className="flex items-center justify-between gap-2">
             <span>
@@ -257,6 +267,15 @@ export default function OrgStructurePage() {
         title="Departments"
         emptyLabel="No departments yet."
         items={departments.data}
+        error={!!departments.error}
+        // Also retries `faculties` — the Faculty name shown next to
+        // each department below comes from that separate query (this
+        // is exactly the reported "Unknown faculty" symptom: faculties
+        // failing while departments itself loads fine).
+        onRetry={() => {
+          departments.mutate();
+          faculties.mutate();
+        }}
         renderItem={(d: { id: string; facultyId: string; name: string; code: string }) => (
           <div className="flex items-center justify-between gap-2">
             <span>
@@ -395,6 +414,8 @@ export default function OrgStructurePage() {
         title="Programs"
         emptyLabel="No programs yet."
         items={programs.data}
+        error={!!programs.error}
+        onRetry={() => programs.mutate()}
         renderItem={(p: {
           id: string;
           departmentId: string;
@@ -658,6 +679,8 @@ export default function OrgStructurePage() {
         title="Academic years"
         emptyLabel="No academic years yet."
         items={academicYears.data}
+        error={!!academicYears.error}
+        onRetry={() => academicYears.mutate()}
         renderItem={(y: { id: string; name: string; startDate: string; endDate: string }) => (
           <div className="flex items-center justify-between gap-2">
             <span>
@@ -793,6 +816,8 @@ export default function OrgStructurePage() {
         title="Terms"
         emptyLabel="No terms yet."
         items={terms.data}
+        error={!!terms.error}
+        onRetry={() => terms.mutate()}
         renderItem={(t: {
           id: string;
           academicYearId: string;
@@ -1012,6 +1037,14 @@ export default function OrgStructurePage() {
         title="Sections"
         emptyLabel="No sections yet."
         items={sections.data}
+        error={!!sections.error}
+        // Also retries `programs`/`terms` — each section below shows a
+        // program and term name sourced from those separate queries.
+        onRetry={() => {
+          sections.mutate();
+          programs.mutate();
+          terms.mutate();
+        }}
         renderItem={(s: {
           id: string;
           programId: string;
