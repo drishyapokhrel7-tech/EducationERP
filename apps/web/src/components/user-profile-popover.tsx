@@ -6,7 +6,24 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
-import type { SafeUser } from "@education-erp/api-client";
+import { useEditionStatus } from "@/lib/use-edition-status";
+import type { Edition, SafeUser } from "@education-erp/api-client";
+
+// Semantic tint per tier — not the app's own accent color, just a
+// glance-able distinction between the three, same "state encoded in
+// form as well as text" reasoning as every other status Badge in this
+// app.
+const EDITION_BADGE_VARIANT: Record<Edition, "secondary" | "info" | "success"> = {
+  FREE: "secondary",
+  PROFESSIONAL: "info",
+  ULTRA: "success",
+};
+
+const EDITION_LABEL: Record<Edition, string> = {
+  FREE: "Free",
+  PROFESSIONAL: "Professional",
+  ULTRA: "Ultra",
+};
 
 // Same click-outside dropdown pattern as NotificationBell — clicking
 // the avatar/name in the header opens a small profile card instead of
@@ -20,6 +37,12 @@ export function UserProfilePopover({ user }: { user: SafeUser }) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const me = useSWR(open ? "auth-me" : null, () => api.getMe());
+  // Unconditional (not gated behind `open` the way `me` is above) —
+  // shares the same SWR cache key every FeatureLock-wrapped page
+  // already warms, so this is very likely already cached by the time
+  // a user opens their profile, avoiding a loading flicker on the one
+  // thing this was specifically asked to show prominently.
+  const editionStatus = useEditionStatus();
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
@@ -55,6 +78,11 @@ export function UserProfilePopover({ user }: { user: SafeUser }) {
               <p className="text-sm font-medium">
                 {user.firstName} {user.lastName}
               </p>
+              {editionStatus.data ? (
+                <Badge variant={EDITION_BADGE_VARIANT[editionStatus.data.edition]} className="mt-1">
+                  {EDITION_LABEL[editionStatus.data.edition]}
+                </Badge>
+              ) : null}
             </div>
           </div>
           <dl className="mt-4 space-y-2 text-sm">

@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
+import { FeatureLock } from "@/components/feature-lock";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
 import { submitAction, submitDelete } from "@/lib/submit-action";
@@ -62,6 +63,7 @@ export default function LeavePage() {
   const [requestForm, setRequestForm] = useState({ employeeId: "", leaveTypeId: "", startDate: "", endDate: "", reason: "" });
 
   return (
+    <FeatureLock feature="leave">
     <div className="max-w-5xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Leave</h1>
@@ -464,5 +466,6 @@ export default function LeavePage() {
         </CardContent>
       </Card>
     </div>
+    </FeatureLock>
   );
 }

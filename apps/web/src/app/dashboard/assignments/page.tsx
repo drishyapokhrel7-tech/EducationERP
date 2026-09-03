@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { EntityCard } from "@/components/dashboard/entity-card";
+import { FeatureLock } from "@/components/feature-lock";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
 import { submitAction } from "@/lib/submit-action";
@@ -56,6 +57,7 @@ export default function AssignmentsPage() {
 
 
   return (
+    <FeatureLock feature="assignments">
     <div className="max-w-3xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Assignments</h1>
@@ -288,5 +290,6 @@ export default function AssignmentsPage() {
         </Card>
       ) : null}
     </div>
+    </FeatureLock>
   );
 }

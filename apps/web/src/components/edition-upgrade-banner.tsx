@@ -1,10 +1,5 @@
 import type { Edition } from "@education-erp/api-client";
-
-const NEXT_EDITION_LABEL: Record<Edition, string> = {
-  FREE: "Professional edition (max 500 records)",
-  PROFESSIONAL: "Ultra edition",
-  ULTRA: "Ultra edition", // unreachable — Ultra has no cap — kept for type completeness
-};
+import { NEXT_EDITION_LABEL } from "@/lib/edition-features";
 
 // Rendered by the Students/Staff create forms in place of the usual
 // error toast when a create attempt returns the structured

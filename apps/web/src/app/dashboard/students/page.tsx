@@ -20,6 +20,7 @@ import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
 import { useHighlightFromSearch } from "@/lib/use-highlight-from-search";
 import { isEditionLimitError } from "@/lib/edition-limit-error";
+import { useEditionStatus } from "@/lib/use-edition-status";
 import { submitAction, submitDelete, errorMessage } from "@/lib/submit-action";
 import { ApiError, type Edition, type EnrollmentStatus, type ImportResult } from "@education-erp/api-client";
 
@@ -80,7 +81,7 @@ export default function StudentsPage() {
   const programs = useSWR("programs", () => api.listPrograms());
   const sections = useSWR("sections", () => api.listSections());
   const terms = useSWR("terms", () => api.listTerms());
-  const editionStatus = useSWR("edition-status", () => api.getEditionStatus());
+  const editionStatus = useEditionStatus();
   const [editionLimitEdition, setEditionLimitEdition] = useState<Edition | null>(null);
   useHighlightFromSearch(Boolean(students.data && guardians.data));
 

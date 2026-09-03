@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { FeatureLock } from "@/components/feature-lock";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
 import { submitAction, errorMessage } from "@/lib/submit-action";
@@ -106,6 +107,7 @@ export default function PayrollPage() {
   };
 
   return (
+    <FeatureLock feature="payroll">
     <div className="max-w-5xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Payroll</h1>
@@ -566,5 +568,6 @@ export default function PayrollPage() {
         }}
       />
     </div>
+    </FeatureLock>
   );
 }

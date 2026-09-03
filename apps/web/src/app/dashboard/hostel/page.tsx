@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { PageSubNav } from "@/components/dashboard/page-subnav";
+import { FeatureLock } from "@/components/feature-lock";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
 import { submitAction, submitDelete } from "@/lib/submit-action";
@@ -222,6 +223,7 @@ export default function HostelPage() {
   const [complaintForm, setComplaintForm] = useState({ category: "", description: "" });
 
   return (
+    <FeatureLock feature="hostel">
     <div className="max-w-5xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Hostel</h1>
@@ -907,5 +909,6 @@ export default function HostelPage() {
         </CardContent>
       </Card>
     </div>
+    </FeatureLock>
   );
 }

@@ -12,6 +12,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { FaceCapture, type FaceCaptureResult } from "@/components/library/face-capture";
 import { PageSubNav } from "@/components/dashboard/page-subnav";
+import { FeatureLock } from "@/components/feature-lock";
 import { libraryStaffApi, LibraryApiError, type FineCollectionReport } from "@/lib/library-api";
 import { useLibraryStaffSession, setStoredLibraryStaffSession } from "@/lib/library-auth-storage";
 import { useAuth } from "@/lib/auth-context";
@@ -187,6 +188,7 @@ export default function LibraryDashboardPage() {
   const cfg = configForm ?? (config.data ? { finePerDayRate: config.data.finePerDayRate, faceMatchConfidenceMin: String(config.data.faceMatchConfidenceMin), loanPeriodDays: String(config.data.loanPeriodDays) } : null);
 
   return (
+    <FeatureLock feature="library">
     <div className="max-w-5xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Library</h1>
@@ -862,5 +864,6 @@ export default function LibraryDashboardPage() {
         </>
       )}
     </div>
+    </FeatureLock>
   );
 }

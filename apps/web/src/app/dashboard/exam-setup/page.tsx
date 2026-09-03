@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { EntityCard } from "@/components/dashboard/entity-card";
+import { FeatureLock } from "@/components/feature-lock";
 import { api } from "@/lib/api";
 import { submitAction, submitDelete } from "@/lib/submit-action";
 import type { GradeBand, QuestionType } from "@education-erp/api-client";
@@ -55,6 +56,7 @@ export default function ExamSetupPage() {
   const nonEmptyOptions = questionForm.options.map((o) => o.trim()).filter(Boolean);
 
   return (
+    <FeatureLock feature="exam-setup">
     <div className="max-w-3xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Exam Setup</h1>
@@ -711,5 +713,6 @@ export default function ExamSetupPage() {
         </Card>
       ) : null}
     </div>
+    </FeatureLock>
   );
 }

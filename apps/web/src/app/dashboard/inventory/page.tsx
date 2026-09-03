@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
+import { FeatureLock } from "@/components/feature-lock";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
 import { useHighlightFromSearch } from "@/lib/use-highlight-from-search";
@@ -63,6 +64,7 @@ export default function InventoryPage() {
   const selectedPo = purchaseOrders.data?.find((po) => po.id === selectedPoId);
 
   return (
+    <FeatureLock feature="inventory">
     <div className="max-w-5xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Inventory</h1>
@@ -856,5 +858,6 @@ export default function InventoryPage() {
         </CardContent>
       </Card>
     </div>
+    </FeatureLock>
   );
 }

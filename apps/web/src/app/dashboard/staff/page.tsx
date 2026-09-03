@@ -16,6 +16,7 @@ import { EditionUpgradeBanner } from "@/components/edition-upgrade-banner";
 import { api } from "@/lib/api";
 import { useHighlightFromSearch } from "@/lib/use-highlight-from-search";
 import { isEditionLimitError } from "@/lib/edition-limit-error";
+import { useEditionStatus } from "@/lib/use-edition-status";
 import { submitAction, submitDelete, errorMessage } from "@/lib/submit-action";
 import { ApiError, type Edition } from "@education-erp/api-client";
 
@@ -33,7 +34,7 @@ export default function StaffPage() {
   // that page, same pattern as the students admin list.
   const [employeesPage, setEmployeesPage] = useState(1);
   const employees = useSWR(["employees", employeesPage], () => api.listEmployees({ page: employeesPage }));
-  const editionStatus = useSWR("edition-status", () => api.getEditionStatus());
+  const editionStatus = useEditionStatus();
   const [editionLimitEdition, setEditionLimitEdition] = useState<Edition | null>(null);
   useHighlightFromSearch(Boolean(employees.data));
 

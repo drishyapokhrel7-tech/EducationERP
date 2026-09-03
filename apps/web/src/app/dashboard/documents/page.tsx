@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
+import { FeatureLock } from "@/components/feature-lock";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
 
@@ -62,6 +63,7 @@ export default function DocumentsPage() {
   const [revokeReason, setRevokeReason] = useState<Record<string, string>>({});
 
   return (
+    <FeatureLock feature="documents">
     <div className="max-w-5xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Documents &amp; Certificates</h1>
@@ -366,5 +368,6 @@ export default function DocumentsPage() {
         </CardContent>
       </Card>
     </div>
+    </FeatureLock>
   );
 }

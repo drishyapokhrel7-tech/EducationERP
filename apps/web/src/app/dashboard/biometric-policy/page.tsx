@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
+import { FeatureLock } from "@/components/feature-lock";
 import { api } from "@/lib/api";
 
 function errorMessage(err: unknown, fallback: string) {
@@ -57,6 +58,7 @@ export default function BiometricPolicyPage() {
   const [enrollForm, setEnrollForm] = useState({ personKey: "", consentGivenBy: "" });
 
   return (
+    <FeatureLock feature="biometric-policy">
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Biometric Policy</h1>
@@ -236,5 +238,6 @@ export default function BiometricPolicyPage() {
         </CardContent>
       </Card>
     </div>
+    </FeatureLock>
   );
 }

@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { PageSubNav } from "@/components/dashboard/page-subnav";
+import { FeatureLock } from "@/components/feature-lock";
 import { api } from "@/lib/api";
 import type {
   ApplicationStatus,
@@ -124,6 +125,7 @@ export default function AlumniPage() {
   const selectedProfile = profiles.data?.find((p) => p.id === selectedProfileId);
 
   return (
+    <FeatureLock feature="alumni">
     <div className="max-w-5xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Alumni &amp; Career</h1>
@@ -1032,5 +1034,6 @@ export default function AlumniPage() {
         </CardContent>
       </Card>
     </div>
+    </FeatureLock>
   );
 }
