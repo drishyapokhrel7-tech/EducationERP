@@ -249,3 +249,57 @@ capabilities.
   edition to Ultra and back to Free via the dropdown (toast
   confirmation, badge updates), and confirmed the "N of 50 used" badge
   renders correctly on `/dashboard/students` and `/dashboard/staff`.
+
+## Edition-gated dashboard features (later slice, commit `1d50b18`)
+
+User asked for "visible features based upon subscription" — this
+system, until then, only gated the combined student+staff *record
+count* above, never which *modules* an org could use at all. Extended
+via `AskUserQuestion` ("everything beyond core academics" +
+"visible but locked" — nav stays fully visible/clickable, a gated
+page's own content is replaced with an upgrade notice, not hidden and
+not a 403) plus two refinements given mid-plan: keep the record-cap
+wording ("Professional edition (max 500 records)") consistent
+everywhere edition is mentioned, and surface the org's current tier at
+the top of the profile popover, not just in the students/staff usage
+badges.
+
+**Split** — Free (ungated): dashboard home, org structure, staff,
+students, admissions, academics, attendance, roles & permissions.
+**Professional** adds: finance, leave, payroll, timetable, syllabus,
+my classes today, assignments, knowledge checks, exam catalog, exams,
+learning dashboards. **Ultra** adds: transport, hostel, library,
+inventory, communication, documents, biometric policy, cameras,
+alumni, analytics & reports.
+
+No backend/schema change — purely additive frontend, reusing the
+already-existing `Organization.edition` and `GET organizations/me/
+edition-status`. New: `apps/web/src/lib/edition-features.ts`
+(`FEATURE_MIN_EDITION` map + `meetsEdition()` + two label maps —
+`NEXT_EDITION_LABEL`, moved here from `edition-upgrade-banner.tsx`
+verbatim, and the new `EDITION_DISPLAY_NAME`, a *direct* "name this
+edition" lookup distinct from `NEXT_EDITION_LABEL`'s "name the edition
+one step up from current" — needed because a Free-tier org hitting an
+Ultra-gated feature must be told "Ultra edition," not "Professional,"
+which the other map keyed off their current tier would incorrectly
+imply is enough), `apps/web/src/lib/use-edition-status.ts` (the
+shared SWR hook, extracted from what was previously duplicated inline
+in `students/page.tsx` and `staff/page.tsx`), `apps/web/src/
+components/feature-lock.tsx` (the gate itself — wraps a page's
+existing return with zero change to that page's own logic).
+`user-profile-popover.tsx` gained a tier `Badge` at the top of the
+card. **Explicitly no backend enforcement this pass** — a UI-level
+experience only, stated plainly; an org's own valid session could
+still reach a gated endpoint directly. `/portal`, `/teacher`, the
+Electron clients, and Org structure/Roles & Permissions are all
+untouched by this slice (see the plan's own "explicitly not in this
+slice" for the reasoning on each).
+
+Verified live against a real dev server: as the demo admin on the real
+(Free-tier) demo org, confirmed Students renders normally and Finance
+locks with the nav link still visible; bumped the org to Professional
+(direct DB update, the platform admin's password wasn't on hand) and
+confirmed Finance unlocked while Analytics (Ultra) still locked and the
+profile badge updated; bumped to Ultra and confirmed Analytics
+unlocked too; restored the org to Free afterward. `pnpm -r typecheck/
+lint/build` clean across all 7 pnpm-scripted workspace projects.
