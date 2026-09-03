@@ -15,7 +15,7 @@
     "prisma:seed": "ts-node prisma/seed.ts",
     "demo:seed": "ts-node prisma/seed-demo.ts",
     "platform:seed": "ts-node prisma/seed-platform-admin.ts",
-    "vercel-build": "prisma generate"
+    "vercel-build": "prisma generate && prisma migrate deploy"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.734.0",

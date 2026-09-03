@@ -112,27 +112,29 @@ account exists:
 No request body, no headers needed — `/health` is deliberately public
 and unauthenticated (unlike the Cron watchdog above).
 
-## Database migrations — a manual step, stated plainly
+## Database migrations — run automatically as part of the build
 
-`services/api/package.json`'s `vercel-build` script is `prisma generate`
-only. **Vercel does not run `prisma migrate deploy` automatically** —
-this is a real, deliberate gap to be explicit about rather than let a
-reader assume migrations happen "somehow" on deploy:
+`services/api/package.json`'s `vercel-build` script is `prisma generate
+&& prisma migrate deploy`. This runs inside Vercel's own build
+environment for every deploy — the correct place for it, not a
+convenience: `DATABASE_URL` is marked a **Sensitive** env var on this
+project (Settings → Environment Variables → the value is genuinely
+unreadable after being set, even via `vercel env pull` — not just
+hidden in the dashboard), so a migration run from anywhere outside
+Vercel's own build/runtime context structurally cannot get at the real
+owner-level connection string at all. Baking it into `vercel-build`
+also resolves the expand/contract ordering concern for free: the
+migration runs and must succeed *before* Vercel serves any traffic
+from the new deployment, so the old code is never left running against
+a schema it doesn't expect and the new code is never live against a
+schema that hasn't migrated yet.
 
-```bash
-cd services/api
-DATABASE_URL="<production owner connection string>" pnpm exec prisma migrate deploy
-```
-
-Run this **before** deploying code that depends on the new schema (a
-new required column with no default, for instance, would break the
-still-running old code if migrated after deploy instead of before — the
-usual expand/contract migration-ordering concern, worth remembering on
-any breaking schema change even though this project hasn't needed a
-formal expand/contract split yet at its current pace of schema change).
-`prisma migrate deploy` needs the owner-level `DATABASE_URL`, not
-`RUNTIME_DATABASE_URL` — the runtime role deliberately cannot alter
-schema (see `docs/PHASE_1_NOTES.md`).
+This was originally a separate manual step (`prisma migrate deploy` run
+by hand before deploying) — changed once the Sensitive-var protection
+made that impossible to do safely from outside Vercel's own build.
+`RUNTIME_DATABASE_URL` (the non-owner, non-migration role — see
+`docs/PHASE_1_NOTES.md`) is unaffected; only `DATABASE_URL` needed this
+change.
 
 ## Deploying
 
