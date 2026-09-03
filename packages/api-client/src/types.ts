@@ -3818,3 +3818,84 @@ export interface PlatformOrganizationSummary {
   limit: number | null;
   atLimit: boolean;
 }
+
+// ── Device Gateway (Phase 8, docx §12 "Biometric/Device Gateway") ──────────
+// barcode/RFID/smart-card scan-in, used by apps/device-gateway-client.
+
+export type GatewayDeviceType =
+  | "BARCODE_SCANNER"
+  | "RFID_READER"
+  | "SMART_CARD_READER"
+  | "FINGERPRINT_SCANNER"
+  | "PRINTER";
+
+export interface RegisterGatewayDeviceInput {
+  name: string;
+  deviceType: GatewayDeviceType;
+  location?: string;
+}
+
+export interface GatewayDeviceRecord {
+  id: string;
+  organizationId: string;
+  name: string;
+  deviceType: GatewayDeviceType;
+  location: string | null;
+  // Set on every scan, same "healthy vs stale computed on read"
+  // precedent as CameraRecord.lastSeenAt.
+  lastSeenAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type GatewayScanResultValue = "IDENTIFIED" | "NOT_FOUND";
+
+export interface GatewayScanInput {
+  rawCode: string;
+}
+
+export interface GatewayScanEventRecord {
+  id: string;
+  organizationId: string;
+  deviceId: string;
+  rawCode: string;
+  matchedStudentId: string | null;
+  matchedEmployeeId: string | null;
+  result: GatewayScanResultValue;
+  reconciledStudentAttendanceId: string | null;
+  reconciledStaffAttendanceId: string | null;
+  createdAt: string;
+}
+
+// POST devices/:id/scan's response shape — not just the created event,
+// but a display-ready summary (matchedName) so a kiosk UI doesn't need
+// a second lookup to show who was just identified.
+export interface GatewayScanResult {
+  result: GatewayScanResultValue;
+  matchedName: string | null;
+  reconciled: boolean;
+  event: GatewayScanEventRecord;
+}
+
+export interface BindGatewayCardInput {
+  rawCode: string;
+  studentId?: string;
+  staffId?: string;
+}
+
+export interface GatewayCardBindingRecord {
+  id: string;
+  organizationId: string;
+  rawCode: string;
+  studentId: string | null;
+  staffId: string | null;
+  boundAt: string;
+  boundBy: string;
+}
+
+// listScanEvents' fuller shape — the recent-scans feed.
+export interface GatewayScanEvent extends GatewayScanEventRecord {
+  device: GatewayDeviceRecord;
+  matchedStudent: { id: string; firstName: string; lastName: string; studentCode: string } | null;
+  matchedEmployee: { id: string; firstName: string; lastName: string; employeeCode: string } | null;
+}

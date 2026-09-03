@@ -267,6 +267,13 @@ import type {
   Edition,
   PlatformAdminUser,
   PlatformOrganizationSummary,
+  RegisterGatewayDeviceInput,
+  GatewayDeviceRecord,
+  GatewayScanInput,
+  GatewayScanResult,
+  BindGatewayCardInput,
+  GatewayCardBindingRecord,
+  GatewayScanEvent,
   TeacherDashboard,
   StudentDashboard,
   ParentDashboard,
@@ -1946,6 +1953,26 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         method: "PATCH",
         body: JSON.stringify({ edition }),
       }),
+
+    // Device Gateway (Phase 8, docx §12) — barcode/RFID/smart-card
+    // scan-in, used by apps/device-gateway-client.
+    registerGatewayDevice: (input: RegisterGatewayDeviceInput) =>
+      request<GatewayDeviceRecord>("/organizations/me/gateway/devices", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    listGatewayDevices: () => request<GatewayDeviceRecord[]>("/organizations/me/gateway/devices"),
+    scanGatewayDevice: (deviceId: string, input: GatewayScanInput) =>
+      request<GatewayScanResult>(`/organizations/me/gateway/devices/${deviceId}/scan`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    bindGatewayCard: (input: BindGatewayCardInput) =>
+      request<GatewayCardBindingRecord>("/organizations/me/gateway/card-bindings", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    listGatewayScanEvents: () => request<GatewayScanEvent[]>("/organizations/me/gateway/scan-events"),
   };
 }
 
