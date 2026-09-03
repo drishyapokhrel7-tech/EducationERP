@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { createApiClient } from "@education-erp/api-client";
 import { apiClient, setAccessToken } from "./apiClient";
 
@@ -31,8 +32,18 @@ describe("cctv-client main-process flow (integration)", () => {
   const run = Date.now();
   const orgSlug = `cctv-client-it-${run}`;
   let cameraId: string;
-  const enrollmentFace =
-    "/private/tmp/claude-501/-Users-nepalpolicemac5-website/87a26d71-4b2c-4aaf-b1d1-16be580a0359/scratchpad/enrollment-face.jpg";
+  // A single-face crop of InsightFace's own bundled demo/test image
+  // (services/ai/tests/conftest.py's sample_image_bytes fixture reads
+  // the same source image, package-relative — not a photo added to
+  // this repo for its own sake, and not a named real individual;
+  // standard practice for exercising a CV pipeline without sourcing
+  // test imagery of our own). Cropped to exactly one face (the source
+  // is a 6-person group photo) so `toHaveLength(1)` below holds.
+  // Committed as a real repo fixture, __dirname-relative, rather than
+  // a session-scratchpad path — the previous version of this file
+  // pointed at an ephemeral tool-session directory that doesn't
+  // survive across sessions, which is what broke it.
+  const enrollmentFace = join(__dirname, "__fixtures__", "enrollment-face.jpg");
 
   beforeAll(async () => {
     const reg = await adminClient.registerOrganization({
@@ -47,11 +58,15 @@ describe("cctv-client main-process flow (integration)", () => {
 
     await adminClient.updateBiometricPolicy({ enabled: true });
 
+    // studentCode is server-generated, not client-suppliable
+    // (CreateStudentDto's own comment) — never passed in. photoUrl is
+    // mandatory at the API layer (also CreateStudentDto) — a plain
+    // placeholder is fine here, nothing in this test reads it back.
     const student = await adminClient.createStudent({
-      studentCode: `IT-STU-${run}`,
       firstName: "Test",
       lastName: "Student",
       dateOfBirth: "2015-01-01",
+      photoUrl: "https://example.com/photo.jpg",
     });
     const enrollment = await adminClient.createFaceEnrollment({ studentId: student.id, consentGivenBy: "self" });
     const photoBuffer = readFileSync(enrollmentFace);
