@@ -1333,3 +1333,133 @@ Phase 8 complete against the plan's own stated scope.
 workspace's 7 project directories that have pnpm scripts at all
 (`services/ai`, Python/FastAPI, is the one exception — no pnpm scripts
 to run); `services/api`'s unit suite (8 tests, both spec files) passes.
+
+## AI-service deployment prep + health watchdog Cron
+
+User said "do needful sequentially" — asked to work through the real
+remaining items one at a time, in order, rather than picking a single
+one. Two items:
+
+- `services/ai/Dockerfile` (commit `590d247`): a real, verified
+  CPU-only image (`face_model.py` already pins
+  `providers=["CPUExecutionProvider"]`, no GPU needed) with the
+  InsightFace model baked in at build time — actually built and run,
+  not just written: `docker build` succeeded, the container's
+  `/health` returned ok, `/v1/face/embed` correctly 401'd without/with
+  a wrong API key, and a real image produced a well-formed 200 with
+  the full ONNX pipeline running. `docs/DEPLOYMENT.md` gained a real
+  "Deploying services/ai" section (Railway/Fly.io, both Dockerfile-
+  native, no separate registry) — actual hosting still needs an
+  account only the project owner can create, stated plainly as the one
+  remaining gap.
+- `GET /internal/health-watchdog` (commit `08abe04`): a Vercel Cron-
+  triggered route, guarded fail-closed by a `CRON_SECRET` bearer token
+  (Vercel sends this automatically once the env var exists), that
+  re-runs `/health`'s own DB check and emails `ALERT_EMAIL` via the
+  already-configured Gmail integration (`DeliveryProvider` — no new
+  account) on failure. Verified live: no/wrong secret → 401, healthy →
+  200, a deliberately-simulated DB failure → 503 + server log (the
+  actual email-send branch was reviewed but not fired, to avoid
+  dispatching a real unsolicited email without the recipient's own
+  say-so). Its real, disclosed limit: a Cron job under the same
+  deployment can't detect that deployment being fully down — only an
+  internal DB-unreachable failure while the process itself is still
+  alive. `docs/DEPLOYMENT.md`'s new "Cron & uptime monitoring" section
+  documents this plus the complementary, genuine external-uptime-
+  monitor option (copy-paste-ready config) for what this watchdog
+  can't cover.
+
+## Biometric/Device Gateway Electron client
+
+Third item in the same "do needful sequentially" sequence. Investigated
+before building rather than assuming scope: of the plan's 5 named
+Electron clients (docx §12), 2 were already shipped under different
+framing than my own prior summary had tracked — `apps/cctv-client`
+(Phase 6 slice 6e) **is** the "CCTV/Attendance Client," `apps/exam-
+client` (slice 4g) **is** the "Secure Examination Client." Of the
+remaining 3, "Institution Administration Client" and "Teacher Desktop
+Client" both describe functionality the 29-page `/dashboard` and the
+1377-line `/teacher` portal already fully deliver in the browser —
+confirmed by reading both, not assumed. Per `AskUserQuestion`, the
+user had no preference on those two; skipped per my own disclosed
+recommendation (duplicated effort for no new capability, no stated
+offline-operation need). The user did confirm the third, genuinely
+unbuilt piece: **Biometric/Device Gateway** (barcode/RFID/smart-card/
+fingerprint/printer hardware adapters), explicitly deferred from 6e's
+own scope ("RFID/barcode/printer hardware adapters (even stubbed)").
+
+Went through the same `EnterPlanMode` + investigation rigor as every
+prior novel/large Electron slice (4g, 6e) — full plan preserved in
+`~/.claude/plans/wondrous-sparking-coral.md`. Backend (commit
+`3c6fb5b`): `GatewayDevice`/`GatewayCardBinding`/`GatewayScanEvent`
+tables, a new `device-gateway` module (`POST/GET devices`, `POST
+devices/:id/scan`, `POST card-bindings`, `GET scan-events`), a new
+`gateway_device` RBAC resource. `AttendanceReconciliationService.
+reconcile()` widened from a `FaceEnrollment`-typed parameter to a
+structural `{studentId?, staffId?}` subset (zero call-site behavior
+change, both existing camera-events.service.ts call sites verified to
+still pass their exact original remarks text) so a barcode/RFID scan
+reuses the identical "augments, never replaces" attendance logic a
+biometric identification already does — a real, disclosed nuance
+investigated up front: a barcode can simply be printed with an
+existing `studentCode`/`employeeCode` (no new schema needed), but a
+cheap RFID/smart-card's UID is usually a fixed factory value with no
+inherent relationship to a person, which is what `GatewayCardBinding`
+exists for. Verified live end to end against a real dev server
+(register device, scan a real student's literal code → identified +
+reconciled, an unrecognized RFID UID → NOT_FOUND, bind it → re-scan
+resolves via the binding, `lastSeenAt` updates) and via a new
+`tenant-isolation.e2e-spec.ts` describe block covering the same flow
+plus binding-XOR-validation and cross-tenant negative cases.
+
+Electron client (commit `714ef90`): `apps/device-gateway-client`, this
+project's third Electron app, mirroring `cctv-client`'s exact
+scaffolding rather than inventing new conventions —
+`packages/electron-shared` deferred a third time, same disclosed
+reasoning as slices 4g/6e. Same `safeStorage`-encrypted-refresh-token +
+`RefreshScheduler` unattended-station pattern as cctv-client (copied
+verbatim, including its unit tests), resizable (not kiosk) window. The
+scan input itself is an always-focused plain `<input>` submitting on
+Enter — the standard way a USB-HID-keyboard-wedge device (what the
+overwhelming majority of commodity barcode/RFID/smart-card readers
+actually are) is consumed by kiosk software, needing zero vendor SDK;
+no interkeystroke-timing disambiguation from human typing, a
+deliberate scope line for a station whose input is only ever supposed
+to receive scanner input. Printing goes through a short-lived,
+offscreen `BrowserWindow` + Electron's own (callback-based in this
+Electron version — checked the actual `.d.ts` before assuming
+otherwise) `print()`, no vendor SDK. Fingerprint capture is a
+documented `FingerprintAdapter` interface + a `NoopFingerprintAdapter`
+— the plan's own "must use adapters, must not hard-code a vendor"
+requirement honored architecturally, since real vendor SDKs for this
+device class are overwhelmingly native/Windows-only with no hardware
+or license available here to build and verify against; stated as a
+disclosed gap, the same class of thing as cctv-client's own
+un-verifiable webcam capture, not a broken promise.
+
+Verified: `pnpm -r typecheck`/`lint`/`build` clean across all 7 pnpm-
+scripted workspace projects; `RefreshScheduler` unit tests (5/5,
+copied verbatim); a new `stationFlow.integration.spec.ts` — needing no
+image fixture at all, unlike cctv-client/exam-client's own specs, a
+genuine advantage of this medium — passed against a real dev server
+(literal-code identification + device health, unrecognized-code →
+bind → re-scan resolves), disposable test org cleaned up afterward.
+Confirmed the packaged app boots cleanly (`npx electron .`): a full
+legitimate process tree, no uncaught exception. Same disclosed
+limitation as both prior clients: real HID-wedge hardware and the
+native print dialog could not be verified against physical devices in
+this environment.
+
+Also flagged (not fixed, out of scope, spun off as a separate task):
+`cctv-client`'s own `stationFlow.integration.spec.ts` passes a
+`studentCode` field `CreateStudentDto` no longer accepts — would 400
+if run today, discovered incidentally while building this slice's own
+equivalent test.
+
+This closes the Biometric/Device Gateway client and, combined with the
+skip decision on Institution Admin/Teacher Desktop, brings the plan's
+5-client Electron family (docx §12) to its natural resting point: 3 of
+5 built (Secure Examination, CCTV/Attendance, Biometric/Device
+Gateway), 2 deliberately not (their functionality already exists as
+web portals) — revisit only if a real offline-operation need for
+either surfaces later.
