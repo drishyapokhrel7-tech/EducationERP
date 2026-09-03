@@ -58,7 +58,8 @@ isn't), `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`GOOGLE_REFRESH_TOKEN`/
 `GMAIL_SENDER_EMAIL`, `REDIS_URL`, `AI_SERVICE_URL`/`AI_SERVICE_API_KEY`
 (currently unreachable in production — see below), `DISABLE_CAPTCHA`
 (must be unset/`false` in production — it exists purely as a local-dev
-convenience, see `docs/LICENSING_EDITIONS_AND_CAPTCHA_NOTES.md`).
+convenience, see `docs/LICENSING_EDITIONS_AND_CAPTCHA_NOTES.md`),
+`CRON_SECRET`/`ALERT_EMAIL` (see "Cron & uptime monitoring" below).
 
 **`education-erp-web`**: `NEXT_PUBLIC_API_URL` (the API project's
 production domain), `NEXT_PUBLIC_LIBRARY_API_URL` (see
@@ -66,6 +67,50 @@ production domain), `NEXT_PUBLIC_LIBRARY_API_URL` (see
 `NEXT_PUBLIC_*` vars are baked into the client bundle at build time —
 changing one requires a redeploy, not just an env-var edit taking effect
 on the next request, unlike the API's server-only vars.
+
+## Cron & uptime monitoring
+
+Two complementary pieces — set both, they cover different failure
+modes (see `docs/OBSERVABILITY.md` for the full reasoning):
+
+**1. The health watchdog Cron** (`GET /internal/health-watchdog`,
+already wired in `services/api/vercel.json`'s `crons` array, schedule
+`0 6 * * *` — once daily, safe on Vercel's free Hobby tier; tighten to
+e.g. `*/30 * * * *` if the project is on a Pro plan, which allows
+sub-daily cron frequency). To activate it in `education-erp-api`'s
+Vercel project settings:
+
+1. Set `CRON_SECRET` to any random string (`openssl rand -hex 32`
+   works) — Vercel automatically sends this exact value as `Authorization:
+   Bearer <CRON_SECRET>` on every Cron-triggered request once the env
+   var exists, no extra config needed on either side.
+2. Set `ALERT_EMAIL` to the address that should receive a failure
+   email — sent via this project's own already-configured Gmail
+   integration (`EMAIL_DRIVER=gmail`), no new account. Leave unset and
+   a failure still logs server-side (visible in Vercel's own Logs tab)
+   without emailing anyone.
+
+This alone does **not** detect a total outage — a Cron job under the
+same deployment can't run if the deployment itself is down. It only
+catches an internal DB-unreachable failure while the API process is
+still alive.
+
+**2. An external uptime monitor**, for the case above doesn't cover —
+the one genuine "is the service reachable from the internet at all"
+check, since it runs on infrastructure independent of this deployment.
+Any of these free tiers works; exact values to paste in once an
+account exists:
+
+| Field | Value |
+|---|---|
+| URL | `https://<api-domain>/health` |
+| Method | `GET` |
+| Expected status | `200` |
+| Interval | 1–5 minutes |
+| Alert contact | wherever the project owner wants to be paged |
+
+No request body, no headers needed — `/health` is deliberately public
+and unauthenticated (unlike the Cron watchdog above).
 
 ## Database migrations — a manual step, stated plainly
 

@@ -62,11 +62,35 @@ is an infrastructure step, done once per deploy target, not app code:
   invocation's console output — including this app's `Logger` calls —
   with no extra wiring. This is the first place to look after a
   production error.
-- **An uptime monitor** (e.g. a free tier of UptimeRobot/Better Uptime/
-  Checkly, or Vercel's own Cron+fetch if preferred) polling `GET
-  https://<api-domain>/health` on a short interval (1–5 min) and alerting
-  on a non-200 — this is genuinely not wired up yet and is a real,
-  concrete next action, not something the code alone can provide.
+- **A real external uptime monitor** — a free tier of UptimeRobot,
+  Better Uptime, or Checkly, configured to poll `GET
+  https://<api-domain>/health` on a short interval and alert on a
+  non-200. This is the one genuinely complete answer to "is the
+  service reachable from the internet at all" — it runs on
+  infrastructure independent of this deployment, so it's the only
+  option that can detect a *total* outage. Not wired up yet — it needs
+  an account only the project owner can create; see
+  `docs/DEPLOYMENT.md`'s Cron section for exact config values ready to
+  paste in.
+- **`GET /internal/health-watchdog`** (`services/api/src/modules/
+  health-watchdog/`, wired to Vercel Cron via `services/api/vercel.json`)
+  is a smaller, complementary piece that needed no new external account
+  at all — it reuses this project's own already-configured Gmail
+  sending. On a schedule, it re-runs the same DB check as `/health` and,
+  if the database is unreachable, emails `ALERT_EMAIL` via
+  `DeliveryProvider` (the same one Communication/auth already use).
+  Guarded by a `CRON_SECRET` bearer token, checked fail-closed (a
+  missing secret rejects every request, matching `services/ai`'s own
+  `require_api_key` precedent) — verified live: no/wrong secret → 401,
+  correct secret with a healthy DB → 200, correct secret with a
+  simulated DB failure → 503 and a server-side error log (the actual
+  Gmail-send branch was reviewed but not fired in verification, to
+  avoid dispatching a real unsolicited email). **Its real limitation,
+  stated plainly**: since it's a Cron job under the *same* Vercel
+  deployment, it can never detect the deployment itself being fully
+  down — only an internal failure (DB unreachable) while the API
+  process is still alive to run it. It does not replace the external
+  monitor above; it complements it.
 - **Neon's own console** (Monitoring tab) shows connection count, query
   latency, and storage growth for the database directly — worth a glance
   when investigating a slow response, no separate tool needed.
