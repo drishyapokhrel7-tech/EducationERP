@@ -1,11 +1,27 @@
 import "reflect-metadata";
 import { createHmac } from "crypto";
+import type { IncomingMessage } from "http";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import * as request from "supertest";
 import * as argon2 from "argon2";
 import { AppModule } from "../src/app.module";
 import { PrismaService } from "../src/prisma/prisma.service";
+
+// superagent (supertest 7 / superagent 10) only auto-buffers a handful of
+// MIME types into `res.body` — text, json, and, via a built-in binary
+// parser, application/pdf and application/octet-stream. The .xlsx MIME
+// (…spreadsheetml.sheet) has no registered parser, so without this
+// `res.body` comes back as `{}` and any Buffer assertion on it fails
+// regardless of what the server actually sent. Attach this via
+// `.buffer().parse(binaryParser)` on requests that download a spreadsheet.
+const binaryParser = ((res: IncomingMessage, cb: (err: Error | null, body: Buffer) => void) => {
+  const chunks: Buffer[] = [];
+  res.on("data", (chunk: Buffer) => chunks.push(Buffer.from(chunk)));
+  res.on("end", () => cb(null, Buffer.concat(chunks)));
+  // supertest's `.parse()` types model the browser `(str: string)` parser; the
+  // Node parser really receives the raw IncomingMessage — widen to match.
+}) as unknown as (res: unknown, cb: (err: Error | null, body: unknown) => void) => void;
 
 /**
  * Exercises the exact cross-tenant scenarios plan §4/§7 call out: reads,
@@ -10330,7 +10346,7 @@ describe("Tenant isolation (e2e)", () => {
       await request(app.getHttpServer())
         .put(`/organizations/me/admission-applications/${application2.body.id}/status`)
         .set(...auth(tokenA))
-        .send({ status: "APPROVED" })
+        .send({ status: "APPROVED", effectiveDate: "2099-01-05" })
         .expect(200);
 
       // ── Exam: one graded attempt for student 1, 75% -> a real Grade
@@ -10445,6 +10461,8 @@ describe("Tenant isolation (e2e)", () => {
         const xlsx = await request(app.getHttpServer())
           .get(`/organizations/me/analytics/${category}/export?format=xlsx`)
           .set(...auth(tokenA))
+          .buffer()
+          .parse(binaryParser)
           .expect(200);
         expect(xlsx.headers["content-type"]).toContain("spreadsheetml");
         expect(Buffer.isBuffer(xlsx.body) ? xlsx.body.length : 0).toBeGreaterThan(0);
