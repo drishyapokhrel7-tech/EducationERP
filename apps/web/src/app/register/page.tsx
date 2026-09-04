@@ -203,7 +203,7 @@ export default function RegisterPage() {
               />
             </div>
             <Button type="submit" className="w-full" disabled={submitting}>
-              {submitting ? "Creating…" : "Create organization"}
+              {submitting ? "Registering…" : "Register Institution"}
             </Button>
           </form>
         </CardContent>
