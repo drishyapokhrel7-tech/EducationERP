@@ -69,4 +69,5 @@ export const FEATURE_MIN_EDITION: Record<string, { minEdition: Edition; label: s
   cameras: { minEdition: "ULTRA", label: "Cameras" },
   alumni: { minEdition: "ULTRA", label: "Alumni" },
   analytics: { minEdition: "ULTRA", label: "Analytics & Reports" },
+  overview: { minEdition: "ULTRA", label: "Highlights" },
 };

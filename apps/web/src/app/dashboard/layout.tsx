@@ -17,6 +17,7 @@ import {
   ClipboardList,
   FileQuestion,
   Fingerprint,
+  Gauge,
   GraduationCap,
   ScrollText,
   LayoutDashboard,
@@ -135,8 +136,11 @@ const NAV_GROUPS: NavGroup[] = [
     items: [{ href: "/dashboard/alumni", label: "Alumni", icon: Award }],
   },
   {
-    label: "Analytics",
-    items: [{ href: "/dashboard/analytics", label: "Analytics & Reports", icon: BarChart3 }],
+    label: "Insights",
+    items: [
+      { href: "/dashboard/overview", label: "Highlights", icon: Gauge },
+      { href: "/dashboard/analytics", label: "Analytics & Reports", icon: BarChart3 },
+    ],
   },
 ];
 
