@@ -1,7 +1,31 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { editionStatus } from "../organizations/edition-limits";
 import { UpdateOrganizationDto } from "./dto/update-organization.dto";
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// P2028 ("unable to start a transaction in the given time") is this
+// project's own well-documented ambient Neon connection-pool
+// contention — confirmed live in production for exactly this
+// listOrganizations call, even at a conservative batch size (see that
+// method's own comment). Retried up to twice with a short, increasing
+// backoff before giving up for real — a genuinely stuck DB should
+// still surface as an error, not hang forever behind silent retries.
+async function withP2028Retry<T>(fn: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const isP2028 = err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2028";
+      if (!isP2028 || attempt >= 2) throw err;
+      await sleep(200 * (attempt + 1));
+    }
+  }
+}
 
 // PlatformAuthGuard-only (see the controller) — deliberately narrow:
 // this is the one capability actually asked for (view every org's
@@ -36,17 +60,29 @@ export class PlatformOrganizationsService {
     // and one-at-a-time round trips at that volume pushed real-world
     // duration past both this client's request timeout and, in
     // production, Vercel's own function time limit — the endpoint
-    // stopped actually working, not just being slow. A small batch
-    // size keeps peak concurrent transactions well below whatever
-    // triggered the original P2028 while cutting wall-clock time by
-    // roughly the batch factor.
-    const BATCH_SIZE = 8;
+    // stopped actually working, not just being slow.
+    //
+    // BATCH_SIZE=8 was tried first and worked fine locally, but hit
+    // the exact same P2028 live in production (confirmed via Vercel
+    // function logs) — a serverless function's own Prisma connection
+    // pool is far smaller than a local dev connection's, so "safe
+    // concurrency" isn't one fixed number across environments. 3 is
+    // conservative enough to stay well under that in practice, and
+    // withP2028Retry below is the actual safety net: a transient
+    // "unable to start a transaction" retried a couple of times with a
+    // short backoff, rather than trusting any single batch size to
+    // never contend, matching this project's own standing posture of
+    // expecting and tolerating real Neon latency rather than assuming
+    // it away.
+    const BATCH_SIZE = 3;
     const results: Array<{ id: string; name: string; slug: string } & Awaited<ReturnType<typeof editionStatus>>> = [];
     for (let i = 0; i < organizations.length; i += BATCH_SIZE) {
       const batch = organizations.slice(i, i + BATCH_SIZE);
       const batchResults = await Promise.all(
         batch.map(async (org) => {
-          const status = await this.prisma.withTenant(org.id, (tx) => editionStatus(tx, org.id));
+          const status = await withP2028Retry(() =>
+            this.prisma.withTenant(org.id, (tx) => editionStatus(tx, org.id)),
+          );
           return { id: org.id, name: org.name, slug: org.slug, ...status };
         }),
       );
