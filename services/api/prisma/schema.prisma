@@ -205,7 +205,7 @@ model Campus {
   updatedAt      DateTime   @updatedAt
   deletedAt      DateTime?
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   userRoles    UserRole[]
   faculties    Faculty[]
   rooms        Room[]
@@ -225,7 +225,7 @@ model Faculty {
   updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   campus       Campus       @relation(fields: [campusId], references: [id])
   departments  Department[]
 
@@ -244,7 +244,7 @@ model Department {
   updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
 
-  organization        Organization        @relation(fields: [organizationId], references: [id])
+  organization        Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   faculty             Faculty             @relation(fields: [facultyId], references: [id])
   programs            Program[]
   employees           Employee[]
@@ -276,7 +276,7 @@ model Program {
   updatedAt         DateTime  @updatedAt
   deletedAt         DateTime?
 
-  organization          Organization           @relation(fields: [organizationId], references: [id])
+  organization          Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   department            Department             @relation(fields: [departmentId], references: [id])
   sections              Section[]
   curricula             Curriculum[]
@@ -307,7 +307,7 @@ model Subject {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization        Organization         @relation(fields: [organizationId], references: [id])
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   curriculumSubjects  CurriculumSubject[]
   teachingAssignments TeachingAssignment[]
 
@@ -325,7 +325,7 @@ model Curriculum {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization        @relation(fields: [organizationId], references: [id])
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   program      Program             @relation(fields: [programId], references: [id])
   subjects     CurriculumSubject[]
 
@@ -342,7 +342,7 @@ model CurriculumSubject {
   isCompulsory   Boolean  @default(true)
   createdAt      DateTime @default(now())
 
-  organization  Organization   @relation(fields: [organizationId], references: [id])
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   curriculum    Curriculum     @relation(fields: [curriculumId], references: [id])
   subject       Subject        @relation(fields: [subjectId], references: [id])
   syllabi       Syllabus[]
@@ -364,7 +364,7 @@ model AcademicYear {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   terms        Term[]
 
   @@unique([organizationId, name])
@@ -384,7 +384,7 @@ model Term {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization        Organization         @relation(fields: [organizationId], references: [id])
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   academicYear        AcademicYear         @relation(fields: [academicYearId], references: [id])
   sections            Section[]
   studentEnrollments  StudentEnrollment[]
@@ -411,7 +411,7 @@ model Section {
   updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
 
-  organization        Organization         @relation(fields: [organizationId], references: [id])
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   program             Program              @relation(fields: [programId], references: [id])
   term                Term                 @relation(fields: [termId], references: [id])
   studentEnrollments  StudentEnrollment[]
@@ -455,7 +455,7 @@ model User {
   updatedAt       DateTime   @updatedAt
   deletedAt       DateTime?
 
-  organization               Organization            @relation(fields: [organizationId], references: [id])
+  organization               Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   userRoles                  UserRole[]
   sessions                   Session[]
   loginEvents                LoginEvent[]
@@ -497,7 +497,7 @@ model Role {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization    Organization?    @relation(fields: [organizationId], references: [id])
+  organization    Organization?    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   rolePermissions RolePermission[]
   userRoles       UserRole[]
 
@@ -538,7 +538,7 @@ model RolePermission {
   roleId       String
   permissionId String
 
-  role       Role       @relation(fields: [roleId], references: [id])
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
   permission Permission @relation(fields: [permissionId], references: [id])
 
   @@unique([roleId, permissionId])
@@ -554,9 +554,9 @@ model UserRole {
   campusId  String?
   createdAt DateTime @default(now())
 
-  user   User    @relation(fields: [userId], references: [id])
-  role   Role    @relation(fields: [roleId], references: [id])
-  campus Campus? @relation(fields: [campusId], references: [id])
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role    @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  campus Campus? @relation(fields: [campusId], references: [id], onDelete: Cascade)
 
   @@unique([userId, roleId, campusId])
   @@index([userId])
@@ -573,7 +573,7 @@ model Session {
   expiresAt        DateTime
   revokedAt        DateTime?
 
-  user User @relation(fields: [userId], references: [id])
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@map("sessions")
@@ -595,7 +595,7 @@ model EmailVerificationCode {
   consumedAt DateTime?
   createdAt  DateTime  @default(now())
 
-  user User @relation(fields: [userId], references: [id])
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@map("email_verification_codes")
@@ -619,7 +619,7 @@ model PasswordResetCode {
   consumedAt DateTime?
   createdAt  DateTime  @default(now())
 
-  user User @relation(fields: [userId], references: [id])
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@map("password_reset_codes")
@@ -635,7 +635,7 @@ model LoginEvent {
   userAgent      String?
   createdAt      DateTime @default(now())
 
-  organization Organization? @relation(fields: [organizationId], references: [id])
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user         User?         @relation(fields: [userId], references: [id])
 
   @@index([organizationId])
@@ -652,7 +652,7 @@ model AuditLog {
   metadata       Json?
   createdAt      DateTime @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user         User?        @relation(fields: [userId], references: [id])
 
   @@index([organizationId])
@@ -672,7 +672,7 @@ model AccessPolicy {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, name])
   @@map("access_policies")
@@ -691,7 +691,7 @@ model StaffType {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   employees    Employee[]
 
   @@unique([organizationId, code])
@@ -707,7 +707,7 @@ model Designation {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization        Organization        @relation(fields: [organizationId], references: [id])
+  organization        Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   employees           Employee[]
   employmentHistories EmploymentHistory[]
 
@@ -750,7 +750,7 @@ model Employee {
   updatedAt         DateTime       @updatedAt
   deletedAt         DateTime?
 
-  organization            Organization         @relation(fields: [organizationId], references: [id])
+  organization            Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user                    User?                @relation(fields: [userId], references: [id])
   staffType               StaffType            @relation(fields: [staffTypeId], references: [id])
   designation             Designation          @relation(fields: [designationId], references: [id])
@@ -796,7 +796,7 @@ model EmploymentHistory {
   reason         String?
   createdAt      DateTime  @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   employee     Employee     @relation(fields: [employeeId], references: [id])
   designation  Designation  @relation(fields: [designationId], references: [id])
   department   Department?  @relation(fields: [departmentId], references: [id])
@@ -815,7 +815,7 @@ model Qualification {
   yearCompleted  Int?
   createdAt      DateTime @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   employee     Employee     @relation(fields: [employeeId], references: [id])
 
   @@index([organizationId])
@@ -832,7 +832,7 @@ model TeacherProfile {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   employee     Employee     @relation(fields: [employeeId], references: [id])
 
   @@index([organizationId])
@@ -888,7 +888,7 @@ model Student {
   updatedAt      DateTime      @updatedAt
   deletedAt      DateTime?
 
-  organization                Organization                 @relation(fields: [organizationId], references: [id])
+  organization                Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user                        User?                        @relation(fields: [userId], references: [id])
   guardians                   StudentGuardian[]
   enrollments                 StudentEnrollment[]
@@ -934,7 +934,7 @@ model Guardian {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization      @relation(fields: [organizationId], references: [id])
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   students     StudentGuardian[]
 
   @@index([organizationId])
@@ -952,7 +952,7 @@ model StudentGuardian {
   isPrimaryContact Boolean  @default(false)
   createdAt        DateTime @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   student      Student      @relation(fields: [studentId], references: [id])
   guardian     Guardian     @relation(fields: [guardianId], references: [id])
 
@@ -979,7 +979,7 @@ model StudentEnrollment {
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
-  organization        Organization                @relation(fields: [organizationId], references: [id])
+  organization        Organization                @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   student             Student                     @relation(fields: [studentId], references: [id])
   program             Program                     @relation(fields: [programId], references: [id])
   section             Section                     @relation(fields: [sectionId], references: [id])
@@ -1003,7 +1003,7 @@ model StudentStatusHistory {
   effectiveDate  DateTime
   createdAt      DateTime      @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   student      Student      @relation(fields: [studentId], references: [id])
 
   @@index([organizationId])
@@ -1055,7 +1055,7 @@ model AdmissionApplication {
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
 
-  organization    Organization             @relation(fields: [organizationId], references: [id])
+  organization    Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   program         Program                  @relation(fields: [programId], references: [id])
   enrolledStudent Student?                 @relation(fields: [enrolledStudentId], references: [id])
   statusHistory   AdmissionStatusHistory[]
@@ -1073,7 +1073,7 @@ model AdmissionStatusHistory {
   effectiveDate  DateTime
   createdAt      DateTime        @default(now())
 
-  organization Organization         @relation(fields: [organizationId], references: [id])
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   application  AdmissionApplication @relation(fields: [applicationId], references: [id])
 
   @@index([organizationId])
@@ -1104,7 +1104,7 @@ model Room {
   updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
 
-  organization   Organization    @relation(fields: [organizationId], references: [id])
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   campus         Campus          @relation(fields: [campusId], references: [id])
   classSchedules ClassSchedule[]
   examRooms      ExamRoom[]
@@ -1130,7 +1130,7 @@ model Period {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization   Organization    @relation(fields: [organizationId], references: [id])
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   classSchedules ClassSchedule[]
 
   @@unique([organizationId, code])
@@ -1147,7 +1147,7 @@ model TeachingAssignment {
   termId         String
   createdAt      DateTime @default(now())
 
-  organization     Organization      @relation(fields: [organizationId], references: [id])
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   employee         Employee          @relation(fields: [employeeId], references: [id])
   subject          Subject           @relation(fields: [subjectId], references: [id])
   section          Section           @relation(fields: [sectionId], references: [id])
@@ -1187,7 +1187,7 @@ model ClassSchedule {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  organization       Organization        @relation(fields: [organizationId], references: [id])
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   term               Term                @relation(fields: [termId], references: [id])
   teachingAssignment TeachingAssignment  @relation(fields: [teachingAssignmentId], references: [id])
   section            Section             @relation(fields: [sectionId], references: [id])
@@ -1223,7 +1223,7 @@ model AttendanceSession {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  organization      Organization        @relation(fields: [organizationId], references: [id])
+  organization      Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   classSchedule     ClassSchedule       @relation(fields: [classScheduleId], references: [id])
   section           Section             @relation(fields: [sectionId], references: [id])
   studentAttendance StudentAttendance[]
@@ -1250,7 +1250,7 @@ model StudentAttendance {
   createdAt           DateTime         @default(now())
   updatedAt           DateTime         @updatedAt
 
-  organization               Organization          @relation(fields: [organizationId], references: [id])
+  organization               Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   session                    AttendanceSession     @relation(fields: [attendanceSessionId], references: [id])
   student                    Student               @relation(fields: [studentId], references: [id])
   exceptions                 AttendanceException[]
@@ -1277,7 +1277,7 @@ model AttendanceException {
   reason              String
   createdAt           DateTime         @default(now())
 
-  organization      Organization      @relation(fields: [organizationId], references: [id])
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   studentAttendance StudentAttendance @relation(fields: [studentAttendanceId], references: [id])
 
   @@index([organizationId])
@@ -1303,7 +1303,7 @@ model StaffAttendance {
   createdAt      DateTime              @default(now())
   updatedAt      DateTime              @updatedAt
 
-  organization               Organization       @relation(fields: [organizationId], references: [id])
+  organization               Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   employee                   Employee           @relation(fields: [employeeId], references: [id])
   reconciledFromEvents       FaceMatchEvent[]
   reconciledFromGatewayScans GatewayScanEvent[]
@@ -1335,7 +1335,7 @@ model BiometricPolicy {
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@map("biometric_policies")
 }
@@ -1368,7 +1368,7 @@ model FaceEnrollment {
   createdAt          DateTime             @default(now())
   updatedAt          DateTime             @updatedAt
 
-  organization  Organization     @relation(fields: [organizationId], references: [id])
+  organization  Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   student       Student?         @relation(fields: [studentId], references: [id])
   staff         Employee?        @relation(fields: [staffId], references: [id])
   faceEmbedding FaceEmbedding?
@@ -1425,7 +1425,7 @@ model Camera {
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
 
-  organization Organization  @relation(fields: [organizationId], references: [id])
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   events       CameraEvent[]
 
   @@index([organizationId])
@@ -1443,7 +1443,7 @@ model CameraEvent {
   capturedImageType String?
   createdAt         DateTime @default(now())
 
-  organization Organization     @relation(fields: [organizationId], references: [id])
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   camera       Camera           @relation(fields: [cameraId], references: [id])
   matches      FaceMatchEvent[]
 
@@ -1468,7 +1468,7 @@ model FaceEmbedding {
   modelVersion     String
   createdAt        DateTime                   @default(now())
 
-  organization   Organization   @relation(fields: [organizationId], references: [id])
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   faceEnrollment FaceEnrollment @relation(fields: [faceEnrollmentId], references: [id])
 
   @@index([organizationId])
@@ -1509,7 +1509,7 @@ model FaceMatchEvent {
   reconciledStaffAttendanceId   String?
   createdAt                     DateTime                 @default(now())
 
-  organization                Organization       @relation(fields: [organizationId], references: [id])
+  organization                Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   cameraEvent                 CameraEvent        @relation(fields: [cameraEventId], references: [id])
   matchedEnrollment           FaceEnrollment?    @relation(fields: [matchedEnrollmentId], references: [id])
   reviewer                    User?              @relation(fields: [reviewedBy], references: [id])
@@ -1555,7 +1555,7 @@ model GatewayDevice {
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
 
-  organization Organization       @relation(fields: [organizationId], references: [id])
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   scanEvents   GatewayScanEvent[]
 
   @@index([organizationId])
@@ -1573,7 +1573,7 @@ model GatewayCardBinding {
   boundAt        DateTime @default(now())
   boundBy        String
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   student      Student?     @relation(fields: [studentId], references: [id])
   staff        Employee?    @relation(fields: [staffId], references: [id])
   boundByUser  User         @relation(fields: [boundBy], references: [id])
@@ -1606,7 +1606,7 @@ model GatewayScanEvent {
   reconciledStaffAttendanceId   String?
   createdAt                     DateTime          @default(now())
 
-  organization                Organization       @relation(fields: [organizationId], references: [id])
+  organization                Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   device                      GatewayDevice      @relation(fields: [deviceId], references: [id])
   matchedStudent              Student?           @relation(fields: [matchedStudentId], references: [id])
   matchedEmployee             Employee?          @relation(fields: [matchedEmployeeId], references: [id])
@@ -1644,7 +1644,7 @@ model Syllabus {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  organization      Organization      @relation(fields: [organizationId], references: [id])
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   curriculumSubject CurriculumSubject @relation(fields: [curriculumSubjectId], references: [id])
   term              Term              @relation(fields: [termId], references: [id])
   nodes             SyllabusNode[]
@@ -1677,7 +1677,7 @@ model SyllabusNode {
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
 
-  organization       Organization        @relation(fields: [organizationId], references: [id])
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   syllabus           Syllabus            @relation(fields: [syllabusId], references: [id])
   parent             SyllabusNode?       @relation("SyllabusNodeChildren", fields: [parentId], references: [id])
   children           SyllabusNode[]      @relation("SyllabusNodeChildren")
@@ -1700,7 +1700,7 @@ model LearningObjective {
   description    String
   createdAt      DateTime @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   node         SyllabusNode @relation(fields: [syllabusNodeId], references: [id])
 
   @@index([organizationId])
@@ -1727,7 +1727,7 @@ model LessonPlan {
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
-  organization       Organization       @relation(fields: [organizationId], references: [id])
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   teachingAssignment TeachingAssignment @relation(fields: [teachingAssignmentId], references: [id])
   syllabusNode       SyllabusNode       @relation(fields: [syllabusNodeId], references: [id])
   classSessions      ClassSession[]
@@ -1784,7 +1784,7 @@ model ClassSession {
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
 
-  organization       Organization    @relation(fields: [organizationId], references: [id])
+  organization       Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   classSchedule      ClassSchedule   @relation(fields: [classScheduleId], references: [id])
   section            Section         @relation(fields: [sectionId], references: [id])
   lessonPlan         LessonPlan?     @relation(fields: [lessonPlanId], references: [id])
@@ -1809,7 +1809,7 @@ model ClassMaterial {
   description    String?
   createdAt      DateTime @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   classSession ClassSession @relation(fields: [classSessionId], references: [id])
 
   @@index([organizationId])
@@ -1871,7 +1871,7 @@ model Assignment {
   createdAt            DateTime       @default(now())
   updatedAt            DateTime       @updatedAt
 
-  organization       Organization           @relation(fields: [organizationId], references: [id])
+  organization       Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   teachingAssignment TeachingAssignment     @relation(fields: [teachingAssignmentId], references: [id])
   submissions        AssignmentSubmission[]
 
@@ -1898,7 +1898,7 @@ model AssignmentSubmission {
   feedback       String?
   updatedAt      DateTime         @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   assignment   Assignment   @relation(fields: [assignmentId], references: [id])
   student      Student      @relation(fields: [studentId], references: [id])
 
@@ -1926,7 +1926,7 @@ model KnowledgeCheck {
   createdAt            DateTime             @default(now())
   updatedAt            DateTime             @updatedAt
 
-  organization       Organization             @relation(fields: [organizationId], references: [id])
+  organization       Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   teachingAssignment TeachingAssignment       @relation(fields: [teachingAssignmentId], references: [id])
   syllabusNode       SyllabusNode?            @relation(fields: [syllabusNodeId], references: [id])
   questions          KnowledgeCheckQuestion[]
@@ -1947,7 +1947,7 @@ model KnowledgeCheckQuestion {
   correctOptionIndex Int
   createdAt          DateTime @default(now())
 
-  organization   Organization           @relation(fields: [organizationId], references: [id])
+  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   knowledgeCheck KnowledgeCheck         @relation(fields: [knowledgeCheckId], references: [id])
   savedAnswers   KnowledgeCheckAnswer[]
 
@@ -1982,7 +1982,7 @@ model KnowledgeCheckAttempt {
   // attempt's row is created at *start*, not submission.
   submittedAt      DateTime?
 
-  organization   Organization           @relation(fields: [organizationId], references: [id])
+  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   knowledgeCheck KnowledgeCheck         @relation(fields: [knowledgeCheckId], references: [id])
   student        Student                @relation(fields: [studentId], references: [id])
   savedAnswers   KnowledgeCheckAnswer[]
@@ -2012,7 +2012,7 @@ model KnowledgeCheckAnswer {
   selectedOptionIndex     Int
   updatedAt               DateTime @updatedAt
 
-  organization Organization           @relation(fields: [organizationId], references: [id])
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   attempt      KnowledgeCheckAttempt  @relation(fields: [knowledgeCheckAttemptId], references: [id])
   question     KnowledgeCheckQuestion @relation(fields: [questionId], references: [id])
 
@@ -2036,7 +2036,7 @@ model ExamType {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   exams        Exam[]
 
   @@unique([organizationId, code])
@@ -2060,7 +2060,7 @@ model GradingScheme {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   exams        Exam[]
 
   @@unique([organizationId, code])
@@ -2080,7 +2080,7 @@ model QuestionBank {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  organization      Organization      @relation(fields: [organizationId], references: [id])
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   curriculumSubject CurriculumSubject @relation(fields: [curriculumSubjectId], references: [id])
   questions         Question[]
   examSubjects      ExamSubject[]
@@ -2117,7 +2117,7 @@ model Question {
   createdAt          DateTime     @default(now())
   updatedAt          DateTime     @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   questionBank QuestionBank @relation(fields: [questionBankId], references: [id])
   answers      Answer[]
 
@@ -2138,7 +2138,7 @@ model Exam {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  organization  Organization   @relation(fields: [organizationId], references: [id])
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   examType      ExamType       @relation(fields: [examTypeId], references: [id])
   term          Term           @relation(fields: [termId], references: [id])
   gradingScheme GradingScheme? @relation(fields: [gradingSchemeId], references: [id])
@@ -2164,7 +2164,7 @@ model ExamSubject {
   questionBankId      String?
   createdAt           DateTime @default(now())
 
-  organization      Organization      @relation(fields: [organizationId], references: [id])
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   exam              Exam              @relation(fields: [examId], references: [id])
   curriculumSubject CurriculumSubject @relation(fields: [curriculumSubjectId], references: [id])
   questionBank      QuestionBank?     @relation(fields: [questionBankId], references: [id])
@@ -2193,7 +2193,7 @@ model ExamSchedule {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   examSubject  ExamSubject  @relation(fields: [examSubjectId], references: [id])
   examRooms    ExamRoom[]
 
@@ -2211,7 +2211,7 @@ model ExamRoom {
   capacity       Int?
   createdAt      DateTime @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   examSchedule ExamSchedule @relation(fields: [examScheduleId], references: [id])
   room         Room         @relation(fields: [roomId], references: [id])
 
@@ -2243,7 +2243,7 @@ model ExamAttempt {
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   examSubject  ExamSubject  @relation(fields: [examSubjectId], references: [id])
   student      Student      @relation(fields: [studentId], references: [id])
   marks        Marks?
@@ -2275,7 +2275,7 @@ model Marks {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   examAttempt  ExamAttempt  @relation(fields: [examAttemptId], references: [id])
 
   @@index([organizationId])
@@ -2296,7 +2296,7 @@ model Grade {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   examAttempt  ExamAttempt  @relation(fields: [examAttemptId], references: [id])
 
   @@index([organizationId])
@@ -2321,7 +2321,7 @@ model ReportCard {
   generatedAt        DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   exam         Exam         @relation(fields: [examId], references: [id])
   student      Student      @relation(fields: [studentId], references: [id])
 
@@ -2348,7 +2348,7 @@ model Answer {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   examAttempt  ExamAttempt  @relation(fields: [examAttemptId], references: [id])
   question     Question     @relation(fields: [questionId], references: [id])
 
@@ -2377,7 +2377,7 @@ model FeeCategory {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization      Organization       @relation(fields: [organizationId], references: [id])
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   feeStructureItems FeeStructureItem[]
   invoiceItems      InvoiceItem[]
 
@@ -2395,7 +2395,7 @@ model FeeStructure {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization           @relation(fields: [organizationId], references: [id])
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   program      Program                @relation(fields: [programId], references: [id])
   term         Term                   @relation(fields: [termId], references: [id])
   items        FeeStructureItem[]
@@ -2413,7 +2413,7 @@ model FeeStructureItem {
   feeCategoryId  String
   amount         Decimal @db.Decimal(12, 2)
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   feeStructure FeeStructure @relation(fields: [feeStructureId], references: [id])
   feeCategory  FeeCategory  @relation(fields: [feeCategoryId], references: [id])
 
@@ -2434,7 +2434,7 @@ model StudentFeeAssignment {
   assignedAt          DateTime @default(now())
   assignedBy          String?
 
-  organization      Organization      @relation(fields: [organizationId], references: [id])
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   studentEnrollment StudentEnrollment @relation(fields: [studentEnrollmentId], references: [id])
   feeStructure      FeeStructure      @relation(fields: [feeStructureId], references: [id])
   invoice           Invoice           @relation(fields: [invoiceId], references: [id])
@@ -2469,7 +2469,7 @@ model Invoice {
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
 
-  organization      Organization           @relation(fields: [organizationId], references: [id])
+  organization      Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   student           Student                @relation(fields: [studentId], references: [id])
   studentEnrollment StudentEnrollment      @relation(fields: [studentEnrollmentId], references: [id])
   items             InvoiceItem[]
@@ -2494,7 +2494,7 @@ model InvoiceItem {
   description    String?
   amount         Decimal @db.Decimal(12, 2)
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   invoice      Invoice      @relation(fields: [invoiceId], references: [id])
   feeCategory  FeeCategory  @relation(fields: [feeCategoryId], references: [id])
 
@@ -2526,7 +2526,7 @@ model Payment {
   paidAt         DateTime      @default(now())
   createdAt      DateTime      @default(now())
 
-  organization Organization           @relation(fields: [organizationId], references: [id])
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   invoice      Invoice                @relation(fields: [invoiceId], references: [id])
   recorder     User?                  @relation(fields: [recordedBy], references: [id])
   refunds      Refund[]
@@ -2552,7 +2552,7 @@ model Scholarship {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization         @relation(fields: [organizationId], references: [id])
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   assignments  StudentScholarship[]
   discounts    Discount[]
 
@@ -2568,7 +2568,7 @@ model StudentScholarship {
   assignedAt     DateTime @default(now())
   active         Boolean  @default(true)
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   student      Student      @relation(fields: [studentId], references: [id])
   scholarship  Scholarship  @relation(fields: [scholarshipId], references: [id])
 
@@ -2593,7 +2593,7 @@ model Discount {
   appliedBy      String?
   createdAt      DateTime @default(now())
 
-  organization Organization           @relation(fields: [organizationId], references: [id])
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   invoice      Invoice                @relation(fields: [invoiceId], references: [id])
   scholarship  Scholarship?           @relation(fields: [scholarshipId], references: [id])
   applier      User?                  @relation(fields: [appliedBy], references: [id])
@@ -2615,7 +2615,7 @@ model Refund {
   processedBy    String?
   createdAt      DateTime @default(now())
 
-  organization Organization           @relation(fields: [organizationId], references: [id])
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   payment      Payment                @relation(fields: [paymentId], references: [id])
   processor    User?                  @relation(fields: [processedBy], references: [id])
   transactions FinancialTransaction[]
@@ -2647,7 +2647,7 @@ model FinancialTransaction {
   refundId       String?
   createdAt      DateTime                 @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   invoice      Invoice?     @relation(fields: [invoiceId], references: [id])
   payment      Payment?     @relation(fields: [paymentId], references: [id])
   discount     Discount?    @relation(fields: [discountId], references: [id])
@@ -2687,7 +2687,7 @@ model EsewaTransaction {
   createdAt       DateTime               @default(now())
   completedAt     DateTime?
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   invoice      Invoice      @relation(fields: [invoiceId], references: [id])
   initiator    User?        @relation(fields: [initiatedBy], references: [id])
 
@@ -2714,7 +2714,7 @@ model LeaveType {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
-  organization Organization        @relation(fields: [organizationId], references: [id])
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   balances     StaffLeaveBalance[]
   requests     LeaveRequest[]
 
@@ -2736,7 +2736,7 @@ model StaffLeaveBalance {
   year           Int
   allocatedDays  Int
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   employee     Employee     @relation(fields: [employeeId], references: [id])
   leaveType    LeaveType    @relation(fields: [leaveTypeId], references: [id])
 
@@ -2770,7 +2770,7 @@ model LeaveRequest {
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   employee     Employee     @relation(fields: [employeeId], references: [id])
   leaveType    LeaveType    @relation(fields: [leaveTypeId], references: [id])
   reviewer     User?        @relation(fields: [reviewedBy], references: [id])
@@ -2806,7 +2806,7 @@ model SalaryStructure {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization          @relation(fields: [organizationId], references: [id])
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   items        SalaryStructureItem[]
   employees    Employee[]
 
@@ -2826,7 +2826,7 @@ model SalaryStructureItem {
   amount            Decimal?        @db.Decimal(12, 2)
   percentOfBasic    Decimal?        @db.Decimal(5, 2)
 
-  organization    Organization    @relation(fields: [organizationId], references: [id])
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   salaryStructure SalaryStructure @relation(fields: [salaryStructureId], references: [id])
 
   @@index([organizationId])
@@ -2862,7 +2862,7 @@ model Payroll {
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
-  organization Organization  @relation(fields: [organizationId], references: [id])
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   employee     Employee      @relation(fields: [employeeId], references: [id])
   finalizer    User?         @relation(fields: [finalizedBy], references: [id])
   items        PayrollItem[]
@@ -2884,7 +2884,7 @@ model PayrollItem {
   name           String
   amount         Decimal         @db.Decimal(12, 2)
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   payroll      Payroll      @relation(fields: [payrollId], references: [id])
 
   @@index([organizationId])
@@ -2914,7 +2914,7 @@ model Vehicle {
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
 
-  organization   Organization           @relation(fields: [organizationId], references: [id])
+  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   routes         Route[]
   trackingEvents VehicleTrackingEvent[]
 
@@ -2934,7 +2934,7 @@ model Driver {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   employee     Employee     @relation(fields: [employeeId], references: [id])
 
   @@index([organizationId])
@@ -2954,7 +2954,7 @@ model Route {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization   Organization                 @relation(fields: [organizationId], references: [id])
+  organization   Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   vehicle        Vehicle?                     @relation(fields: [vehicleId], references: [id])
   driver         Employee?                    @relation("routesAsDriver", fields: [driverId], references: [id])
   stops          Stop[]
@@ -2984,7 +2984,7 @@ model Stop {
   latitude             Decimal? @db.Decimal(9, 6)
   longitude            Decimal? @db.Decimal(9, 6)
 
-  organization Organization                 @relation(fields: [organizationId], references: [id])
+  organization Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   route        Route                        @relation(fields: [routeId], references: [id])
   assignments  StudentTransportAssignment[]
 
@@ -3006,7 +3006,7 @@ model StudentTransportAssignment {
   stopId              String
   assignedAt          DateTime @default(now())
 
-  organization      Organization      @relation(fields: [organizationId], references: [id])
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   studentEnrollment StudentEnrollment @relation(fields: [studentEnrollmentId], references: [id])
   route             Route             @relation(fields: [routeId], references: [id])
   stop              Stop              @relation(fields: [stopId], references: [id])
@@ -3028,7 +3028,7 @@ model VehicleTrackingEvent {
   longitude      Decimal  @db.Decimal(9, 6)
   recordedAt     DateTime @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   vehicle      Vehicle      @relation(fields: [vehicleId], references: [id])
   route        Route?       @relation(fields: [routeId], references: [id])
 
@@ -3055,7 +3055,7 @@ model CourseModule {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  organization       Organization       @relation(fields: [organizationId], references: [id])
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   teachingAssignment TeachingAssignment @relation(fields: [teachingAssignmentId], references: [id])
   items              CourseModuleItem[]
 
@@ -3087,7 +3087,7 @@ model CourseModuleItem {
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
 
-  organization Organization                 @relation(fields: [organizationId], references: [id])
+  organization Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   module       CourseModule                 @relation(fields: [moduleId], references: [id])
   completions  CourseModuleItemCompletion[]
 
@@ -3108,7 +3108,7 @@ model CourseModuleItemCompletion {
   studentId      String
   completedAt    DateTime @default(now())
 
-  organization Organization     @relation(fields: [organizationId], references: [id])
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   moduleItem   CourseModuleItem @relation(fields: [moduleItemId], references: [id])
   student      Student          @relation(fields: [studentId], references: [id])
 
@@ -3134,7 +3134,7 @@ model Announcement {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  organization       Organization       @relation(fields: [organizationId], references: [id])
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   teachingAssignment TeachingAssignment @relation(fields: [teachingAssignmentId], references: [id])
 
   @@index([organizationId])
@@ -3158,7 +3158,7 @@ model DiscussionTopic {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  organization       Organization       @relation(fields: [organizationId], references: [id])
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   teachingAssignment TeachingAssignment @relation(fields: [teachingAssignmentId], references: [id])
   posts              DiscussionPost[]
 
@@ -3179,7 +3179,7 @@ model DiscussionPost {
   body              String
   createdAt         DateTime @default(now())
 
-  organization    Organization    @relation(fields: [organizationId], references: [id])
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   discussionTopic DiscussionTopic @relation(fields: [discussionTopicId], references: [id])
   authorStudent   Student?        @relation(fields: [authorStudentId], references: [id])
   authorEmployee  Employee?       @relation(fields: [authorEmployeeId], references: [id])
@@ -3218,7 +3218,7 @@ model Notification {
   isRead         Boolean  @default(false)
   createdAt      DateTime @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user         User         @relation(fields: [userId], references: [id])
 
   @@index([organizationId])
@@ -3249,7 +3249,7 @@ model Hostel {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization     @relation(fields: [organizationId], references: [id])
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   buildings    HostelBuilding[]
 
   @@unique([organizationId, code])
@@ -3266,7 +3266,7 @@ model HostelBuilding {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   hostel       Hostel       @relation(fields: [hostelId], references: [id])
   rooms        HostelRoom[]
 
@@ -3287,7 +3287,7 @@ model HostelRoom {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization        Organization               @relation(fields: [organizationId], references: [id])
+  organization        Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   building            HostelBuilding             @relation(fields: [buildingId], references: [id])
   beds                HostelBed[]
   maintenanceRequests HostelMaintenanceRequest[]
@@ -3315,7 +3315,7 @@ model HostelBed {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
-  organization Organization      @relation(fields: [organizationId], references: [id])
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   room         HostelRoom        @relation(fields: [roomId], references: [id])
   allocation   HostelAllocation?
 
@@ -3331,7 +3331,7 @@ model HostelAllocation {
   bedId               String   @unique
   allocatedAt         DateTime @default(now())
 
-  organization      Organization       @relation(fields: [organizationId], references: [id])
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   studentEnrollment StudentEnrollment  @relation(fields: [studentEnrollmentId], references: [id])
   bed               HostelBed          @relation(fields: [bedId], references: [id])
   attendance        HostelAttendance[]
@@ -3361,7 +3361,7 @@ model HostelAttendance {
   status             HostelAttendanceStatus
   markedAt           DateTime               @default(now())
 
-  organization     Organization     @relation(fields: [organizationId], references: [id])
+  organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   hostelAllocation HostelAllocation @relation(fields: [hostelAllocationId], references: [id])
 
   @@unique([hostelAllocationId, date])
@@ -3378,7 +3378,7 @@ model HostelVisitor {
   checkInAt          DateTime  @default(now())
   checkOutAt         DateTime?
 
-  organization     Organization     @relation(fields: [organizationId], references: [id])
+  organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   hostelAllocation HostelAllocation @relation(fields: [hostelAllocationId], references: [id])
 
   @@index([organizationId])
@@ -3402,7 +3402,7 @@ model HostelComplaint {
   resolvedAt         DateTime?
   resolutionNotes    String?
 
-  organization     Organization     @relation(fields: [organizationId], references: [id])
+  organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   hostelAllocation HostelAllocation @relation(fields: [hostelAllocationId], references: [id])
 
   @@index([organizationId])
@@ -3424,7 +3424,7 @@ model HostelMaintenanceRequest {
   reportedAt     DateTime                @default(now())
   resolvedAt     DateTime?
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   room         HostelRoom   @relation(fields: [roomId], references: [id])
 
   @@index([organizationId])
@@ -3458,7 +3458,7 @@ model HostelLookup {
   name           String
   createdAt      DateTime         @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, kind, name])
   @@index([organizationId])
@@ -3500,7 +3500,7 @@ model InventoryCategory {
   code           String
   createdAt      DateTime @default(now())
 
-  organization Organization    @relation(fields: [organizationId], references: [id])
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   items        InventoryItem[]
   assets       Asset[]
 
@@ -3519,7 +3519,7 @@ model Supplier {
   address        String?
   createdAt      DateTime @default(now())
 
-  organization   Organization    @relation(fields: [organizationId], references: [id])
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   purchaseOrders PurchaseOrder[]
 
   @@index([organizationId])
@@ -3538,7 +3538,7 @@ model InventoryItem {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization       Organization        @relation(fields: [organizationId], references: [id])
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   category           InventoryCategory   @relation(fields: [categoryId], references: [id])
   stockMovements     StockMovement[]
   purchaseOrderItems PurchaseOrderItem[]
@@ -3565,7 +3565,7 @@ model PurchaseOrder {
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
 
-  organization   Organization        @relation(fields: [organizationId], references: [id])
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   supplier       Supplier            @relation(fields: [supplierId], references: [id])
   items          PurchaseOrderItem[]
   stockMovements StockMovement[]
@@ -3583,7 +3583,7 @@ model PurchaseOrderItem {
   quantityReceived Int     @default(0)
   unitPrice        Decimal @db.Decimal(12, 2)
 
-  organization  Organization  @relation(fields: [organizationId], references: [id])
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
   item          InventoryItem @relation(fields: [itemId], references: [id])
 
@@ -3607,7 +3607,7 @@ model StockMovement {
   purchaseOrderId String?
   movementDate    DateTime          @default(now())
 
-  organization  Organization   @relation(fields: [organizationId], references: [id])
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   item          InventoryItem  @relation(fields: [itemId], references: [id])
   purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
 
@@ -3634,7 +3634,7 @@ model Asset {
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
-  organization Organization       @relation(fields: [organizationId], references: [id])
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   category     InventoryCategory? @relation(fields: [categoryId], references: [id])
   assignments  AssetAssignment[]
 
@@ -3652,7 +3652,7 @@ model AssetAssignment {
   returnedAt           DateTime?
   notes                String?
 
-  organization       Organization @relation(fields: [organizationId], references: [id])
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   asset              Asset        @relation(fields: [assetId], references: [id])
   assignedToEmployee Employee     @relation(fields: [assignedToEmployeeId], references: [id])
 
@@ -3722,7 +3722,7 @@ model MessageTemplate {
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   messages     Message[]
 
   @@unique([organizationId, name])
@@ -3745,7 +3745,7 @@ model Message {
   sentAt          DateTime?
   createdAt       DateTime        @default(now())
 
-  organization  Organization          @relation(fields: [organizationId], references: [id])
+  organization  Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdBy     User                  @relation("MessagesCreated", fields: [createdByUserId], references: [id])
   template      MessageTemplate?      @relation(fields: [templateId], references: [id])
   recipientUser User?                 @relation("MessagesToSpecificUser", fields: [recipientUserId], references: [id])
@@ -3772,7 +3772,7 @@ model EmailLog {
   providerResponse String?
   sentAt           DateTime       @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   message      Message      @relation(fields: [messageId], references: [id])
 
   @@index([organizationId])
@@ -3790,7 +3790,7 @@ model SmsLog {
   providerResponse String?
   sentAt           DateTime       @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   message      Message      @relation(fields: [messageId], references: [id])
 
   @@index([organizationId])
@@ -3807,7 +3807,7 @@ model PushNotificationLog {
   providerResponse String?
   sentAt           DateTime       @default(now())
 
-  organization  Organization @relation(fields: [organizationId], references: [id])
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   message       Message      @relation(fields: [messageId], references: [id])
   recipientUser User         @relation("PushLogsToUser", fields: [recipientUserId], references: [id])
 
@@ -3848,7 +3848,7 @@ model StudentDocument {
   reviewNotes      String?
   uploadedAt       DateTime             @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   student      Student      @relation(fields: [studentId], references: [id])
   reviewedBy   User?        @relation("StudentDocumentsReviewed", fields: [reviewedByUserId], references: [id])
 
@@ -3869,7 +3869,7 @@ model StaffDocument {
   reviewNotes      String?
   uploadedAt       DateTime             @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   employee     Employee     @relation(fields: [employeeId], references: [id])
   reviewedBy   User?        @relation("StaffDocumentsReviewed", fields: [reviewedByUserId], references: [id])
 
@@ -3909,7 +3909,7 @@ model Certificate {
   revokedAt        DateTime?
   revokedReason    String?
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   student      Student      @relation(fields: [studentId], references: [id])
   issuedBy     User         @relation("CertificatesIssued", fields: [issuedByUserId], references: [id])
 
@@ -3957,7 +3957,7 @@ model AlumniProfile {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  organization        Organization           @relation(fields: [organizationId], references: [id])
+  organization        Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   student             Student                @relation(fields: [studentId], references: [id])
   education           AlumniEducation[]
   careerHistory       AlumniCareerHistory[]
@@ -3985,7 +3985,7 @@ model AlumniEducation {
   notes           String?
   createdAt       DateTime @default(now())
 
-  organization  Organization  @relation(fields: [organizationId], references: [id])
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   alumniProfile AlumniProfile @relation(fields: [alumniProfileId], references: [id])
 
   @@index([organizationId])
@@ -4008,7 +4008,7 @@ model AlumniCompany {
   website        String?
   createdAt      DateTime @default(now())
 
-  organization  Organization          @relation(fields: [organizationId], references: [id])
+  organization  Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   careerHistory AlumniCareerHistory[]
   opportunities CareerOpportunity[]
 
@@ -4028,7 +4028,7 @@ model AlumniCareerHistory {
   description     String?
   createdAt       DateTime  @default(now())
 
-  organization  Organization  @relation(fields: [organizationId], references: [id])
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   alumniProfile AlumniProfile @relation(fields: [alumniProfileId], references: [id])
   company       AlumniCompany @relation(fields: [companyId], references: [id])
 
@@ -4048,7 +4048,7 @@ model AlumniSkill {
   skillName       String
   createdAt       DateTime @default(now())
 
-  organization  Organization  @relation(fields: [organizationId], references: [id])
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   alumniProfile AlumniProfile @relation(fields: [alumniProfileId], references: [id])
 
   @@index([organizationId])
@@ -4067,7 +4067,7 @@ model AlumniCertification {
   credentialUrl       String?
   createdAt           DateTime  @default(now())
 
-  organization  Organization  @relation(fields: [organizationId], references: [id])
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   alumniProfile AlumniProfile @relation(fields: [alumniProfileId], references: [id])
 
   @@index([organizationId])
@@ -4103,7 +4103,7 @@ model AlumniSurvey {
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
 
-  organization Organization           @relation(fields: [organizationId], references: [id])
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   responses    AlumniSurveyResponse[]
 
   @@index([organizationId])
@@ -4124,7 +4124,7 @@ model AlumniSurveyResponse {
   answers         Json
   submittedAt     DateTime @default(now())
 
-  organization  Organization  @relation(fields: [organizationId], references: [id])
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   survey        AlumniSurvey  @relation(fields: [surveyId], references: [id])
   alumniProfile AlumniProfile @relation(fields: [alumniProfileId], references: [id])
 
@@ -4164,7 +4164,7 @@ model AlumniMentorship {
   respondedAt           DateTime?
   completedAt           DateTime?
 
-  organization        Organization  @relation(fields: [organizationId], references: [id])
+  organization        Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   mentorAlumniProfile AlumniProfile @relation(fields: [mentorAlumniProfileId], references: [id])
   menteeStudent       Student       @relation(fields: [menteeStudentId], references: [id])
 
@@ -4187,7 +4187,7 @@ model AlumniAchievement {
   achievedAt      DateTime?
   createdAt       DateTime  @default(now())
 
-  organization  Organization  @relation(fields: [organizationId], references: [id])
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   alumniProfile AlumniProfile @relation(fields: [alumniProfileId], references: [id])
 
   @@index([organizationId])
@@ -4234,7 +4234,7 @@ model CareerOpportunity {
   createdAt               DateTime          @default(now())
   updatedAt               DateTime          @updatedAt
 
-  organization          Organization        @relation(fields: [organizationId], references: [id])
+  organization          Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   postedByAlumniProfile AlumniProfile?      @relation(fields: [postedByAlumniProfileId], references: [id])
   company               AlumniCompany       @relation(fields: [companyId], references: [id])
   applications          CareerApplication[]
@@ -4278,7 +4278,7 @@ model CareerApplication {
   submittedAt        DateTime          @default(now())
   reviewedAt         DateTime?
 
-  organization     Organization      @relation(fields: [organizationId], references: [id])
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   opportunity      CareerOpportunity @relation(fields: [opportunityId], references: [id])
   applicantStudent Student           @relation(fields: [applicantStudentId], references: [id])
 
@@ -4304,7 +4304,7 @@ model CareerService {
   isActive       Boolean  @default(true)
   createdAt      DateTime @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
   @@map("career_services")
@@ -4342,7 +4342,7 @@ model GraduateOutcome {
   recordedAt            DateTime         @default(now())
   updatedAt             DateTime         @updatedAt
 
-  organization  Organization  @relation(fields: [organizationId], references: [id])
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   alumniProfile AlumniProfile @relation(fields: [alumniProfileId], references: [id])
 
   @@index([organizationId])

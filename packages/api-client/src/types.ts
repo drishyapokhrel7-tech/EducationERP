@@ -3819,6 +3819,12 @@ export interface PlatformOrganizationSummary {
   atLimit: boolean;
 }
 
+export interface UpdateOrganizationInput {
+  name?: string;
+  slug?: string;
+  edition?: Edition;
+}
+
 // ── Device Gateway (Phase 8, docx §12 "Biometric/Device Gateway") ──────────
 // barcode/RFID/smart-card scan-in, used by apps/device-gateway-client.
 

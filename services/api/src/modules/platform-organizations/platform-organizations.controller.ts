@@ -1,6 +1,6 @@
-import { Body, Controller, Get, Param, Patch, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, UseGuards } from "@nestjs/common";
 import { PlatformOrganizationsService } from "./platform-organizations.service";
-import { UpdateOrganizationEditionDto } from "./dto/update-organization-edition.dto";
+import { UpdateOrganizationDto } from "./dto/update-organization.dto";
 import { PlatformAuthGuard } from "../../common/auth/platform-auth.guard";
 
 @UseGuards(PlatformAuthGuard)
@@ -14,7 +14,12 @@ export class PlatformOrganizationsController {
   }
 
   @Patch(":id")
-  updateEdition(@Param("id") id: string, @Body() dto: UpdateOrganizationEditionDto) {
-    return this.platformOrganizations.updateEdition(id, dto);
+  update(@Param("id") id: string, @Body() dto: UpdateOrganizationDto) {
+    return this.platformOrganizations.updateOrganization(id, dto);
+  }
+
+  @Delete(":id")
+  remove(@Param("id") id: string) {
+    return this.platformOrganizations.deleteOrganization(id);
   }
 }

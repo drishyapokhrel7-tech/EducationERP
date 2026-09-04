@@ -79,345 +79,28 @@ describe("Tenant isolation (e2e)", () => {
 
   afterAll(async () => {
     if (prisma) {
-      // campuses and audit_logs are RLS-protected (FORCE ROW LEVEL
-      // SECURITY) — deleting them without setting the tenant GUC first
-      // deletes zero rows (not an error), which then breaks the
-      // organizations delete below on the audit_logs FK. withTenant is
-      // mandatory here, not just for app code.
-      // One withTenant call per table, not one giant transaction for all
-      // of them — the table list has grown across slices to the point
-      // where a single interactive transaction doing every delete
-      // sequentially blew Prisma's default 5s transaction timeout. Each
-      // call here is its own short transaction; order still matters
-      // (children before the parents they reference).
-      const deleteOrder: string[] = [
-        // answer references examAttempt + question — examAttempt is
-        // deleted early in this list and question very late, so answer
-        // must lead everything, ahead of even reportCard/grade/marks.
-        "answer",
-        // faceMatchEvent.cameraEventId is RESTRICT (must precede
-        // cameraEvent); cameraEvent.cameraId is RESTRICT (must precede
-        // camera); faceMatchEvent's matchedEnrollmentId/reviewedBy are
-        // SET NULL, so no ordering requirement against
-        // faceEnrollment/user specifically.
-        "faceMatchEvent",
-        "cameraEvent",
-        "camera",
-        // faceEmbedding.faceEnrollmentId is RESTRICT — must precede
-        // faceEnrollment.
-        "faceEmbedding",
-        // faceEnrollment's studentId/staffId FKs are ON DELETE SET NULL
-        // (not RESTRICT), so it doesn't block on student/employee
-        // ordering the way most tables here do — it only needs to
-        // precede organization itself, same as biometricPolicy.
-        "faceEnrollment",
-        "biometricPolicy",
-        // examRoom references examSchedule + room; examSchedule
-        // references examSubject; examSubject references exam +
-        // curriculumSubject; exam references examType/term/
-        // gradingScheme — all four lead the whole list since their
-        // parents span from room (deleted late) to term (deleted
-        // mid-list) to examType/gradingScheme/curriculumSubject
-        // (deleted later still), and nothing else references any of
-        // these four tables.
-        "reportCard",
-        "grade",
-        "marks",
-        "examAttempt",
-        "examRoom",
-        "examSchedule",
-        "examSubject",
-        "exam",
-        // knowledgeCheckAnswer references knowledgeCheckAttempt +
-        // knowledgeCheckQuestion (both RESTRICT, LMS discovery slice 4) —
-        // must precede both. knowledgeCheckAttempt/knowledgeCheckQuestion
-        // reference knowledgeCheck; knowledgeCheck references
-        // teachingAssignment + syllabusNode; assignmentSubmission
-        // references assignment; assignment references teachingAssignment;
-        // announcement (LMS discovery slice 5) also references
-        // teachingAssignment (RESTRICT) directly. discussionPost
-        // references discussionTopic (RESTRICT, LMS discovery slice 6) —
-        // must precede it (its student/employee author FKs are SET NULL,
-        // no ordering requirement there); discussionTopic itself
-        // references teachingAssignment (RESTRICT) — all nine lead the
-        // whole list since teachingAssignment and syllabusNode are both
-        // required elsewhere to be deleted much later.
-        "knowledgeCheckAnswer",
-        "knowledgeCheckAttempt",
-        "knowledgeCheckQuestion",
-        "knowledgeCheck",
-        "assignmentSubmission",
-        "assignment",
-        "announcement",
-        "discussionPost",
-        "discussionTopic",
-        // classMaterial references classSession; classSession references
-        // classSchedule/section/lessonPlan/syllabusNode — both lead the
-        // whole list since classSession must precede lessonPlan, which
-        // is itself already required to lead everything below.
-        "classMaterial",
-        "classSession",
-        // lessonPlan references teachingAssignment + syllabusNode;
-        // learningObjective references syllabusNode; syllabusNode
-        // references syllabus (self-reference is ON DELETE SET NULL, so
-        // parent/child ordering within syllabusNode itself doesn't
-        // matter); syllabus references curriculumSubject + term — all
-        // four lead the whole list since their parents span from very
-        // early (teachingAssignment) to very late (term/curriculumSubject).
-        "lessonPlan",
-        "learningObjective",
-        "syllabusNode",
-        "syllabus",
-        // attendanceException references studentAttendance; studentAttendance
-        // references attendanceSession + student; staffAttendance references
-        // employee; attendanceSession references classSchedule + section —
-        // all four must go before classSchedule (which itself must go before
-        // teachingAssignment/employee/section/etc.), so they lead the list.
-        "attendanceException",
-        "studentAttendance",
-        "staffAttendance",
-        "attendanceSession",
-        // courseModuleItemCompletion references courseModuleItem
-        // (RESTRICT) and student (RESTRICT, deleted much later at line
-        // ~232) — must precede both. courseModuleItem references
-        // courseModule (RESTRICT), which references teachingAssignment
-        // (RESTRICT) — same ordering requirement as classSchedule below.
-        "courseModuleItemCompletion",
-        "courseModuleItem",
-        "courseModule",
-        // classSchedule references teachingAssignment/room/period/section/
-        // teacher(employee)/term, and teachingAssignment references
-        // employee/subject/section/term — both must go before every one
-        // of those parent tables.
-        "classSchedule",
-        "teachingAssignment",
-        "teacherProfile",
-        "qualification",
-        "employmentHistory",
-        // Leave (Phase 7 slice 7b-1) — leaveRequest/staffLeaveBalance both
-        // reference employee (RESTRICT), so both must precede it; leaveType
-        // is only referenced by those two, so it can go anywhere ahead of
-        // employee too.
-        "leaveRequest",
-        "staffLeaveBalance",
-        "leaveType",
-        // Payroll (Phase 7 slice 7b-2) — payrollItem references payroll
-        // (RESTRICT), so it leads payroll; payroll references employee
-        // (RESTRICT), so both must precede employee too.
-        "payrollItem",
-        "payroll",
-        // salaryStructureItem references salaryStructure (RESTRICT);
-        // employee's FK to salaryStructure is ON DELETE SET NULL, so
-        // salaryStructure has no ordering requirement against employee
-        // specifically, but it's grouped here for readability.
-        "salaryStructureItem",
-        "salaryStructure",
-        // Transport (Phase 7 slice 7d-1) — studentTransportAssignment
-        // references studentEnrollment/route/stop (RESTRICT), so it leads
-        // all three (studentEnrollment itself is deleted much later, see
-        // below — this only needs to precede it, which it does here);
-        // stop references route (RESTRICT), so it precedes route; driver
-        // references employee (RESTRICT), so it must precede employee too.
-        // vehicle/route have no ordering requirement against employee
-        // (route.driverId is ON DELETE SET NULL) but are grouped here for
-        // readability.
-        "studentTransportAssignment",
-        // vehicleTrackingEvent.vehicleId is RESTRICT (must precede
-        // vehicle); its routeId is ON DELETE SET NULL, no ordering
-        // requirement against route.
-        "vehicleTrackingEvent",
-        "stop",
-        "route",
-        "driver",
-        "vehicle",
-        // Inventory (Phase 7 slice 7f) — assetAssignment references
-        // asset + employee (both RESTRICT), so it must precede both
-        // (employee is deleted right below). purchaseOrderItem
-        // references purchaseOrder + inventoryItem (RESTRICT), so it
-        // leads both; stockMovement references inventoryItem
-        // (RESTRICT, purchaseOrderId is ON DELETE SET NULL so no
-        // ordering requirement against purchaseOrder specifically).
-        // purchaseOrder references supplier (RESTRICT); inventoryItem
-        // references inventoryCategory (RESTRICT); asset's categoryId
-        // is ON DELETE SET NULL, grouped here for readability anyway.
-        "assetAssignment",
-        "purchaseOrderItem",
-        "stockMovement",
-        "purchaseOrder",
-        "asset",
-        "inventoryItem",
-        "supplier",
-        "inventoryCategory",
-        // Communication (Phase 7 slice 7g) — pushNotificationLog/
-        // smsLog/emailLog all reference message (RESTRICT), so all
-        // three lead it. message's createdByUserId/recipientUserId
-        // FK to users, and templateId to messageTemplate — neither
-        // needs an ordering entry here (users are never deleted by
-        // this suite at all; templateId is ON DELETE SET NULL).
-        "pushNotificationLog",
-        "smsLog",
-        "emailLog",
-        "message",
-        "messageTemplate",
-        // Documents & Certificates (Phase 7h) — staffDocument
-        // references employee (RESTRICT), so it must precede it.
-        "staffDocument",
-        "employee",
-        "staffType",
-        "designation",
-        // Finance (Phase 7 slice 7a-1) — financialTransaction references
-        // invoice/payment/discount/refund, so it leads all four;
-        // refund/discount/payment/studentFeeAssignment/invoiceItem all
-        // reference invoice (or payment), so they precede invoice itself;
-        // studentFeeAssignment also references studentEnrollment and
-        // feeStructure, and invoice references student/studentEnrollment,
-        // so the whole block must go before those — well ahead of the
-        // student/program/term deletes below. studentScholarship/
-        // scholarship and feeStructureItem/feeStructure/feeCategory are
-        // otherwise self-contained but placed here too since discount can
-        // reference scholarship.
-        // esewaTransaction.invoiceId is RESTRICT (slice 7a-2) — must
-        // precede invoice, same as every other finance table here.
-        "esewaTransaction",
-        "financialTransaction",
-        "refund",
-        "discount",
-        "payment",
-        "studentFeeAssignment",
-        "invoiceItem",
-        "invoice",
-        "studentScholarship",
-        "scholarship",
-        "feeStructureItem",
-        "feeStructure",
-        "feeCategory",
-        // admission_applications.enrolledStudentId FKs to Student, so
-        // these must go before the student delete.
-        "admissionStatusHistory",
-        "admissionApplication",
-        "studentStatusHistory",
-        // Hostel (Phase 7 slice 7e) — hostelAttendance/hostelVisitor/
-        // hostelComplaint all reference hostelAllocation (RESTRICT), so
-        // all three lead it; hostelAllocation itself references
-        // studentEnrollment + hostelBed (both RESTRICT), so it must
-        // precede both. hostelMaintenanceRequest/hostelBed reference
-        // hostelRoom (RESTRICT), hostelRoom references hostelBuilding
-        // (RESTRICT), hostelBuilding references hostel (RESTRICT) —
-        // the whole chain must finish before studentEnrollment below.
-        "hostelAttendance",
-        "hostelVisitor",
-        "hostelComplaint",
-        "hostelAllocation",
-        "hostelMaintenanceRequest",
-        "hostelBed",
-        "hostelRoom",
-        "hostelBuilding",
-        "hostel",
-        // hostelLookup only FKs to organization — no ordering
-        // requirement against anything else in this list.
-        "hostelLookup",
-        // Documents & Certificates (Phase 7h) — studentDocument and
-        // certificate both reference student (RESTRICT), so both
-        // must precede it. certificate has no RLS (see schema.prisma)
-        // but this deleteMany's explicit where:{organizationId}
-        // scopes it correctly regardless.
-        "studentDocument",
-        "certificate",
-        // Alumni & Career, part 1 (Phase 8 slice 8a) —
-        // alumniCareerHistory references alumniProfile + alumniCompany
-        // (both RESTRICT), so it leads both; alumniEducation/
-        // alumniSkill/alumniCertification reference alumniProfile
-        // only; alumniProfile itself references student (RESTRICT),
-        // so the whole chain finishes before studentEnrollment/
-        // student below.
-        // Alumni engagement (Phase 8 slice 8b) — alumniSurveyResponse
-        // references both alumniSurvey and alumniProfile (RESTRICT),
-        // so it leads both; alumniMentorship references alumniProfile
-        // and student (RESTRICT); alumniAchievement references
-        // alumniProfile only.
-        // Career services (Phase 8 slice 8c) — careerApplication
-        // references careerOpportunity and student (RESTRICT), so it
-        // leads both; careerOpportunity references alumniCompany
-        // (RESTRICT, leads it) and alumniProfile (SET NULL, no
-        // ordering requirement); graduateOutcome references
-        // alumniProfile (RESTRICT, leads it); careerService only
-        // references organization.
-        "careerApplication",
-        "careerOpportunity",
-        "careerService",
-        "graduateOutcome",
-        "alumniSurveyResponse",
-        "alumniSurvey",
-        "alumniMentorship",
-        "alumniAchievement",
-        "alumniCareerHistory",
-        "alumniEducation",
-        "alumniSkill",
-        "alumniCertification",
-        "alumniProfile",
-        "alumniCompany",
-        // gatewayScanEvent references gatewayDevice (RESTRICT) and
-        // gatewayCardBinding.boundBy references users (RESTRICT) — both
-        // must clear before student/user delete further down.
-        "gatewayScanEvent",
-        "gatewayCardBinding",
-        "gatewayDevice",
-        "studentEnrollment",
-        "studentGuardian",
-        "student",
-        "guardian",
-        "section",
-        "term",
-        "academicYear",
-        // question references questionBank; questionBank references
-        // curriculumSubject — both lead curriculumSubject.
-        "question",
-        "questionBank",
-        "gradingScheme",
-        "examType",
-        "curriculumSubject",
-        "curriculum",
-        "subject",
-        "program",
-        "department",
-        "faculty",
-        "room",
-        "period",
-        "campus",
-        "auditLog",
-        // notification.userId is RESTRICT (LMS discovery slice 9) — must
-        // clear before the global user.deleteMany call below runs.
-        "notification",
-      ];
-      for (const orgId of [orgAId, orgBId]) {
-        for (const model of deleteOrder) {
-          await prisma.withTenant(orgId, (tx) =>
-            (tx as unknown as Record<string, { deleteMany: (args: unknown) => Promise<unknown> }>)[
-              model
-            ].deleteMany({
-              where: { organizationId: orgId },
-            }),
-          );
-        }
-      }
-      // Roles & Permissions admin (custom Role rows only — Role.organizationId
-      // is null for system roles, so this never touches the master template).
-      // rolePermission/userRole must both clear before role itself deletes.
-      await prisma.rolePermission.deleteMany({ where: { role: { organizationId: { in: [orgAId, orgBId] } } } });
-      await prisma.userRole.deleteMany({ where: { user: { organizationId: { in: [orgAId, orgBId] } } } });
-      await prisma.role.deleteMany({ where: { organizationId: { in: [orgAId, orgBId] } } });
-      await prisma.session.deleteMany({ where: { user: { organizationId: { in: [orgAId, orgBId] } } } });
-      await prisma.loginEvent.deleteMany({ where: { organizationId: { in: [orgAId, orgBId] } } });
-      // registerOrganization now always creates one of these for the
-      // new admin (Phase 8-adjacent email-verification feature) — orgA/
-      // orgB's own admins get one too, same FK-before-parent-delete
-      // requirement as session/loginEvent above.
-      await prisma.emailVerificationCode.deleteMany({ where: { user: { organizationId: { in: [orgAId, orgBId] } } } });
-      await prisma.user.deleteMany({ where: { organizationId: { in: [orgAId, orgBId] } } });
+      // Every organization-scoped table (~150 FK relations, including
+      // the handful that don't carry their own organizationId —
+      // Session/EmailVerificationCode/PasswordResetCode/
+      // RolePermission/UserRole, each cascading via whatever org-scoped
+      // row they reference instead) now has `onDelete: Cascade` on its
+      // link back to Organization (see prisma/migrations/
+      // 20260904002611_cascade_delete_organization_children, and
+      // PlatformOrganizationsService.deleteOrganization, which this
+      // exact call mirrors). Postgres resolves the entire deletion
+      // graph as one atomic operation — this replaces what used to be
+      // a ~150-entry hand-maintained deletion-order array plus ~200
+      // sequential withTenant round-trips, which had grown slow enough
+      // (every phase added tables to keep ordered by hand) to
+      // repeatedly blow this hook's own timeout. verify-cascade-delete
+      // (this session's own standalone diagnostic, run directly against
+      // Prisma before this migration was trusted) exhaustively checked
+      // every one of those ~150 edges resolves correctly and touches
+      // nothing outside the deleted org.
       await prisma.organization.deleteMany({ where: { id: { in: [orgAId, orgBId] } } });
     }
     await app.close();
-  }, 180000);
+  }, 30000);
 
   it("rejects requests with no token", async () => {
     await request(app.getHttpServer()).get("/organizations/me").expect(401);
@@ -11453,11 +11136,122 @@ describe("Tenant isolation (e2e)", () => {
       expect(patched.body.edition).toBe("ULTRA");
       expect(patched.body.limit).toBeNull();
 
-      // Restore orgA to FREE — this test's own change, not something
-      // any later block in this file should inherit (orgA is deleted
-      // entirely in afterAll regardless, but there's no reason to
-      // leave it mutated for the remainder of this run).
-      await prisma.organization.update({ where: { id: orgAId }, data: { edition: "FREE" } });
+      // Editing name/slug through the same endpoint — a real, separate
+      // capability from the edition-only PATCH this endpoint used to
+      // be, so it gets its own assertions rather than being assumed
+      // to work because edition does.
+      const renamed = await request(app.getHttpServer())
+        .patch(`/platform/organizations/${orgAId}`)
+        .set(...auth(platformToken))
+        .send({ name: "Renamed via Platform Console", slug: `renamed-${suffix}` })
+        .expect(200);
+      expect(renamed.body.name).toBe("Renamed via Platform Console");
+      expect(renamed.body.slug).toBe(`renamed-${suffix}`);
+
+      // A slug collision is a real, named error (409), not a generic
+      // 500 — matches RegisterOrganizationDto's own "slug already in
+      // use" precedent this service reuses.
+      await request(app.getHttpServer())
+        .patch(`/platform/organizations/${orgBId}`)
+        .set(...auth(platformToken))
+        .send({ slug: `renamed-${suffix}` })
+        .expect(409);
+
+      // Restore orgA's name/slug/edition — this test's own change, not
+      // something any later block in this file should inherit (orgA
+      // is deleted entirely in afterAll regardless, but there's no
+      // reason to leave it mutated for the remainder of this run).
+      await prisma.organization.update({
+        where: { id: orgAId },
+        data: { name: "Org A", slug: `org-a-${suffix}`, edition: "FREE" },
+      });
+
+      // Deleting a college and everything under it — a genuinely
+      // separate, dedicated throwaway org (never orgA/orgB, which the
+      // rest of this file depends on existing for its whole run).
+      // Builds a small but real cross-section of child records (org
+      // structure, a User, and a Student) to prove the cascade
+      // actually removes dependent rows rather than just the bare org
+      // row succeeding because nothing referenced it yet — full
+      // exhaustive coverage of the ~150 cascading FK edges lives in
+      // the standalone verify-cascade-delete.ts diagnostic run
+      // separately (not jest — see this session's own notes), this is
+      // the "does the real HTTP endpoint actually do it" check.
+      const deletableOrg = await prisma.organization.create({
+        data: { name: `Deletable Org ${suffix}`, slug: `deletable-${suffix}` },
+      });
+      // Campus/User/Student are RLS-protected — writing them needs the
+      // withTenant session GUC set, same as every other fixture build
+      // in this file (Organization itself carries no RLS policy, so
+      // it's created directly above, matching
+      // PlatformOrganizationsService's own comment on exactly this
+      // distinction).
+      const { deletableCampus, deletableUser, deletableStudent } = await prisma.withTenant(
+        deletableOrg.id,
+        async (tx) => ({
+          deletableCampus: await tx.campus.create({
+            data: { organizationId: deletableOrg.id, name: "Main", code: "MAIN" },
+          }),
+          deletableUser: await tx.user.create({
+            data: {
+              organizationId: deletableOrg.id,
+              email: `deletable-${suffix}@rls-e2e.test`,
+              passwordHash: await argon2.hash("Whatever123!"),
+              firstName: "Del",
+              lastName: "Etable",
+            },
+          }),
+          deletableStudent: await tx.student.create({
+            data: {
+              organizationId: deletableOrg.id,
+              studentCode: "STU-DEL",
+              firstName: "Del",
+              lastName: "Etable",
+              dateOfBirth: new Date("2010-01-01"),
+            },
+          }),
+        }),
+      );
+
+      // A tenant token can't touch this platform-only route (cross-guard
+      // isolation, same direction already checked below for GET).
+      await request(app.getHttpServer())
+        .delete(`/platform/organizations/${deletableOrg.id}`)
+        .set(...auth(tokenA))
+        .expect(401);
+
+      const deleteResult = await request(app.getHttpServer())
+        .delete(`/platform/organizations/${deletableOrg.id}`)
+        .set(...auth(platformToken))
+        .expect(200);
+      expect(deleteResult.body).toEqual({ deleted: true, id: deletableOrg.id, name: `Deletable Org ${suffix}` });
+
+      expect(await prisma.organization.findUnique({ where: { id: deletableOrg.id } })).toBeNull();
+      // A plain (non-withTenant) read against an RLS-protected table
+      // with no session GUC set would ALWAYS return null regardless of
+      // whether the row still exists — RLS hides everything, not just
+      // rows outside the tenant — so that would be a check that passes
+      // even if the cascade did nothing. withTenant here is what makes
+      // this a real assertion: the GUC is still set to deletableOrg.id
+      // (withTenant doesn't require the org to still exist, it just
+      // sets a session variable), so a real leftover row WOULD be
+      // found if the delete hadn't actually cascaded.
+      const stillExists = await prisma.withTenant(deletableOrg.id, async (tx) => ({
+        campus: await tx.campus.findUnique({ where: { id: deletableCampus.id } }),
+        user: await tx.user.findUnique({ where: { id: deletableUser.id } }),
+        student: await tx.student.findUnique({ where: { id: deletableStudent.id } }),
+      }));
+      expect(stillExists.campus).toBeNull();
+      expect(stillExists.user).toBeNull();
+      expect(stillExists.student).toBeNull();
+
+      // Deleting an org that's already gone is a 404, not a silent
+      // success or a 500 — same NotFoundException precedent as every
+      // other loadX-then-act service method in this codebase.
+      await request(app.getHttpServer())
+        .delete(`/platform/organizations/${deletableOrg.id}`)
+        .set(...auth(platformToken))
+        .expect(404);
 
       // Cross-guard isolation: a tenant token is meaningless to
       // PlatformAuthGuard (wrong strategy entirely — signed with a
@@ -11474,16 +11268,16 @@ describe("Tenant isolation (e2e)", () => {
         .expect(401);
 
       await prisma.platformAdmin.delete({ where: { id: platformAdmin.id } });
-      // 90s, not 30s: platform/organizations lists every org
-      // sequentially (see platform-organizations.service.ts's own
-      // comment — a real P2028 from concurrent withTenant calls ruled
-      // out Promise.all here), and this dev database has accumulated
-      // 50+ orgs across this session's e2e runs (none cleaned up, per
-      // the standing "don't clean up test/demo data" instruction) —
-      // the same "bump the timeout as accumulated data grows" pattern
-      // already used elsewhere in this file (e.g. the afterAll cleanup
-      // hook).
-    }, 90000);
+      // 150s: platform/organizations lists every org sequentially (see
+      // platform-organizations.service.ts's own comment — a real
+      // P2028 from concurrent withTenant calls ruled out Promise.all
+      // here), and this dev database has accumulated 120+ orgs across
+      // this session's e2e runs (none cleaned up, per the standing
+      // "don't clean up test/demo data" instruction) — this test now
+      // also builds and deletes its own extra throwaway org to exercise
+      // the cascade-delete endpoint, on top of that already-slow list
+      // scan.
+    }, 150000);
   });
 
   describe("Performance optimization — pagination, pickers, indexes (Phase 8)", () => {

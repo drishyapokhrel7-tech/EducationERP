@@ -267,6 +267,7 @@ import type {
   Edition,
   PlatformAdminUser,
   PlatformOrganizationSummary,
+  UpdateOrganizationInput,
   RegisterGatewayDeviceInput,
   GatewayDeviceRecord,
   GatewayScanInput,
@@ -418,9 +419,9 @@ export class ApiError extends Error {
 // stuck one eventually rejects instead of hanging indefinitely.
 const REQUEST_TIMEOUT_MS = 30_000;
 
-function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number = REQUEST_TIMEOUT_MS): Promise<Response> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   return fetch(url, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
@@ -430,7 +431,14 @@ export interface ApiClientOptions {
 }
 
 export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
-  async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  // timeoutMs is a rare per-call override, not a general knob — only
+  // for the handful of calls known to scale with real data volume
+  // rather than being a fixed-cost request (platformListOrganizations
+  // below is the concrete case: platform-organizations.service.ts's
+  // own comment explains why it scans every org sequentially rather
+  // than in parallel, so its real-world duration grows with however
+  // many orgs this environment has accumulated).
+  async function request<T>(path: string, init: RequestInit = {}, timeoutMs?: number): Promise<T> {
     const token = getAccessToken?.();
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -440,7 +448,7 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       headers.Authorization = `Bearer ${token}`;
     }
 
-    const res = await fetchWithTimeout(`${baseUrl}${path}`, { ...init, headers });
+    const res = await fetchWithTimeout(`${baseUrl}${path}`, { ...init, headers }, timeoutMs);
     const body = res.status === 204 ? undefined : await res.json().catch(() => undefined);
     if (!res.ok) {
       throw new ApiError(res.status, body);
@@ -1963,12 +1971,27 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         body: JSON.stringify(input),
       }),
 
-    platformListOrganizations: () => request<PlatformOrganizationSummary[]>("/platform/organizations"),
+    // 120s, not the default 30s — this scans every org on the platform
+    // sequentially server-side (see platform-organizations.service.ts's
+    // own comment on why it can't parallelize), so real-world duration
+    // grows with however many orgs this environment has accumulated.
+    platformListOrganizations: () =>
+      request<PlatformOrganizationSummary[]>("/platform/organizations", {}, 120_000),
 
-    platformUpdateOrganizationEdition: (organizationId: string, edition: Edition) =>
+    platformUpdateOrganization: (organizationId: string, input: UpdateOrganizationInput) =>
       request<PlatformOrganizationSummary>(`/platform/organizations/${organizationId}`, {
         method: "PATCH",
-        body: JSON.stringify({ edition }),
+        body: JSON.stringify(input),
+      }),
+
+    // Hard delete — the platform admin's "remove a college and every
+    // record ever created under it" action. See
+    // PlatformOrganizationsService.deleteOrganization's own comment
+    // for how this genuinely removes every child record before the
+    // college master row, not a partial/soft delete.
+    platformDeleteOrganization: (organizationId: string) =>
+      request<{ deleted: true; id: string; name: string }>(`/platform/organizations/${organizationId}`, {
+        method: "DELETE",
       }),
 
     // Device Gateway (Phase 8, docx §12) — barcode/RFID/smart-card

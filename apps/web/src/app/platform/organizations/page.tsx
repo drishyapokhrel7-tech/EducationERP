@@ -1,11 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { platformApi } from "@/lib/platform-api";
 import { getStoredPlatformSession, setStoredPlatformSession } from "@/lib/platform-session";
@@ -29,26 +32,62 @@ export default function PlatformOrganizationsPage() {
   const [orgs, setOrgs] = useState<PlatformOrganizationSummary[] | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
 
+  // Edit state — one shared inline form, mirrors roles-permissions'
+  // own "editingXId + a form rendered below the matching row"
+  // convention rather than an always-editable field per row.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ name: "", slug: "" });
+
+  // Delete state — the one action on this page severe enough to
+  // warrant more than ConfirmDialog's normal one-click confirm: this
+  // removes an entire college and every record ever created under it,
+  // not just one entity within an org, so it gates on typing the
+  // org's exact name (see ConfirmDialog's confirmText prop).
+  const [deletingOrg, setDeletingOrg] = useState<{ id: string; name: string } | null>(null);
+
+  function load() {
+    platformApi
+      .platformListOrganizations()
+      .then(setOrgs)
+      .catch(() => toast.error("Failed to load organizations"));
+  }
+
   useEffect(() => {
     if (!mounted) return;
     if (!getStoredPlatformSession()) {
       router.replace("/platform/login");
       return;
     }
-    platformApi
-      .platformListOrganizations()
-      .then(setOrgs)
-      .catch(() => toast.error("Failed to load organizations"));
+    load();
   }, [mounted, router]);
 
   async function updateEdition(id: string, edition: Edition) {
     setSavingId(id);
     try {
-      const updated = await platformApi.platformUpdateOrganizationEdition(id, edition);
+      const updated = await platformApi.platformUpdateOrganization(id, { edition });
       setOrgs((prev) => (prev ?? []).map((o) => (o.id === id ? { ...o, ...updated } : o)));
       toast.success("Edition updated");
     } catch {
       toast.error("Failed to update edition");
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  async function saveEdit(e: FormEvent) {
+    e.preventDefault();
+    if (!editingId) return;
+    setSavingId(editingId);
+    try {
+      const updated = await platformApi.platformUpdateOrganization(editingId, {
+        name: editForm.name,
+        slug: editForm.slug,
+      });
+      setOrgs((prev) => (prev ?? []).map((o) => (o.id === editingId ? { ...o, ...updated } : o)));
+      toast.success("Organization updated");
+      setEditingId(null);
+    } catch (err) {
+      toast.error(err instanceof Error && err.message.includes("slug") ? err.message : "Failed to update organization");
     } finally {
       setSavingId(null);
     }
@@ -84,7 +123,7 @@ export default function PlatformOrganizationsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Licensing editions</CardTitle>
+          <CardTitle>Colleges &amp; schools</CardTitle>
         </CardHeader>
         <CardContent>
           {!orgs ? (
@@ -94,37 +133,104 @@ export default function PlatformOrganizationsPage() {
           ) : (
             <div className="space-y-3">
               {orgs.map((org) => (
-                <div
-                  key={org.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3"
-                >
-                  <div>
-                    <p className="font-medium">
-                      {org.name} <span className="text-muted-foreground text-xs">{org.slug}</span>
-                    </p>
-                    <p className="text-muted-foreground text-xs">
-                      {org.studentCount + org.employeeCount} of {org.limit ?? "∞"} records used
-                      {org.atLimit ? (
-                        <Badge variant="destructive" className="ml-2">
-                          At limit
-                        </Badge>
-                      ) : null}
-                    </p>
+                <div key={org.id} className="space-y-3 rounded-md border p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="font-medium">
+                        {org.name} <span className="text-muted-foreground text-xs">{org.slug}</span>
+                      </p>
+                      <p className="text-muted-foreground text-xs">
+                        {org.studentCount + org.employeeCount} of {org.limit ?? "∞"} records used
+                        {org.atLimit ? (
+                          <Badge variant="destructive" className="ml-2">
+                            At limit
+                          </Badge>
+                        ) : null}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <NativeSelect
+                        className="w-56"
+                        placeholder="Select edition"
+                        value={org.edition}
+                        onChange={(v) => updateEdition(org.id, v as Edition)}
+                        options={EDITION_OPTIONS}
+                        disabled={savingId === org.id}
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setEditingId(org.id);
+                          setEditForm({ name: org.name, slug: org.slug });
+                        }}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => setDeletingOrg({ id: org.id, name: org.name })}
+                      >
+                        Delete
+                      </Button>
+                    </div>
                   </div>
-                  <NativeSelect
-                    className="w-56"
-                    placeholder="Select edition"
-                    value={org.edition}
-                    onChange={(v) => updateEdition(org.id, v as Edition)}
-                    options={EDITION_OPTIONS}
-                    disabled={savingId === org.id}
-                  />
+
+                  {editingId === org.id ? (
+                    <form className="flex flex-wrap items-end gap-3 border-t pt-3" onSubmit={saveEdit}>
+                      <div className="space-y-2">
+                        <Label>Name</Label>
+                        <Input
+                          required
+                          value={editForm.name}
+                          onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Slug</Label>
+                        <Input
+                          required
+                          value={editForm.slug}
+                          onChange={(e) => setEditForm((f) => ({ ...f, slug: e.target.value }))}
+                        />
+                      </div>
+                      <Button type="submit" size="sm" disabled={savingId === org.id}>
+                        {savingId === org.id ? "Saving…" : "Save"}
+                      </Button>
+                      <Button type="button" size="sm" variant="outline" onClick={() => setEditingId(null)}>
+                        Cancel
+                      </Button>
+                    </form>
+                  ) : null}
                 </div>
               ))}
             </div>
           )}
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={deletingOrg !== null}
+        onOpenChange={(open) => !open && setDeletingOrg(null)}
+        title={`Delete ${deletingOrg?.name}?`}
+        description="This permanently removes this college and every record ever created under it — students, staff, invoices, exams, attendance, everything. Child records are deleted first, then the college itself. This cannot be undone."
+        confirmLabel="Delete college"
+        variant="destructive"
+        confirmText={deletingOrg?.name}
+        onConfirm={async () => {
+          if (!deletingOrg) return;
+          try {
+            await platformApi.platformDeleteOrganization(deletingOrg.id);
+            setOrgs((prev) => (prev ?? []).filter((o) => o.id !== deletingOrg.id));
+            toast.success(`${deletingOrg.name} deleted`);
+          } catch {
+            toast.error("Failed to delete organization");
+          }
+        }}
+      />
     </main>
   );
 }
