@@ -62,19 +62,18 @@ export class PlatformOrganizationsService {
     // production, Vercel's own function time limit — the endpoint
     // stopped actually working, not just being slow.
     //
-    // BATCH_SIZE=8 was tried first and worked fine locally, but hit
-    // the exact same P2028 live in production (confirmed via Vercel
-    // function logs) — a serverless function's own Prisma connection
-    // pool is far smaller than a local dev connection's, so "safe
-    // concurrency" isn't one fixed number across environments. 3 is
-    // conservative enough to stay well under that in practice, and
-    // withP2028Retry below is the actual safety net: a transient
-    // "unable to start a transaction" retried a couple of times with a
-    // short backoff, rather than trusting any single batch size to
-    // never contend, matching this project's own standing posture of
-    // expecting and tolerating real Neon latency rather than assuming
-    // it away.
-    const BATCH_SIZE = 3;
+    // The real ceiling was Prisma's own default connection_limit
+    // (~3 on a serverless function's typical CPU allocation, confirmed
+    // live), not this batch number itself — PrismaService now sets an
+    // explicit, higher connection_limit (see its own comment) so a
+    // batch this size has real headroom instead of contending for 2-3
+    // connections. withP2028Retry below stays as the actual safety
+    // net regardless — a transient "unable to start a transaction" is
+    // retried a couple of times with a short backoff rather than
+    // trusting any fixed batch size to never contend, matching this
+    // project's own standing posture of expecting and tolerating real
+    // Neon latency rather than assuming it away.
+    const BATCH_SIZE = 8;
     const results: Array<{ id: string; name: string; slug: string } & Awaited<ReturnType<typeof editionStatus>>> = [];
     for (let i = 0; i < organizations.length; i += BATCH_SIZE) {
       const batch = organizations.slice(i, i + BATCH_SIZE);

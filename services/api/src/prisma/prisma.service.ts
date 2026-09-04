@@ -1,6 +1,30 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 
+// Prisma's own default connection_limit, when a connection string
+// doesn't set one explicitly, is `num_physical_cpus * 2 + 1` — on a
+// Vercel serverless function (typically allocated a single vCPU or a
+// fraction of one) that computes to as little as 3. Confirmed live in
+// production as the actual cause of a real P2028 ("unable to start a
+// transaction in the given time") once concurrent tenant-scoped work
+// (platform-organizations.service.ts's own org-list scan) went even
+// modestly above that — batches of 8 concurrent withTenant
+// transactions worked fine against a local dev connection's much
+// larger default pool, but failed hard in the real deployed function.
+// Neon's own pooled endpoint (the `-pooler` hostname already in use
+// here) comfortably supports far more than Prisma's serverless-sized
+// default, so this raises the ceiling explicitly rather than staying
+// pinned to a formula tuned for a different kind of deployment — this
+// benefits any endpoint doing more than a couple of concurrent
+// withTenant calls, not just the one that surfaced the problem.
+// Respects an explicit connection_limit already present in the URL
+// (a deliberate override should win over this default).
+function withConnectionLimit(url: string | undefined, limit: number): string | undefined {
+  if (!url) return url;
+  if (/[?&]connection_limit=/.test(url)) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}connection_limit=${limit}`;
+}
+
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   constructor() {
@@ -8,7 +32,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     // policies in migration 20260817234200 are real enforcement, not a
     // no-op against an owner connection. Falls back to DATABASE_URL only
     // if RUNTIME_DATABASE_URL isn't set (e.g. a one-off local script).
-    const runtimeUrl = process.env.RUNTIME_DATABASE_URL ?? process.env.DATABASE_URL;
+    const runtimeUrl = withConnectionLimit(process.env.RUNTIME_DATABASE_URL ?? process.env.DATABASE_URL, 10);
     super({ datasources: { db: { url: runtimeUrl } } });
   }
 
