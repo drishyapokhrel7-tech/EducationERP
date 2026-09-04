@@ -32,11 +32,9 @@ a cross-org operator is a genuinely different kind of actor, not a
 bent version of the existing tenant-scoped one); "restrict AI logins"
 means **a human-verification challenge (CAPTCHA)** on login. The Ovexa
 "About Us" link is env-configurable (`NEXT_PUBLIC_OVEXA_ABOUT_URL`,
-default `https://ovexa.com/about` — the real registered domain, per
-`school.ovexa.com` already being real in an earlier project; a real
-Ovexa Technology marketing site exists locally at `~/website/site`
-confirming the org name, though its own code still has a placeholder
-domain) rather than blocking on a second round-trip.
+default `https://ovexa.org/about` — the real official website per the
+user's own direction, updated from an earlier `ovexa.com` guess) rather
+than blocking on a second round-trip.
 
 Investigated directly before designing:
 - **`Permission` is this schema's own precedent for a genuinely

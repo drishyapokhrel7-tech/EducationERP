@@ -27,7 +27,7 @@ export function FeatureLock({
   if (!status.data) return null;
   if (meetsEdition(status.data.edition, minEdition)) return <>{children}</>;
 
-  const aboutUrl = process.env.NEXT_PUBLIC_OVEXA_ABOUT_URL ?? "https://ovexa.com/about";
+  const aboutUrl = process.env.NEXT_PUBLIC_OVEXA_ABOUT_URL ?? "https://ovexa.org/about";
   return (
     <Card className="mx-auto mt-8 max-w-md">
       <CardHeader className="items-center text-center">

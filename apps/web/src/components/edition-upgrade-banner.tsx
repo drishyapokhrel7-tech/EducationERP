@@ -5,7 +5,7 @@ import { NEXT_EDITION_LABEL } from "@/lib/edition-features";
 // error toast when a create attempt returns the structured
 // EDITION_LIMIT_EXCEEDED body (see EditionLimitExceededException).
 export function EditionUpgradeBanner({ edition }: { edition: Edition }) {
-  const aboutUrl = process.env.NEXT_PUBLIC_OVEXA_ABOUT_URL ?? "https://ovexa.com/about";
+  const aboutUrl = process.env.NEXT_PUBLIC_OVEXA_ABOUT_URL ?? "https://ovexa.org/about";
   return (
     <div className="border-destructive/50 bg-destructive/10 text-destructive rounded-md border p-3 text-sm">
       Sorry, you need to upgrade your system to {NEXT_EDITION_LABEL[edition]}. Please contact{" "}
