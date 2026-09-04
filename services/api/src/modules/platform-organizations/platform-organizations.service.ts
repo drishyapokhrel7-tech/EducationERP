@@ -26,18 +26,31 @@ export class PlatformOrganizationsService {
       where: { deletedAt: null },
       orderBy: { name: "asc" },
     });
-    // Sequential, not Promise.all over every org — this real
-    // environment has accumulated dozens of orgs from e2e test runs
-    // (none cleaned up, per this project's standing "don't clean up
-    // test/demo data" instruction), and firing that many concurrent
-    // withTenant transactions at once exhausted Neon's connection
-    // pool (P2028 "unable to start a transaction", confirmed live).
-    // An admin console listing schools isn't latency-critical enough
-    // to be worth the concurrency here.
-    const results = [];
-    for (const org of organizations) {
-      const status = await this.prisma.withTenant(org.id, (tx) => editionStatus(tx, org.id));
-      results.push({ id: org.id, name: org.name, slug: org.slug, ...status });
+    // Bounded-concurrency batches, not fully sequential and not a
+    // single unbounded Promise.all. Fully sequential was the original
+    // choice here specifically to dodge a real, confirmed P2028
+    // ("unable to start a transaction") from firing every org's
+    // withTenant transaction at once — but this environment has since
+    // grown past 120 accumulated orgs (e2e runs never clean up
+    // test/demo data, per this project's own standing instruction),
+    // and one-at-a-time round trips at that volume pushed real-world
+    // duration past both this client's request timeout and, in
+    // production, Vercel's own function time limit — the endpoint
+    // stopped actually working, not just being slow. A small batch
+    // size keeps peak concurrent transactions well below whatever
+    // triggered the original P2028 while cutting wall-clock time by
+    // roughly the batch factor.
+    const BATCH_SIZE = 8;
+    const results: Array<{ id: string; name: string; slug: string } & Awaited<ReturnType<typeof editionStatus>>> = [];
+    for (let i = 0; i < organizations.length; i += BATCH_SIZE) {
+      const batch = organizations.slice(i, i + BATCH_SIZE);
+      const batchResults = await Promise.all(
+        batch.map(async (org) => {
+          const status = await this.prisma.withTenant(org.id, (tx) => editionStatus(tx, org.id));
+          return { id: org.id, name: org.name, slug: org.slug, ...status };
+        }),
+      );
+      results.push(...batchResults);
     }
     return results;
   }
