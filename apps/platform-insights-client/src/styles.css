@@ -1,0 +1,206 @@
+:root {
+  color-scheme: light;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #f5f5f4;
+  color: #1c1917;
+}
+
+.screen {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.screen.centered {
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.card {
+  background: white;
+  border: 1px solid #e7e5e4;
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.card h1 {
+  margin: 0;
+}
+
+.card h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+button {
+  padding: 0.625rem 1.25rem;
+  border: none;
+  border-radius: 0.5rem;
+  background: #0e7490;
+  color: white;
+  font-size: 0.95rem;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.link-button {
+  background: none;
+  color: #0e7490;
+  padding: 0.25rem 0;
+  font-size: 0.85rem;
+  text-decoration: underline;
+  align-self: flex-start;
+}
+
+.muted {
+  color: #78716c;
+  font-size: 0.85rem;
+  margin: 0.125rem 0 0;
+}
+
+.error {
+  color: #b91c1c;
+  font-size: 0.85rem;
+}
+
+/* Dashboard shell */
+.dashboard header {
+  padding: 1.25rem 1.5rem 0.5rem;
+  background: white;
+  border-bottom: 1px solid #e7e5e4;
+}
+
+.dashboard header h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.25rem;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0 1.5rem;
+  background: white;
+  border-bottom: 1px solid #e7e5e4;
+}
+
+.tab {
+  background: none;
+  color: #57534e;
+  border-radius: 0;
+  padding: 0.75rem 1rem;
+  border-bottom: 2px solid transparent;
+}
+
+.tab.active {
+  color: #0e7490;
+  border-bottom-color: #0e7490;
+  font-weight: 600;
+}
+
+.dashboard-content {
+  flex: 1;
+  padding: 1.5rem;
+  overflow-y: auto;
+}
+
+.tab-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 900px;
+}
+
+/* Tables */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.5rem 0.5rem;
+  border-bottom: 1px solid #f0efee;
+}
+
+th {
+  color: #78716c;
+  font-weight: 500;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.table-toolbar {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.table-toolbar input,
+.table-toolbar select {
+  padding: 0.5rem 0.625rem;
+  border: 1px solid #d6d3d1;
+  border-radius: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.table-toolbar input {
+  flex: 1;
+}
+
+.bar-cell {
+  position: relative;
+  background: #f0efee;
+  border-radius: 0.375rem;
+  height: 1.25rem;
+  min-width: 120px;
+  display: flex;
+  align-items: center;
+}
+
+.bar-cell-fill {
+  position: absolute;
+  inset: 0;
+  background: #a5d8e0;
+  border-radius: 0.375rem;
+}
+
+.bar-cell span {
+  position: relative;
+  padding-left: 0.5rem;
+  font-size: 0.8rem;
+}
+
+/* Recommendations */
+.recommendation-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.recommendation-title {
+  margin: 0;
+  font-weight: 600;
+}
