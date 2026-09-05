@@ -21,11 +21,7 @@ import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtPayload } from "../../common/auth/jwt-payload";
 import { IMAGE_UPLOAD_OPTIONS } from "../../common/upload-limits";
 
-import { RequireEditionGuard } from "../../common/auth/require-edition.guard";
-import { RequireEdition } from "../../common/auth/require-edition.decorator";
-
-@UseGuards(JwtAuthGuard, PermissionsGuard, RequireEditionGuard)
-@RequireEdition("ULTRA")
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller("organizations/me")
 export class BiometricPolicyController {
   constructor(private readonly biometricPolicy: BiometricPolicyService) {}

@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { EntityCard } from "@/components/dashboard/entity-card";
-import { FeatureLock } from "@/components/feature-lock";
 import { api } from "@/lib/api";
 import { submitAction, submitDelete } from "@/lib/submit-action";
 
@@ -83,9 +82,7 @@ export default function TimetablePage() {
   // admin auditing every entry across sections at once.
   const [gridSectionId, setGridSectionId] = useState("");
 
-
   return (
-    <FeatureLock feature="timetable">
     <div className="max-w-3xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Timetable</h1>
@@ -951,6 +948,5 @@ export default function TimetablePage() {
         </form>
       </EntityCard>
     </div>
-    </FeatureLock>
   );
 }

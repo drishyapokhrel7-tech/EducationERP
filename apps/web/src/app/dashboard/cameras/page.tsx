@@ -10,7 +10,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
-import { FeatureLock } from "@/components/feature-lock";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
 import type { CameraEventResult } from "@education-erp/api-client";
@@ -117,7 +116,6 @@ export default function CamerasPage() {
   const pendingReview = (matchEvents.data ?? []).filter((m) => m.result === "POSSIBLE_MATCH" && !m.reviewedAt);
 
   return (
-    <FeatureLock feature="cameras">
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Cameras</h1>
@@ -286,6 +284,5 @@ export default function CamerasPage() {
         </CardContent>
       </Card>
     </div>
-    </FeatureLock>
   );
 }

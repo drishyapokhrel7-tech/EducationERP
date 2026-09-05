@@ -533,15 +533,12 @@ export class StudentsService {
       // for the same "one transaction, no N round trips" reasoning
       // already documented above for existingCodes.
       const organization = await tx.organization.findUnique({ where: { id: organizationId } });
-      const limit = organization ? editionLimit(organization.edition) : null;
-      let combinedCount = 0;
-      if (limit !== null) {
-        const [activeStudentCount, activeEmployeeCount] = await Promise.all([
-          tx.student.count({ where: { organizationId, deletedAt: null } }),
-          tx.employee.count({ where: { organizationId, deletedAt: null } }),
-        ]);
-        combinedCount = activeStudentCount + activeEmployeeCount;
-      }
+      const limit = organization ? editionLimit(organization.edition) : 0;
+      const [activeStudentCount, activeEmployeeCount] = await Promise.all([
+        tx.student.count({ where: { organizationId, deletedAt: null } }),
+        tx.employee.count({ where: { organizationId, deletedAt: null } }),
+      ]);
+      let combinedCount = activeStudentCount + activeEmployeeCount;
 
       for (let i = 0; i < records.length; i++) {
         const rowNumber = i + 2; // header occupies row 1
@@ -579,7 +576,7 @@ export class StudentsService {
           errors.push({ row: rowNumber, message: `studentCode "${studentCode}" already exists` });
           continue;
         }
-        if (limit !== null && combinedCount >= limit) {
+        if (combinedCount >= limit) {
           errors.push({
             row: rowNumber,
             message: `${organization?.edition} edition's ${limit}-record limit reached — upgrade to import more`,

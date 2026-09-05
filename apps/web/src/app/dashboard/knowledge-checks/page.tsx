@@ -10,7 +10,6 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { EntityCard } from "@/components/dashboard/entity-card";
-import { FeatureLock } from "@/components/feature-lock";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
 import { submitAction } from "@/lib/submit-action";
@@ -43,7 +42,6 @@ export default function KnowledgeChecksPage() {
   const nonEmptyOptions = questionForm.options.map((o) => o.trim()).filter(Boolean);
 
   return (
-    <FeatureLock feature="knowledge-checks">
     <div className="max-w-3xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Knowledge Checks</h1>
@@ -318,6 +316,5 @@ export default function KnowledgeChecksPage() {
         </Card>
       ) : null}
     </div>
-    </FeatureLock>
   );
 }

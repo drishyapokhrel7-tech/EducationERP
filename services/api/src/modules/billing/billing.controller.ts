@@ -9,10 +9,6 @@ import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtPayload } from "../../common/auth/jwt-payload";
 
-// Deliberately no RequireEditionGuard/@RequireEdition here, unlike
-// every other gated module — the whole point of this controller is
-// letting a FREE-tier org pay to no longer be FREE-tier; gating it
-// behind a paid edition would be circular.
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller("organizations/me/billing")
 export class BillingController {

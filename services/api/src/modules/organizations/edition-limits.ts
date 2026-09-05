@@ -2,17 +2,18 @@ import { Edition, PrismaClient } from "@prisma/client";
 import { NotFoundException } from "@nestjs/common";
 import { EditionLimitExceededException } from "../../common/edition-limit-exceeded.exception";
 
-// The two concrete numbers actually given, plus Ultra as the
-// "no restrictions" top tier — a plain constant map, not a
-// per-org-configurable DB setting; nothing this session has been
-// asked to make admin-configurable yet. `null` means unlimited.
-export const EDITION_LIMITS: Record<Edition, number | null> = {
+// Every edition unlocks every module — the record limit below is
+// the only thing that differs between them, and the only reason to
+// upgrade. A plain constant map, not a per-org-configurable DB
+// setting; nothing this session has been asked to make
+// admin-configurable yet.
+export const EDITION_LIMITS: Record<Edition, number> = {
   FREE: 50,
   PROFESSIONAL: 500,
-  ULTRA: null,
+  ULTRA: 1000,
 };
 
-export function editionLimit(edition: Edition): number | null {
+export function editionLimit(edition: Edition): number {
   return EDITION_LIMITS[edition];
 }
 
@@ -46,12 +47,10 @@ export function effectiveEdition(org: { edition: Edition; editionExpiresAt: Date
 // shared across the frontend/backend package boundary — there's no
 // existing mechanism for these two apps to share a plain constant,
 // and this is small enough that inventing one isn't worth it). Used
-// by RequireEditionGuard (../../common/auth/require-edition.guard.ts)
-// for the server-side half of module gating — the frontend's
-// FeatureLock component already prevents a normal user from ever
-// generating a request to a gated route, so this guard is a defense-
-// in-depth backstop against a client bypassing the UI (curl, a
-// modified request), not the primary UX.
+// by BillingService/PlatformOrganizationsService to reject
+// "upgrading" to an edition already held or lower — module gating no
+// longer exists (every edition unlocks every feature; only the
+// record limit differs), so this is the one remaining consumer.
 const EDITION_RANK: Record<Edition, number> = { FREE: 0, PROFESSIONAL: 1, ULTRA: 2 };
 
 export function meetsEdition(current: Edition, required: Edition): boolean {
@@ -73,7 +72,6 @@ export async function assertUnderEditionLimit(tx: PrismaClient, organizationId: 
 
   const edition = effectiveEdition(organization);
   const limit = editionLimit(edition);
-  if (limit === null) return;
 
   const [studentCount, employeeCount] = await Promise.all([
     tx.student.count({ where: { organizationId, deletedAt: null } }),
@@ -101,6 +99,6 @@ export async function editionStatus(tx: PrismaClient, organizationId: string) {
     studentCount,
     employeeCount,
     limit,
-    atLimit: limit !== null && combined >= limit,
+    atLimit: combined >= limit,
   };
 }

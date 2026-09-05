@@ -17,7 +17,6 @@ import {
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard } from "@/components/ui/stat-card";
-import { FeatureLock } from "@/components/feature-lock";
 import { api } from "@/lib/api";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { Building2, ClipboardList, GraduationCap, Users } from "lucide-react";
@@ -78,7 +77,6 @@ export default function OverviewPage() {
   const activity = useSWR("recent-audit-logs", () => api.listAuditLogs({ limit: 10 }));
 
   return (
-    <FeatureLock feature="overview">
       <div className="max-w-6xl space-y-6">
         <div>
           <h1 className="text-2xl font-semibold">Highlights</h1>
@@ -257,6 +255,5 @@ export default function OverviewPage() {
           </CardContent>
         </Card>
       </div>
-    </FeatureLock>
   );
 }

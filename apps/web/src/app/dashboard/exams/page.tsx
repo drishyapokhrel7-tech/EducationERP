@@ -10,7 +10,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
-import { FeatureLock } from "@/components/feature-lock";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
 import { useHighlightFromSearch } from "@/lib/use-highlight-from-search";
@@ -307,7 +306,6 @@ export default function ExamsPage() {
   }
 
   return (
-    <FeatureLock feature="exams">
     <div className="max-w-3xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Exams</h1>
@@ -666,6 +664,5 @@ export default function ExamsPage() {
 
       {activeExamId ? <ReportCardSection examId={activeExamId} students={students.data ?? []} /> : null}
     </div>
-    </FeatureLock>
   );
 }

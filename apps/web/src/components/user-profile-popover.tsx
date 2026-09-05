@@ -38,10 +38,10 @@ export function UserProfilePopover({ user }: { user: SafeUser }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const me = useSWR(open ? "auth-me" : null, () => api.getMe());
   // Unconditional (not gated behind `open` the way `me` is above) —
-  // shares the same SWR cache key every FeatureLock-wrapped page
-  // already warms, so this is very likely already cached by the time
-  // a user opens their profile, avoiding a loading flicker on the one
-  // thing this was specifically asked to show prominently.
+  // shares the same SWR cache key the billing page already warms, so
+  // this is very likely already cached by the time a user opens their
+  // profile, avoiding a loading flicker on the one thing this was
+  // specifically asked to show prominently.
   const editionStatus = useEditionStatus();
 
   useEffect(() => {

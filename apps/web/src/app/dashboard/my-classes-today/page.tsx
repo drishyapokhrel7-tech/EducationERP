@@ -10,7 +10,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
-import { FeatureLock } from "@/components/feature-lock";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
 import { todayLocalDateString } from "@/lib/local-date";
@@ -52,7 +51,6 @@ export default function MyClassesTodayPage() {
   }
 
   return (
-    <FeatureLock feature="my-classes-today">
     <div className="max-w-3xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">My Classes Today</h1>
@@ -274,6 +272,5 @@ export default function MyClassesTodayPage() {
         </Card>
       ) : null}
     </div>
-    </FeatureLock>
   );
 }

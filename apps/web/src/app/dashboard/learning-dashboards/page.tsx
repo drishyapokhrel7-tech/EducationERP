@@ -7,7 +7,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
-import { FeatureLock } from "@/components/feature-lock";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
 import { DAYS, StudentSummary } from "@/components/student-summary";
@@ -33,7 +32,6 @@ export default function LearningDashboardsPage() {
   const parentDashboard = useSWR(guardianId ? ["parent-dashboard", guardianId] : null, () => api.getParentDashboard(guardianId));
 
   return (
-    <FeatureLock feature="learning-dashboards">
     <div className="max-w-3xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Learning Dashboards</h1>
@@ -204,6 +202,5 @@ export default function LearningDashboardsPage() {
         </CardContent>
       </Card>
     </div>
-    </FeatureLock>
   );
 }

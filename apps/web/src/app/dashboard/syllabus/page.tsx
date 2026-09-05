@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { EntityCard } from "@/components/dashboard/entity-card";
-import { FeatureLock } from "@/components/feature-lock";
 import { api } from "@/lib/api";
 import { submitAction } from "@/lib/submit-action";
 import type { SyllabusNode, SyllabusNodeLevel } from "@education-erp/api-client";
@@ -90,14 +89,12 @@ export default function SyllabusPage() {
     objectives: "",
   });
 
-
   const nodes = activeSyllabus.data ? orderTree(activeSyllabus.data.nodes) : [];
   const parentCandidates = (activeSyllabus.data?.nodes ?? []).filter(
     (n) => n.level === REQUIRED_PARENT_LEVEL[nodeForm.level],
   );
 
   return (
-    <FeatureLock feature="syllabus">
     <div className="max-w-3xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Syllabus</h1>
@@ -429,6 +426,5 @@ export default function SyllabusPage() {
         </form>
       </EntityCard>
     </div>
-    </FeatureLock>
   );
 }

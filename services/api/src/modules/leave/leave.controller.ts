@@ -12,11 +12,7 @@ import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtPayload } from "../../common/auth/jwt-payload";
 
-import { RequireEditionGuard } from "../../common/auth/require-edition.guard";
-import { RequireEdition } from "../../common/auth/require-edition.decorator";
-
-@UseGuards(JwtAuthGuard, PermissionsGuard, RequireEditionGuard)
-@RequireEdition("PROFESSIONAL")
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller("organizations/me")
 export class LeaveController {
   constructor(private readonly leave: LeaveService) {}

@@ -22,8 +22,8 @@ const CONTACT_PHONE = "+977 9768786270";
 const CONTACT_PHONE_TEL = "+9779768786270";
 
 const PLANS: { edition: Edition; description: string }[] = [
-  { edition: "PROFESSIONAL", description: "Finance, HR & Payroll, Timetable, Syllabus, Assessment." },
-  { edition: "ULTRA", description: "Everything in Professional, plus Transport, Hostel, Library, Inventory, Communication, Documents, Biometric, Cameras, Alumni, and Analytics & Reports." },
+  { edition: "PROFESSIONAL", description: "Up to 500 combined student and staff records." },
+  { edition: "ULTRA", description: "Up to 1,000 combined student and staff records." },
 ];
 
 // Online checkout via eSewa is temporarily disabled here — BillingService's
@@ -32,10 +32,10 @@ const PLANS: { edition: Edition; description: string }[] = [
 // In the meantime, an org requests an upgrade manually below; Ovexa staff
 // see it in the Platform Admin console and follow up directly.
 //
-// Deliberately no <FeatureLock> wrapper on this page, unlike every
-// other dashboard module — the whole point is letting a FREE-tier org
-// reach this page to stop being FREE-tier. Gating it behind a paid
-// edition would be circular.
+// Every edition unlocks every module — the record limit above is the
+// only reason to upgrade, so this page (unlike every other dashboard
+// module before this change) has never needed any kind of lock on
+// itself: it's how a FREE-tier org raises its own limit.
 export default function BillingPage() {
   const status = useEditionStatus();
   const currentEdition = status.data?.edition;

@@ -11,7 +11,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
-import { FeatureLock } from "@/components/feature-lock";
 import { api } from "@/lib/api";
 import { useHighlightFromSearch } from "@/lib/use-highlight-from-search";
 import { submitAction, submitDelete, errorMessage } from "@/lib/submit-action";
@@ -95,7 +94,6 @@ export default function TransportPage() {
   const selectedRouteStops = routes.data?.find((r) => r.id === assignForm.routeId)?.stops ?? [];
 
   return (
-    <FeatureLock feature="transport">
     <div className="max-w-5xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Transport</h1>
@@ -719,7 +717,6 @@ export default function TransportPage() {
 
       <LiveTrackingCard />
     </div>
-    </FeatureLock>
   );
 }
 

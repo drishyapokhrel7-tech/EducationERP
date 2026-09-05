@@ -13,7 +13,6 @@ import { Separator } from "@/components/ui/separator";
 import { EntityCard } from "@/components/dashboard/entity-card";
 import { ListPager } from "@/components/dashboard/list-pager";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { FeatureLock } from "@/components/feature-lock";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
 import { submitEsewaForm } from "@/lib/esewa";
@@ -106,7 +105,6 @@ export default function FinancePage() {
   const [confirmingRefundPaymentId, setConfirmingRefundPaymentId] = useState<string | null>(null);
 
   return (
-    <FeatureLock feature="finance">
     <div className="max-w-5xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Finance</h1>
@@ -976,6 +974,5 @@ export default function FinancePage() {
         }}
       />
     </div>
-    </FeatureLock>
   );
 }

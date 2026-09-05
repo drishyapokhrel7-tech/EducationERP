@@ -17,7 +17,7 @@ import type { Edition, PlatformOrganizationSummary, PlatformUpgradeRequestSummar
 const EDITION_OPTIONS = [
   { value: "FREE", label: "Free (50 records)" },
   { value: "PROFESSIONAL", label: "Professional (500 records)" },
-  { value: "ULTRA", label: "Ultra (unlimited)" },
+  { value: "ULTRA", label: "Ultra (1000 records)" },
 ];
 
 export default function PlatformOrganizationsPage() {
@@ -206,7 +206,7 @@ export default function PlatformOrganizationsPage() {
                         {org.name} <span className="text-muted-foreground text-xs">{org.slug}</span>
                       </p>
                       <p className="text-muted-foreground text-xs">
-                        {org.studentCount + org.employeeCount} of {org.limit ?? "∞"} records used
+                        {org.studentCount + org.employeeCount} of {org.limit} records used
                         {org.atLimit ? (
                           <Badge variant="destructive" className="ml-2">
                             At limit

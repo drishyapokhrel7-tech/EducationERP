@@ -77,7 +77,7 @@ export interface EditionStatus {
   editionExpiresAt: string | null;
   studentCount: number;
   employeeCount: number;
-  limit: number | null;
+  limit: number;
   atLimit: boolean;
 }
 
@@ -3863,7 +3863,7 @@ export interface PlatformOrganizationSummary {
   edition: Edition;
   studentCount: number;
   employeeCount: number;
-  limit: number | null;
+  limit: number;
   atLimit: boolean;
 }
 

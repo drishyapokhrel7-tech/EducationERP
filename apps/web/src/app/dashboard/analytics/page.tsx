@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FeatureLock } from "@/components/feature-lock";
 import { api } from "@/lib/api";
 import { errorMessage } from "@/lib/submit-action";
 import { toLocalDateString } from "@/lib/local-date";
@@ -63,7 +62,6 @@ export default function AnalyticsPage() {
   const alumniOutcomes = useSWR("analytics-alumni-outcomes", () => api.getAlumniOutcomesAnalytics());
 
   return (
-    <FeatureLock feature="analytics">
     <div className="max-w-5xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Analytics &amp; Reports</h1>
@@ -454,6 +452,5 @@ export default function AnalyticsPage() {
         </CardContent>
       </Card>
     </div>
-    </FeatureLock>
   );
 }

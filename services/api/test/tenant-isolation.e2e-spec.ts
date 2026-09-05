@@ -11324,7 +11324,7 @@ describe("Tenant isolation (e2e)", () => {
         .send({ edition: "ULTRA" })
         .expect(200);
       expect(patched.body.edition).toBe("ULTRA");
-      expect(patched.body.limit).toBeNull();
+      expect(patched.body.limit).toBe(1000);
 
       // Editing name/slug through the same endpoint — a real, separate
       // capability from the edition-only PATCH this endpoint used to
