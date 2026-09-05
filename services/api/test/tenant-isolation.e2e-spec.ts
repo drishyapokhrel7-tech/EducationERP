@@ -4869,6 +4869,95 @@ describe("Tenant isolation (e2e)", () => {
     }, 30000);
   });
 
+  describe("Self-service edition upgrade — real payment via eSewa (billing module)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    it("initiates a correctly-signed, correctly-priced eSewa form, refuses to credit an unconfirmed transaction (real sandbox status check), rejects malformed/unknown payloads, stays tenant-scoped, and blocks upgrading to an edition already held", async () => {
+      const initiated = await request(app.getHttpServer())
+        .post("/organizations/me/billing/upgrade/initiate")
+        .set(...auth(tokenA))
+        .send({ targetEdition: "PROFESSIONAL" })
+        .expect(201);
+      expect(initiated.body.actionUrl).toBe("https://rc-epay.esewa.com.np/api/epay/main/v2/form");
+      expect(initiated.body.fields.product_code).toBe("EPAYTEST");
+      // The real price given for Professional — confirms the pricing
+      // map is actually wired to the form, not just present in code.
+      expect(initiated.body.fields.total_amount).toBe("5000.00");
+      const transactionUuid = initiated.body.fields.transaction_uuid;
+
+      // This transaction was never actually paid on eSewa's side. A
+      // forged redirect payload claiming COMPLETE must not be trusted
+      // — confirmUpgrade's real gate is a live checkStatus() call back
+      // to eSewa's own sandbox, which correctly reports this
+      // transaction as not paid, so the org's edition never changes.
+      const forgedPayload = Buffer.from(
+        JSON.stringify({
+          transaction_code: "FAKE",
+          status: "COMPLETE",
+          total_amount: 5000,
+          transaction_uuid: transactionUuid,
+          product_code: "EPAYTEST",
+          signed_field_names: "total_amount,transaction_uuid,product_code",
+          signature: "not-a-real-signature",
+        }),
+      ).toString("base64");
+      await request(app.getHttpServer())
+        .post("/organizations/me/billing/upgrade/confirm")
+        .set(...auth(tokenA))
+        .send({ data: forgedPayload })
+        .expect(400);
+
+      const statusAfterForgery = await request(app.getHttpServer())
+        .get("/organizations/me/edition-status")
+        .set(...auth(tokenA))
+        .expect(200);
+      expect(statusAfterForgery.body.edition).toBe("FREE");
+      expect(statusAfterForgery.body.editionExpiresAt).toBeNull();
+
+      // A malformed (non-JSON) payload 400s cleanly, not a 500.
+      await request(app.getHttpServer())
+        .post("/organizations/me/billing/upgrade/confirm")
+        .set(...auth(tokenA))
+        .send({ data: "not-valid-base64-json!!" })
+        .expect(400);
+
+      // A well-formed payload for a transaction_uuid that was never
+      // initiated 404s.
+      const unknownPayload = Buffer.from(
+        JSON.stringify({ transaction_uuid: "00000000-0000-0000-0000-000000000000", status: "COMPLETE" }),
+      ).toString("base64");
+      await request(app.getHttpServer())
+        .post("/organizations/me/billing/upgrade/confirm")
+        .set(...auth(tokenA))
+        .send({ data: unknownPayload })
+        .expect(404);
+
+      // Cross-tenant: org B can't confirm org A's transaction, even
+      // naming the real transaction_uuid.
+      const realPayload = Buffer.from(
+        JSON.stringify({ transaction_uuid: transactionUuid, status: "COMPLETE" }),
+      ).toString("base64");
+      await request(app.getHttpServer())
+        .post("/organizations/me/billing/upgrade/confirm")
+        .set(...auth(tokenB))
+        .send({ data: realPayload })
+        .expect(404);
+
+      // Blocks "upgrading" to an edition already held or lower — bump
+      // orgA to ULTRA directly (matching every other edition-bump
+      // test's own precedent, e.g. the platform-admin block above),
+      // confirm PROFESSIONAL is rejected, restore FREE afterward so
+      // no later block in this file inherits the mutation.
+      await prisma.organization.update({ where: { id: orgAId }, data: { edition: "ULTRA" } });
+      await request(app.getHttpServer())
+        .post("/organizations/me/billing/upgrade/initiate")
+        .set(...auth(tokenA))
+        .send({ targetEdition: "PROFESSIONAL" })
+        .expect(400);
+      await prisma.organization.update({ where: { id: orgAId }, data: { edition: "FREE", editionExpiresAt: null } });
+    }, 30000);
+  });
+
   describe("Roles & Permissions admin (per-school custom roles, built from the shared permission catalog)", () => {
     const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
 

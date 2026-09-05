@@ -15,6 +15,7 @@ import {
   ChevronDown,
   ClipboardCheck,
   ClipboardList,
+  CreditCard,
   FileQuestion,
   Fingerprint,
   Gauge,
@@ -129,7 +130,10 @@ const NAV_GROUPS: NavGroup[] = [
   // group together (UX audit finding).
   {
     label: "Administration",
-    items: [{ href: "/dashboard/roles-permissions", label: "Roles & Permissions", icon: Shield }],
+    items: [
+      { href: "/dashboard/roles-permissions", label: "Roles & Permissions", icon: Shield },
+      { href: "/dashboard/billing", label: "Billing", icon: CreditCard },
+    ],
   },
   {
     label: "Alumni & Career",

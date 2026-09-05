@@ -339,6 +339,8 @@ import type {
   InitiateEsewaPaymentInput,
   EsewaFormPayload,
   ConfirmEsewaPaymentResult,
+  InitiateUpgradeInput,
+  ConfirmUpgradeResult,
   PortalInvoiceRecord,
   RoleRecord,
   PermissionRecord,
@@ -1166,6 +1168,19 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       }),
     confirmEsewaPayment: (data: string) =>
       request<ConfirmEsewaPaymentResult>("/organizations/me/esewa/verify", {
+        method: "POST",
+        body: JSON.stringify({ data }),
+      }),
+    // Self-service edition upgrade (the platform's own revenue) — a
+    // genuinely separate payment flow from the eSewa fee-collection
+    // methods above, reusing the same real gateway.
+    initiateBillingUpgrade: (input: InitiateUpgradeInput) =>
+      request<EsewaFormPayload>("/organizations/me/billing/upgrade/initiate", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    confirmBillingUpgrade: (data: string) =>
+      request<ConfirmUpgradeResult>("/organizations/me/billing/upgrade/confirm", {
         method: "POST",
         body: JSON.stringify({ data }),
       }),

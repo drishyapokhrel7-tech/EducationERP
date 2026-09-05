@@ -16,6 +16,31 @@ export function editionLimit(edition: Edition): number | null {
   return EDITION_LIMITS[edition];
 }
 
+// Real prices given directly by the user (services/api/src/modules/
+// billing) — per month. `null` for FREE (nothing to pay). Duplicated
+// on the frontend (apps/web/src/lib/edition-features.ts), matching
+// EDITION_LIMITS's own established frontend/backend-duplication
+// precedent immediately below.
+export const EDITION_PRICING_NPR: Record<Edition, number | null> = {
+  FREE: null,
+  PROFESSIONAL: 5000,
+  ULTRA: 10000,
+};
+
+// An expired paid edition is treated as FREE at read/enforcement time
+// only — nothing ever writes `edition` back to FREE in the DB, the
+// same "computed, not stored" precedent as syllabus_progress/
+// InventoryItem.currentStock/HostelBedStatus elsewhere in this
+// project. `editionExpiresAt: null` (every org before billing
+// existed, and any org the platform admin manually set via
+// PlatformOrganizationsService.updateOrganization) means "no expiry,"
+// so this is a no-op for every case except a real, lapsed
+// self-service payment.
+export function effectiveEdition(org: { edition: Edition; editionExpiresAt: Date | null }): Edition {
+  if (org.editionExpiresAt && org.editionExpiresAt < new Date()) return "FREE";
+  return org.edition;
+}
+
 // Backend counterpart to apps/web/src/lib/edition-features.ts's own
 // EDITION_RANK/meetsEdition (same shape, duplicated rather than
 // shared across the frontend/backend package boundary — there's no
@@ -46,7 +71,8 @@ export async function assertUnderEditionLimit(tx: PrismaClient, organizationId: 
   const organization = await tx.organization.findUnique({ where: { id: organizationId } });
   if (!organization) throw new NotFoundException("Organization not found");
 
-  const limit = editionLimit(organization.edition);
+  const edition = effectiveEdition(organization);
+  const limit = editionLimit(edition);
   if (limit === null) return;
 
   const [studentCount, employeeCount] = await Promise.all([
@@ -54,7 +80,7 @@ export async function assertUnderEditionLimit(tx: PrismaClient, organizationId: 
     tx.employee.count({ where: { organizationId, deletedAt: null } }),
   ]);
   if (studentCount + employeeCount >= limit) {
-    throw new EditionLimitExceededException(organization.edition, limit);
+    throw new EditionLimitExceededException(edition, limit);
   }
 }
 
@@ -62,14 +88,16 @@ export async function editionStatus(tx: PrismaClient, organizationId: string) {
   const organization = await tx.organization.findUnique({ where: { id: organizationId } });
   if (!organization) throw new NotFoundException("Organization not found");
 
+  const edition = effectiveEdition(organization);
   const [studentCount, employeeCount] = await Promise.all([
     tx.student.count({ where: { organizationId, deletedAt: null } }),
     tx.employee.count({ where: { organizationId, deletedAt: null } }),
   ]);
-  const limit = editionLimit(organization.edition);
+  const limit = editionLimit(edition);
   const combined = studentCount + employeeCount;
   return {
-    edition: organization.edition,
+    edition,
+    editionExpiresAt: organization.editionExpiresAt,
     studentCount,
     employeeCount,
     limit,

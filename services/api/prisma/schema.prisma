@@ -25,14 +25,26 @@ enum Edition {
 }
 
 model Organization {
-  id        String    @id @default(uuid())
-  name      String
-  slug      String    @unique
-  edition   Edition   @default(FREE)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
+  id               String    @id @default(uuid())
+  name             String
+  slug             String    @unique
+  edition          Edition   @default(FREE)
+  // Null = no expiry: covers FREE (never expires) and any org the
+  // platform admin manually set to a paid edition via the platform
+  // console (a permanent-until-changed override, no time limit — see
+  // PlatformOrganizationsService.updateOrganization, unaffected by
+  // this field). Only ever set by a real self-service payment
+  // (services/api/src/modules/billing). An expired paid edition is
+  // never written back to FREE here — effectiveEdition()
+  // (organizations/edition-limits.ts) computes that at read/
+  // enforcement time only, the same "computed, not stored" precedent
+  // used throughout this schema.
+  editionExpiresAt DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
 
+  editionUpgradePayments      EditionUpgradePayment[]
   campuses                    Campus[]
   users                       User[]
   roles                       Role[]
@@ -455,31 +467,32 @@ model User {
   updatedAt       DateTime   @updatedAt
   deletedAt       DateTime?
 
-  organization               Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  userRoles                  UserRole[]
-  sessions                   Session[]
-  loginEvents                LoginEvent[]
-  emailVerificationCodes     EmailVerificationCode[]
-  passwordResetCodes         PasswordResetCode[]
-  auditLogs                  AuditLog[]
-  employee                   Employee?
-  student                    Student?
-  faceMatchReviews           FaceMatchEvent[]
-  feeAssignments             StudentFeeAssignment[]
-  paymentsRecorded           Payment[]
-  discountsApplied           Discount[]
-  refundsProcessed           Refund[]
-  esewaTransactionsInitiated EsewaTransaction[]
-  leaveRequestsReviewed      LeaveRequest[]
-  payrollsFinalized          Payroll[]
-  notifications              Notification[]
-  messagesCreated            Message[]               @relation("MessagesCreated")
-  messagesReceivedDirectly   Message[]               @relation("MessagesToSpecificUser")
-  pushNotificationLogs       PushNotificationLog[]   @relation("PushLogsToUser")
-  studentDocumentsReviewed   StudentDocument[]       @relation("StudentDocumentsReviewed")
-  staffDocumentsReviewed     StaffDocument[]         @relation("StaffDocumentsReviewed")
-  certificatesIssued         Certificate[]           @relation("CertificatesIssued")
-  gatewayCardBindingsMade    GatewayCardBinding[]
+  organization                    Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userRoles                       UserRole[]
+  sessions                        Session[]
+  loginEvents                     LoginEvent[]
+  emailVerificationCodes          EmailVerificationCode[]
+  passwordResetCodes              PasswordResetCode[]
+  auditLogs                       AuditLog[]
+  employee                        Employee?
+  student                         Student?
+  faceMatchReviews                FaceMatchEvent[]
+  feeAssignments                  StudentFeeAssignment[]
+  paymentsRecorded                Payment[]
+  discountsApplied                Discount[]
+  refundsProcessed                Refund[]
+  esewaTransactionsInitiated      EsewaTransaction[]
+  editionUpgradePaymentsInitiated EditionUpgradePayment[]
+  leaveRequestsReviewed           LeaveRequest[]
+  payrollsFinalized               Payroll[]
+  notifications                   Notification[]
+  messagesCreated                 Message[]               @relation("MessagesCreated")
+  messagesReceivedDirectly        Message[]               @relation("MessagesToSpecificUser")
+  pushNotificationLogs            PushNotificationLog[]   @relation("PushLogsToUser")
+  studentDocumentsReviewed        StudentDocument[]       @relation("StudentDocumentsReviewed")
+  staffDocumentsReviewed          StaffDocument[]         @relation("StaffDocumentsReviewed")
+  certificatesIssued              Certificate[]           @relation("CertificatesIssued")
+  gatewayCardBindingsMade         GatewayCardBinding[]
 
   @@index([organizationId])
   @@map("users")
@@ -2694,6 +2707,33 @@ model EsewaTransaction {
   @@index([organizationId])
   @@index([invoiceId])
   @@map("esewa_transactions")
+}
+
+// The platform's own revenue — an org paying Ovexa itself to unlock a
+// higher edition — not a tenant-internal fee collected from a
+// student, so this is deliberately its own model rather than reusing
+// EsewaTransaction (which is hard-tied to invoiceId). Same
+// EsewaTransactionStatus lifecycle, reused as-is (same enum).
+// initiatedBy is required (not nullable, unlike EsewaTransaction's) —
+// there's no portal-self-service equivalent here; only a real logged-
+// in org admin can ever reach this flow.
+model EditionUpgradePayment {
+  id              String                 @id @default(uuid())
+  organizationId  String
+  targetEdition   Edition
+  amount          Decimal                @db.Decimal(12, 2)
+  transactionUuid String                 @unique
+  status          EsewaTransactionStatus @default(INITIATED)
+  esewaRefId      String?
+  initiatedBy     String
+  createdAt       DateTime               @default(now())
+  completedAt     DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  initiator    User         @relation(fields: [initiatedBy], references: [id])
+
+  @@index([organizationId])
+  @@map("edition_upgrade_payments")
 }
 
 // ── HR & Payroll, part 1: Leave Management (Phase 7 slice 7b-1) ────────

@@ -2,7 +2,7 @@ import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from "@
 import { Reflector } from "@nestjs/core";
 import type { Edition } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
-import { meetsEdition } from "../../modules/organizations/edition-limits";
+import { effectiveEdition, meetsEdition } from "../../modules/organizations/edition-limits";
 import { EDITION_KEY } from "./require-edition.decorator";
 import { AuthenticatedRequest } from "./authenticated-request";
 
@@ -60,13 +60,13 @@ export class RequireEditionGuard implements CanActivate {
 
     const organization = await this.prisma.organization.findUnique({
       where: { id: user.organizationId },
-      select: { edition: true },
+      select: { edition: true, editionExpiresAt: true },
     });
     if (!organization) {
       throw new ForbiddenException("Organization not found");
     }
 
-    if (!meetsEdition(organization.edition, required)) {
+    if (!meetsEdition(effectiveEdition(organization), required)) {
       throw new ForbiddenException(`This feature requires ${required} edition or higher`);
     }
     return true;

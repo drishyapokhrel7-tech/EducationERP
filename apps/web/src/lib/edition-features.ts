@@ -24,6 +24,17 @@ export const EDITION_DISPLAY_NAME: Record<Edition, string> = {
   ULTRA: "Ultra edition",
 };
 
+// Real prices given directly by the user — per month. `null` for FREE
+// (nothing to pay). Backend counterpart:
+// services/api/src/modules/organizations/edition-limits.ts's own
+// EDITION_PRICING_NPR — duplicated, not shared, same precedent as
+// EDITION_RANK/meetsEdition immediately below.
+export const EDITION_PRICING_NPR: Record<Edition, number | null> = {
+  FREE: null,
+  PROFESSIONAL: 5000,
+  ULTRA: 10000,
+};
+
 const EDITION_RANK: Record<Edition, number> = { FREE: 0, PROFESSIONAL: 1, ULTRA: 2 };
 
 export function meetsEdition(current: Edition, required: Edition): boolean {

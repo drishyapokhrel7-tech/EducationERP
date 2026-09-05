@@ -68,6 +68,13 @@ export interface Organization {
 
 export interface EditionStatus {
   edition: Edition;
+  // Null = no expiry (FREE, or a paid edition the platform admin set
+  // manually rather than via a real payment). `edition` here is
+  // already the *effective* edition — if a paid edition's
+  // editionExpiresAt has passed, the server reports FREE even though
+  // nothing was written back to the database (see
+  // effectiveEdition() in the backend's edition-limits.ts).
+  editionExpiresAt: string | null;
   studentCount: number;
   employeeCount: number;
   limit: number | null;
@@ -2158,6 +2165,20 @@ export interface ConfirmEsewaPaymentResult {
   status: "COMPLETE";
   invoiceId: string;
   payment: PaymentRecord | null;
+}
+
+// The platform's own revenue — a school paying Ovexa itself to unlock
+// a higher edition (services/api/src/modules/billing) — a genuinely
+// separate payment flow from the eSewa fee-collection types above,
+// not an extension of them.
+export interface InitiateUpgradeInput {
+  targetEdition: "PROFESSIONAL" | "ULTRA";
+}
+
+export interface ConfirmUpgradeResult {
+  status: "COMPLETE";
+  edition: Edition;
+  editionExpiresAt: string | null;
 }
 
 // The portal's own invoice list omits `student` (the caller already

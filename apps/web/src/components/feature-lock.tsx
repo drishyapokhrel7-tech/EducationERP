@@ -1,5 +1,7 @@
 import { Lock } from "lucide-react";
+import Link from "next/link";
 import type { ReactNode } from "react";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { EDITION_DISPLAY_NAME, FEATURE_MIN_EDITION, meetsEdition } from "@/lib/edition-features";
 import { useEditionStatus } from "@/lib/use-edition-status";
@@ -41,15 +43,20 @@ export function FeatureLock({
           This feature isn&apos;t included in your current plan.
         </CardDescription>
       </CardHeader>
-      <CardContent className="text-center">
-        <a
-          href={aboutUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="text-primary text-sm underline underline-offset-4"
-        >
-          Contact Ovexa Technology to upgrade
-        </a>
+      <CardContent className="space-y-3 text-center">
+        <Link href="/dashboard/billing" className={buttonVariants({ size: "sm" })}>
+          Upgrade now
+        </Link>
+        <p>
+          <a
+            href={aboutUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-primary text-sm underline underline-offset-4"
+          >
+            Or contact Ovexa Technology
+          </a>
+        </p>
       </CardContent>
     </Card>
   );
