@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { platformApi } from "@/lib/platform-api";
 import { getStoredPlatformSession, setStoredPlatformSession } from "@/lib/platform-session";
-import type { Edition, PlatformOrganizationSummary } from "@education-erp/api-client";
+import type { Edition, PlatformOrganizationSummary, PlatformUpgradeRequestSummary } from "@education-erp/api-client";
 
 const EDITION_OPTIONS = [
   { value: "FREE", label: "Free (50 records)" },
@@ -32,6 +32,12 @@ export default function PlatformOrganizationsPage() {
   const [orgs, setOrgs] = useState<PlatformOrganizationSummary[] | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
 
+  // Manual upgrade-request inbox — see BillingService.submitUpgradeRequest's
+  // own doc comment for why this exists (eSewa checkout is temporarily
+  // disabled on the tenant-side billing page).
+  const [upgradeRequests, setUpgradeRequests] = useState<PlatformUpgradeRequestSummary[] | null>(null);
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
+
   // Edit state — one shared inline form, mirrors roles-permissions'
   // own "editingXId + a form rendered below the matching row"
   // convention rather than an always-editable field per row.
@@ -50,6 +56,10 @@ export default function PlatformOrganizationsPage() {
       .platformListOrganizations()
       .then(setOrgs)
       .catch(() => toast.error("Failed to load organizations"));
+    platformApi
+      .platformListUpgradeRequests()
+      .then(setUpgradeRequests)
+      .catch(() => toast.error("Failed to load upgrade requests"));
   }
 
   useEffect(() => {
@@ -60,6 +70,19 @@ export default function PlatformOrganizationsPage() {
     }
     load();
   }, [mounted, router]);
+
+  async function resolveUpgradeRequest(req: PlatformUpgradeRequestSummary) {
+    setResolvingId(req.id);
+    try {
+      await platformApi.platformResolveUpgradeRequest(req.organizationId, req.id);
+      setUpgradeRequests((prev) => (prev ?? []).filter((r) => r.id !== req.id));
+      toast.success("Marked resolved");
+    } catch {
+      toast.error("Failed to resolve request");
+    } finally {
+      setResolvingId(null);
+    }
+  }
 
   async function updateEdition(id: string, edition: Edition) {
     setSavingId(id);
@@ -120,6 +143,49 @@ export default function PlatformOrganizationsPage() {
           Sign out
         </Button>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Pending upgrade requests</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {!upgradeRequests ? (
+            <p className="text-muted-foreground text-sm">Loading…</p>
+          ) : upgradeRequests.length === 0 ? (
+            <p className="text-muted-foreground text-sm">No pending requests.</p>
+          ) : (
+            <div className="space-y-3">
+              {upgradeRequests.map((req) => (
+                <div key={req.id} className="space-y-1 rounded-md border p-3 text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="font-medium">
+                      {req.organizationName} <span className="text-muted-foreground text-xs">{req.organizationSlug}</span>
+                      {" — wants "}
+                      <Badge variant="secondary">{req.targetEdition}</Badge>
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={resolvingId === req.id}
+                      onClick={() => resolveUpgradeRequest(req)}
+                    >
+                      {resolvingId === req.id ? "Resolving…" : "Mark resolved"}
+                    </Button>
+                  </div>
+                  <p className="text-muted-foreground text-xs">
+                    Contact: {req.contactPhone} · {req.requesterEmail} · {new Date(req.createdAt).toLocaleString()}
+                  </p>
+                  {req.notes ? <p className="text-muted-foreground text-xs">Notes: {req.notes}</p> : null}
+                  <p className="text-muted-foreground text-xs italic">
+                    Change the edition below, then mark resolved.
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

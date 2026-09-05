@@ -45,6 +45,7 @@ model Organization {
   deletedAt        DateTime?
 
   editionUpgradePayments      EditionUpgradePayment[]
+  editionUpgradeRequests      EditionUpgradeRequest[]
   campuses                    Campus[]
   users                       User[]
   roles                       Role[]
@@ -483,6 +484,7 @@ model User {
   refundsProcessed                Refund[]
   esewaTransactionsInitiated      EsewaTransaction[]
   editionUpgradePaymentsInitiated EditionUpgradePayment[]
+  editionUpgradeRequestsSubmitted EditionUpgradeRequest[]
   leaveRequestsReviewed           LeaveRequest[]
   payrollsFinalized               Payroll[]
   notifications                   Notification[]
@@ -2734,6 +2736,38 @@ model EditionUpgradePayment {
 
   @@index([organizationId])
   @@map("edition_upgrade_payments")
+}
+
+enum EditionUpgradeRequestStatus {
+  PENDING
+  RESOLVED
+}
+
+// eSewa checkout is temporarily disabled on the billing page (real
+// sandbox test-credential friction was confusing org admins into
+// thinking the feature was broken) — this is the manual fallback: an
+// org admin requests an upgrade with a callback phone number, Ovexa
+// staff sees it in the Platform Admin console (and gets emailed
+// immediately via DeliveryProvider), then changes the edition
+// manually via the existing PlatformOrganizationsService.updateOrganization
+// and marks this resolved. EditionUpgradePayment's eSewa flow is
+// untouched and can be re-enabled on the frontend at any time.
+model EditionUpgradeRequest {
+  id             String                      @id @default(uuid())
+  organizationId String
+  targetEdition  Edition
+  contactPhone   String
+  notes          String?
+  status         EditionUpgradeRequestStatus @default(PENDING)
+  requestedBy    String
+  createdAt      DateTime                    @default(now())
+  resolvedAt     DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  requester    User         @relation(fields: [requestedBy], references: [id])
+
+  @@index([organizationId])
+  @@map("edition_upgrade_requests")
 }
 
 // ── HR & Payroll, part 1: Leave Management (Phase 7 slice 7b-1) ────────

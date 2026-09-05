@@ -13,6 +13,16 @@ export class PlatformOrganizationsController {
     return this.platformOrganizations.listOrganizations();
   }
 
+  @Get("upgrade-requests")
+  listUpgradeRequests() {
+    return this.platformOrganizations.listPendingUpgradeRequests();
+  }
+
+  @Patch(":organizationId/upgrade-requests/:id")
+  resolveUpgradeRequest(@Param("organizationId") organizationId: string, @Param("id") id: string) {
+    return this.platformOrganizations.resolveUpgradeRequest(organizationId, id);
+  }
+
   @Patch(":id")
   update(@Param("id") id: string, @Body() dto: UpdateOrganizationDto) {
     return this.platformOrganizations.updateOrganization(id, dto);

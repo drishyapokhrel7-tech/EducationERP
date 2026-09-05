@@ -2181,6 +2181,33 @@ export interface ConfirmUpgradeResult {
   editionExpiresAt: string | null;
 }
 
+// Manual fallback while eSewa checkout is disabled on the billing
+// page (see BillingService.submitUpgradeRequest's own doc comment) —
+// no payment involved, just a recorded request Ovexa staff follow up
+// on and resolve from the Platform Admin console.
+export interface SubmitUpgradeRequestInput {
+  targetEdition: "PROFESSIONAL" | "ULTRA";
+  contactPhone: string;
+  notes?: string;
+}
+
+export interface SubmitUpgradeRequestResult {
+  id: string;
+  status: "PENDING";
+}
+
+export interface PlatformUpgradeRequestSummary {
+  id: string;
+  organizationId: string;
+  organizationName: string;
+  organizationSlug: string;
+  targetEdition: Edition;
+  contactPhone: string;
+  notes: string | null;
+  requesterEmail: string;
+  createdAt: string;
+}
+
 // The portal's own invoice list omits `student` (the caller already
 // knows who they are) — everything else matches InvoiceRecord.
 export type PortalInvoiceRecord = Omit<InvoiceRecord, "student">;

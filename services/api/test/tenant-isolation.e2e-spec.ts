@@ -4958,6 +4958,107 @@ describe("Tenant isolation (e2e)", () => {
     }, 30000);
   });
 
+  describe("Manual upgrade-request flow (eSewa checkout temporarily disabled)", () => {
+    const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
+
+    it("submits a request, rejects an edition already held and a blank phone, and stays visible/resolvable per-org from the Platform Admin console", async () => {
+      const submitted = await request(app.getHttpServer())
+        .post("/organizations/me/billing/upgrade-request")
+        .set(...auth(tokenA))
+        .send({ targetEdition: "PROFESSIONAL", contactPhone: "9800000001", notes: "e2e test request" })
+        .expect(201);
+      expect(submitted.body.status).toBe("PENDING");
+
+      const stored = await prisma.withTenant(orgAId, (tx) =>
+        tx.editionUpgradeRequest.findUnique({ where: { id: submitted.body.id } }),
+      );
+      expect(stored).toMatchObject({
+        organizationId: orgAId,
+        targetEdition: "PROFESSIONAL",
+        contactPhone: "9800000001",
+        notes: "e2e test request",
+        status: "PENDING",
+      });
+
+      // Blank contact phone 400s (DTO validation), no row created.
+      await request(app.getHttpServer())
+        .post("/organizations/me/billing/upgrade-request")
+        .set(...auth(tokenA))
+        .send({ targetEdition: "PROFESSIONAL", contactPhone: "" })
+        .expect(400);
+
+      // Requesting an edition already held (or lower) 400s — same guard
+      // as initiateUpgrade, reused directly.
+      await prisma.organization.update({ where: { id: orgAId }, data: { edition: "ULTRA" } });
+      await request(app.getHttpServer())
+        .post("/organizations/me/billing/upgrade-request")
+        .set(...auth(tokenA))
+        .send({ targetEdition: "PROFESSIONAL", contactPhone: "9800000002" })
+        .expect(400);
+      await prisma.organization.update({ where: { id: orgAId }, data: { edition: "FREE", editionExpiresAt: null } });
+
+      // Org B submits its own request — the platform-admin listing below
+      // must show each request attached to the correct org, not mixed up.
+      const submittedB = await request(app.getHttpServer())
+        .post("/organizations/me/billing/upgrade-request")
+        .set(...auth(tokenB))
+        .send({ targetEdition: "ULTRA", contactPhone: "9800000003" })
+        .expect(201);
+
+      const suffix = `upgradereq${run}`;
+      const passwordHash = await argon2.hash("PlatformTest123!");
+      const platformAdmin = await prisma.platformAdmin.create({
+        data: { email: `platform-e2e-${suffix}@rls-e2e.test`, passwordHash, name: "Platform E2E Test" },
+      });
+      const platformLogin = await request(app.getHttpServer())
+        .post("/platform/auth/login")
+        .send({ email: platformAdmin.email, password: "PlatformTest123!" })
+        .expect(201);
+      const platformToken: string = platformLogin.body.accessToken;
+
+      const pending = await request(app.getHttpServer())
+        .get("/platform/organizations/upgrade-requests")
+        .set(...auth(platformToken))
+        .expect(200);
+      const entryA = pending.body.find((r: { id: string }) => r.id === submitted.body.id);
+      const entryB = pending.body.find((r: { id: string }) => r.id === submittedB.body.id);
+      expect(entryA).toMatchObject({ organizationId: orgAId, targetEdition: "PROFESSIONAL", contactPhone: "9800000001" });
+      expect(entryB).toMatchObject({ organizationId: orgBId, targetEdition: "ULTRA", contactPhone: "9800000003" });
+
+      // Resolving org A's request under org B's id 404s — cross-tenant
+      // isolation on the resolve action, not just the listing.
+      await request(app.getHttpServer())
+        .patch(`/platform/organizations/${orgBId}/upgrade-requests/${submitted.body.id}`)
+        .set(...auth(platformToken))
+        .expect(404);
+
+      await request(app.getHttpServer())
+        .patch(`/platform/organizations/${orgAId}/upgrade-requests/${submitted.body.id}`)
+        .set(...auth(platformToken))
+        .expect(200);
+
+      const afterResolve = await prisma.withTenant(orgAId, (tx) =>
+        tx.editionUpgradeRequest.findUnique({ where: { id: submitted.body.id } }),
+      );
+      expect(afterResolve?.status).toBe("RESOLVED");
+      expect(afterResolve?.resolvedAt).not.toBeNull();
+
+      const pendingAfter = await request(app.getHttpServer())
+        .get("/platform/organizations/upgrade-requests")
+        .set(...auth(platformToken))
+        .expect(200);
+      expect(pendingAfter.body.find((r: { id: string }) => r.id === submitted.body.id)).toBeUndefined();
+      expect(pendingAfter.body.find((r: { id: string }) => r.id === submittedB.body.id)).toBeDefined();
+
+      // Clean up org B's still-pending request so it doesn't linger as
+      // noise for any later platform-admin listing in this same run.
+      await request(app.getHttpServer())
+        .patch(`/platform/organizations/${orgBId}/upgrade-requests/${submittedB.body.id}`)
+        .set(...auth(platformToken))
+        .expect(200);
+    }, 150000);
+  });
+
   describe("Roles & Permissions admin (per-school custom roles, built from the shared permission catalog)", () => {
     const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
 

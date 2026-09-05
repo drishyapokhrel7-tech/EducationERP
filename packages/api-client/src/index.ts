@@ -267,6 +267,7 @@ import type {
   Edition,
   PlatformAdminUser,
   PlatformOrganizationSummary,
+  PlatformUpgradeRequestSummary,
   UpdateOrganizationInput,
   RegisterGatewayDeviceInput,
   GatewayDeviceRecord,
@@ -341,6 +342,8 @@ import type {
   ConfirmEsewaPaymentResult,
   InitiateUpgradeInput,
   ConfirmUpgradeResult,
+  SubmitUpgradeRequestInput,
+  SubmitUpgradeRequestResult,
   PortalInvoiceRecord,
   RoleRecord,
   PermissionRecord,
@@ -1184,6 +1187,13 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
         method: "POST",
         body: JSON.stringify({ data }),
       }),
+    // Manual fallback while eSewa checkout is disabled on the billing
+    // page — see SubmitUpgradeRequestInput's own doc comment.
+    submitUpgradeRequest: (input: SubmitUpgradeRequestInput) =>
+      request<SubmitUpgradeRequestResult>("/organizations/me/billing/upgrade-request", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
     applyDiscount: (invoiceId: string, input: ApplyDiscountInput) =>
       request<DiscountRecord>(`/organizations/me/invoices/${invoiceId}/discounts`, {
         method: "POST",
@@ -2007,6 +2017,18 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
     platformDeleteOrganization: (organizationId: string) =>
       request<{ deleted: true; id: string; name: string }>(`/platform/organizations/${organizationId}`, {
         method: "DELETE",
+      }),
+
+    // Manual-upgrade-request inbox — see SubmitUpgradeRequestInput's own
+    // doc comment for why this exists. 120s, not the default 30s — same
+    // reason as platformListOrganizations: this scans every org on the
+    // platform in batches server-side.
+    platformListUpgradeRequests: () =>
+      request<PlatformUpgradeRequestSummary[]>("/platform/organizations/upgrade-requests", {}, 120_000),
+
+    platformResolveUpgradeRequest: (organizationId: string, id: string) =>
+      request<{ resolved: true; id: string }>(`/platform/organizations/${organizationId}/upgrade-requests/${id}`, {
+        method: "PATCH",
       }),
 
     // Device Gateway (Phase 8, docx §12) — barcode/RFID/smart-card

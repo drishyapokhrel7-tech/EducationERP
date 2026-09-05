@@ -3,8 +3,12 @@ import { randomUUID } from "crypto";
 import { Edition, EsewaTransactionStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { EsewaGatewayService, EsewaRedirectPayload } from "../finance/esewa-gateway.service";
+import { DeliveryProvider } from "../communication/delivery-provider";
 import { EDITION_PRICING_NPR, effectiveEdition, meetsEdition } from "../organizations/edition-limits";
 import { InitiateUpgradeDto } from "./dto/initiate-upgrade.dto";
+import { SubmitUpgradeRequestDto } from "./dto/submit-upgrade-request.dto";
+
+const UPGRADE_NOTIFICATION_EMAIL = "ovexatechnology@gmail.com";
 
 function toNumber(value: Prisma.Decimal | number): number {
   return typeof value === "number" ? value : value.toNumber();
@@ -39,6 +43,7 @@ export class BillingService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly esewaGateway: EsewaGatewayService,
+    private readonly delivery: DeliveryProvider,
   ) {}
 
   async initiateUpgrade(organizationId: string, userId: string, dto: InitiateUpgradeDto) {
@@ -161,5 +166,56 @@ export class BillingService {
       throw new BadRequestException(`Payment was not completed (eSewa status: ${result.esewaStatus})`);
     }
     return { status: "COMPLETE" as const, edition: result.edition, editionExpiresAt: result.editionExpiresAt };
+  }
+
+  /**
+   * The manual fallback while eSewa checkout is disabled on the
+   * billing page (real sandbox test-credential friction was confusing
+   * org admins — see BillingController's own note). No payment
+   * happens here at all: this just records what the org wants and
+   * notifies Ovexa staff, who then upgrade the org manually via
+   * PlatformOrganizationsService.updateOrganization (unchanged) and
+   * mark this request resolved from the Platform Admin console.
+   */
+  async submitUpgradeRequest(organizationId: string, userId: string, dto: SubmitUpgradeRequestDto) {
+    const organization = await this.prisma.organization.findUnique({ where: { id: organizationId } });
+    if (!organization) throw new NotFoundException("Organization not found");
+
+    const target = dto.targetEdition as Edition;
+    if (meetsEdition(effectiveEdition(organization), target)) {
+      throw new BadRequestException("Your organization already has this edition or higher");
+    }
+
+    const requester = await this.prisma.user.findUnique({ where: { id: userId } });
+
+    const created = await this.prisma.withTenant(organizationId, (tx) =>
+      tx.editionUpgradeRequest.create({
+        data: {
+          organizationId,
+          targetEdition: target,
+          contactPhone: dto.contactPhone,
+          notes: dto.notes,
+          requestedBy: userId,
+        },
+      }),
+    );
+
+    // DeliveryProvider.sendEmail never throws (always resolves
+    // SENT/FAILED) — no try/catch needed, same as the health-watchdog
+    // module's own "notify the platform operator" email.
+    await this.delivery.sendEmail(
+      UPGRADE_NOTIFICATION_EMAIL,
+      `Edition upgrade request — ${organization.name}`,
+      [
+        `${organization.name} (${organization.slug}) requested to upgrade to ${target}.`,
+        `Contact phone: ${dto.contactPhone}`,
+        `Account email: ${requester?.email ?? "unknown"}`,
+        dto.notes ? `Notes: ${dto.notes}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+
+    return { id: created.id, status: created.status };
   }
 }
