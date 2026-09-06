@@ -110,7 +110,7 @@ export class AttendanceReconciliationService {
         organizationId,
         studentId,
         status: "ACTIVE",
-        term: { startDate: { lte: capturedAt }, endDate: { gte: capturedAt } },
+        semester: { startDate: { lte: capturedAt }, endDate: { gte: capturedAt } },
       },
     });
     if (!enrollment) return undefined;
@@ -118,7 +118,7 @@ export class AttendanceReconciliationService {
     const dayOfWeek = isoWeekday(capturedAt);
     const time = toHms(capturedAt);
     const candidates = await tx.classSchedule.findMany({
-      where: { organizationId, sectionId: enrollment.sectionId, termId: enrollment.termId, dayOfWeek },
+      where: { organizationId, sectionId: enrollment.sectionId, semesterId: enrollment.semesterId, dayOfWeek },
       include: { period: true },
     });
     const classSchedule = candidates.find((c) => c.period.startTime <= time && time <= c.period.endTime);

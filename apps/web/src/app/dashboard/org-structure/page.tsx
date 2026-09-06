@@ -23,7 +23,8 @@ export default function OrgStructurePage() {
   const departments = useSWR("departments", () => api.listDepartments());
   const programs = useSWR("programs", () => api.listPrograms());
   const academicYears = useSWR("academic-years", () => api.listAcademicYears());
-  const terms = useSWR("terms", () => api.listTerms());
+  const semesters = useSWR("semesters", () => api.listSemesters());
+  const termExams = useSWR("term-exams", () => api.listTermExams());
   const sections = useSWR("sections", () => api.listSections());
 
   const [facultyForm, setFacultyForm] = useState({ campusId: "", name: "", code: "" });
@@ -38,7 +39,7 @@ export default function OrgStructurePage() {
     entranceExam: "",
   });
   const [yearForm, setYearForm] = useState({ name: "", startDate: "", endDate: "" });
-  const [termForm, setTermForm] = useState({
+  const [semesterForm, setSemesterForm] = useState({
     academicYearId: "",
     name: "",
     code: "",
@@ -46,9 +47,10 @@ export default function OrgStructurePage() {
     startDate: "",
     endDate: "",
   });
+  const [termExamForm, setTermExamForm] = useState({ semesterId: "", name: "", code: "", sequence: "1" });
   const [sectionForm, setSectionForm] = useState({
     programId: "",
-    termId: "",
+    semesterId: "",
     name: "",
     code: "",
     capacity: "",
@@ -73,8 +75,8 @@ export default function OrgStructurePage() {
   });
   const [editingYearId, setEditingYearId] = useState<string | null>(null);
   const [editYearForm, setEditYearForm] = useState({ name: "", startDate: "", endDate: "" });
-  const [editingTermId, setEditingTermId] = useState<string | null>(null);
-  const [editTermForm, setEditTermForm] = useState({
+  const [editingSemesterId, setEditingSemesterId] = useState<string | null>(null);
+  const [editSemesterForm, setEditSemesterForm] = useState({
     academicYearId: "",
     name: "",
     code: "",
@@ -82,10 +84,12 @@ export default function OrgStructurePage() {
     startDate: "",
     endDate: "",
   });
+  const [editingTermExamId, setEditingTermExamId] = useState<string | null>(null);
+  const [editTermExamForm, setEditTermExamForm] = useState({ name: "", code: "", sequence: "1" });
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
   const [editSectionForm, setEditSectionForm] = useState({
     programId: "",
-    termId: "",
+    semesterId: "",
     name: "",
     code: "",
     capacity: "",
@@ -96,8 +100,9 @@ export default function OrgStructurePage() {
       <div>
         <h1 className="text-2xl font-semibold">Organization structure</h1>
         <p className="text-muted-foreground text-sm">
-          Faculty → Department → Program, and Academic Year → Term → Section — the hierarchy
-          everything else (staff, students, courses) attaches to.
+          Faculty → Department → Program, and Academic Year → Semester → Section — the hierarchy
+          everything else (staff, students, courses) attaches to. Term Exams (Mid Term, Internal,
+          Pre-board) are a separate, exam-only concept scoped under each semester.
         </p>
       </div>
 
@@ -107,7 +112,8 @@ export default function OrgStructurePage() {
           { id: "departments", label: "Departments" },
           { id: "programs", label: "Programs" },
           { id: "academic-years", label: "Academic years" },
-          { id: "terms", label: "Terms" },
+          { id: "semesters", label: "Semesters" },
+          { id: "term-exams", label: "Term Exams" },
           { id: "sections", label: "Sections" },
         ]}
       />
@@ -812,12 +818,12 @@ export default function OrgStructurePage() {
       </EntityCard>
 
       <EntityCard
-        id="terms"
-        title="Terms"
-        emptyLabel="No terms yet."
-        items={terms.data}
-        error={!!terms.error}
-        onRetry={() => terms.mutate()}
+        id="semesters"
+        title="Semesters"
+        emptyLabel="No semesters yet."
+        items={semesters.data}
+        error={!!semesters.error}
+        onRetry={() => semesters.mutate()}
         renderItem={(t: {
           id: string;
           academicYearId: string;
@@ -837,8 +843,8 @@ export default function OrgStructurePage() {
                 size="sm"
                 variant="outline"
                 onClick={() => {
-                  setEditingTermId(t.id);
-                  setEditTermForm({
+                  setEditingSemesterId(t.id);
+                  setEditSemesterForm({
                     academicYearId: t.academicYearId,
                     name: t.name,
                     code: t.code,
@@ -854,7 +860,7 @@ export default function OrgStructurePage() {
                 type="button"
                 size="sm"
                 variant="destructive"
-                onClick={() => submitDelete(() => api.deleteTerm(t.id), () => terms.mutate())}
+                onClick={() => submitDelete(() => api.deleteSemester(t.id), () => semesters.mutate())}
               >
                 Delete
               </Button>
@@ -862,20 +868,20 @@ export default function OrgStructurePage() {
           </div>
         )}
         footer={
-          editingTermId ? (
+          editingSemesterId ? (
             <form
               className="flex flex-wrap items-end gap-3"
               onSubmit={(e: FormEvent) => {
                 e.preventDefault();
                 submitAction(
                   () =>
-                    api.updateTerm(editingTermId, {
-                      ...editTermForm,
-                      sequence: Number(editTermForm.sequence),
+                    api.updateSemester(editingSemesterId, {
+                      ...editSemesterForm,
+                      sequence: Number(editSemesterForm.sequence),
                     }),
                   () => {
-                    setEditingTermId(null);
-                    terms.mutate();
+                    setEditingSemesterId(null);
+                    semesters.mutate();
                   },
                 );
               }}
@@ -885,8 +891,8 @@ export default function OrgStructurePage() {
                 <NativeSelect
                   className="w-40"
                   placeholder="Select year"
-                  value={editTermForm.academicYearId}
-                  onChange={(v) => setEditTermForm((f) => ({ ...f, academicYearId: v }))}
+                  value={editSemesterForm.academicYearId}
+                  onChange={(v) => setEditSemesterForm((f) => ({ ...f, academicYearId: v }))}
                   options={(academicYears.data ?? []).map((y) => ({ value: y.id, label: y.name }))}
                 />
               </div>
@@ -894,8 +900,8 @@ export default function OrgStructurePage() {
                 <Label>Name</Label>
                 <Input
                   required
-                  value={editTermForm.name}
-                  onChange={(e) => setEditTermForm((f) => ({ ...f, name: e.target.value }))}
+                  value={editSemesterForm.name}
+                  onChange={(e) => setEditSemesterForm((f) => ({ ...f, name: e.target.value }))}
                 />
               </div>
               <div className="space-y-2">
@@ -903,8 +909,8 @@ export default function OrgStructurePage() {
                 <Input
                   required
                   className="w-20"
-                  value={editTermForm.code}
-                  onChange={(e) => setEditTermForm((f) => ({ ...f, code: e.target.value }))}
+                  value={editSemesterForm.code}
+                  onChange={(e) => setEditSemesterForm((f) => ({ ...f, code: e.target.value }))}
                 />
               </div>
               <div className="space-y-2">
@@ -914,8 +920,8 @@ export default function OrgStructurePage() {
                   type="number"
                   min={1}
                   className="w-20"
-                  value={editTermForm.sequence}
-                  onChange={(e) => setEditTermForm((f) => ({ ...f, sequence: e.target.value }))}
+                  value={editSemesterForm.sequence}
+                  onChange={(e) => setEditSemesterForm((f) => ({ ...f, sequence: e.target.value }))}
                 />
               </div>
               <div className="space-y-2">
@@ -923,8 +929,8 @@ export default function OrgStructurePage() {
                 <Input
                   required
                   type="date"
-                  value={editTermForm.startDate}
-                  onChange={(e) => setEditTermForm((f) => ({ ...f, startDate: e.target.value }))}
+                  value={editSemesterForm.startDate}
+                  onChange={(e) => setEditSemesterForm((f) => ({ ...f, startDate: e.target.value }))}
                 />
               </div>
               <div className="space-y-2">
@@ -932,14 +938,14 @@ export default function OrgStructurePage() {
                 <Input
                   required
                   type="date"
-                  value={editTermForm.endDate}
-                  onChange={(e) => setEditTermForm((f) => ({ ...f, endDate: e.target.value }))}
+                  value={editSemesterForm.endDate}
+                  onChange={(e) => setEditSemesterForm((f) => ({ ...f, endDate: e.target.value }))}
                 />
               </div>
               <Button type="submit" size="sm">
                 Save
               </Button>
-              <Button type="button" size="sm" variant="outline" onClick={() => setEditingTermId(null)}>
+              <Button type="button" size="sm" variant="outline" onClick={() => setEditingSemesterId(null)}>
                 Cancel
               </Button>
             </form>
@@ -951,9 +957,9 @@ export default function OrgStructurePage() {
           onSubmit={(e: FormEvent) => {
             e.preventDefault();
             submitAction(
-              () => api.createTerm({ ...termForm, sequence: Number(termForm.sequence) }),
+              () => api.createSemester({ ...semesterForm, sequence: Number(semesterForm.sequence) }),
               () => {
-                setTermForm({
+                setSemesterForm({
                   academicYearId: "",
                   name: "",
                   code: "",
@@ -961,7 +967,7 @@ export default function OrgStructurePage() {
                   startDate: "",
                   endDate: "",
                 });
-                terms.mutate();
+                semesters.mutate();
               },
             );
           }}
@@ -971,8 +977,8 @@ export default function OrgStructurePage() {
             <NativeSelect
               className="w-40"
               placeholder="Select year"
-              value={termForm.academicYearId}
-              onChange={(v) => setTermForm((f) => ({ ...f, academicYearId: v }))}
+              value={semesterForm.academicYearId}
+              onChange={(v) => setSemesterForm((f) => ({ ...f, academicYearId: v }))}
               options={(academicYears.data ?? []).map((y) => ({ value: y.id, label: y.name }))}
             />
           </div>
@@ -980,9 +986,9 @@ export default function OrgStructurePage() {
             <Label>Name</Label>
             <Input
               required
-              placeholder="Term 1"
-              value={termForm.name}
-              onChange={(e) => setTermForm((f) => ({ ...f, name: e.target.value }))}
+              placeholder="Semester 1"
+              value={semesterForm.name}
+              onChange={(e) => setSemesterForm((f) => ({ ...f, name: e.target.value }))}
             />
           </div>
           <div className="space-y-2">
@@ -990,8 +996,8 @@ export default function OrgStructurePage() {
             <Input
               required
               className="w-20"
-              value={termForm.code}
-              onChange={(e) => setTermForm((f) => ({ ...f, code: e.target.value }))}
+              value={semesterForm.code}
+              onChange={(e) => setSemesterForm((f) => ({ ...f, code: e.target.value }))}
             />
           </div>
           <div className="space-y-2">
@@ -1001,8 +1007,8 @@ export default function OrgStructurePage() {
               type="number"
               min={1}
               className="w-20"
-              value={termForm.sequence}
-              onChange={(e) => setTermForm((f) => ({ ...f, sequence: e.target.value }))}
+              value={semesterForm.sequence}
+              onChange={(e) => setSemesterForm((f) => ({ ...f, sequence: e.target.value }))}
             />
           </div>
           <div className="space-y-2">
@@ -1010,8 +1016,8 @@ export default function OrgStructurePage() {
             <Input
               required
               type="date"
-              value={termForm.startDate}
-              onChange={(e) => setTermForm((f) => ({ ...f, startDate: e.target.value }))}
+              value={semesterForm.startDate}
+              onChange={(e) => setSemesterForm((f) => ({ ...f, startDate: e.target.value }))}
             />
           </div>
           <div className="space-y-2">
@@ -1019,15 +1025,171 @@ export default function OrgStructurePage() {
             <Input
               required
               type="date"
-              value={termForm.endDate}
-              onChange={(e) => setTermForm((f) => ({ ...f, endDate: e.target.value }))}
+              value={semesterForm.endDate}
+              onChange={(e) => setSemesterForm((f) => ({ ...f, endDate: e.target.value }))}
             />
           </div>
           <div className="flex flex-col items-start gap-1">
-            <Button type="submit" disabled={!termForm.academicYearId}>
+            <Button type="submit" disabled={!semesterForm.academicYearId}>
               Add
             </Button>
-            {!termForm.academicYearId ? <RequiredHint text="Select an academic year first." /> : null}
+            {!semesterForm.academicYearId ? <RequiredHint text="Select an academic year first." /> : null}
+          </div>
+        </form>
+      </EntityCard>
+
+      <EntityCard
+        id="term-exams"
+        title="Term Exams"
+        emptyLabel="No term exams yet."
+        items={termExams.data}
+        error={!!termExams.error}
+        onRetry={() => termExams.mutate()}
+        renderItem={(te: { id: string; semesterId: string; name: string; code: string; sequence: number }) => (
+          <div className="flex items-center justify-between gap-2">
+            <span>
+              {te.sequence}. {te.name} <span className="text-muted-foreground">{te.code}</span>{" "}
+              <span className="text-muted-foreground">
+                — {semesters.data?.find((s) => s.id === te.semesterId)?.name ?? "Unknown semester"}
+              </span>
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setEditingTermExamId(te.id);
+                  setEditTermExamForm({ name: te.name, code: te.code, sequence: String(te.sequence) });
+                }}
+              >
+                Edit
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                onClick={() => submitDelete(() => api.deleteTermExam(te.id), () => termExams.mutate())}
+              >
+                Delete
+              </Button>
+            </div>
+          </div>
+        )}
+        footer={
+          editingTermExamId ? (
+            <form
+              className="flex flex-wrap items-end gap-3"
+              onSubmit={(e: FormEvent) => {
+                e.preventDefault();
+                submitAction(
+                  () =>
+                    api.updateTermExam(editingTermExamId, {
+                      ...editTermExamForm,
+                      sequence: Number(editTermExamForm.sequence),
+                    }),
+                  () => {
+                    setEditingTermExamId(null);
+                    termExams.mutate();
+                  },
+                );
+              }}
+            >
+              <div className="space-y-2">
+                <Label>Name</Label>
+                <Input
+                  required
+                  value={editTermExamForm.name}
+                  onChange={(e) => setEditTermExamForm((f) => ({ ...f, name: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Code</Label>
+                <Input
+                  required
+                  className="w-20"
+                  value={editTermExamForm.code}
+                  onChange={(e) => setEditTermExamForm((f) => ({ ...f, code: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Sequence</Label>
+                <Input
+                  required
+                  type="number"
+                  min={1}
+                  className="w-20"
+                  value={editTermExamForm.sequence}
+                  onChange={(e) => setEditTermExamForm((f) => ({ ...f, sequence: e.target.value }))}
+                />
+              </div>
+              <Button type="submit" size="sm">
+                Save
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setEditingTermExamId(null)}>
+                Cancel
+              </Button>
+            </form>
+          ) : null
+        }
+      >
+        <form
+          className="flex flex-wrap items-end gap-3"
+          onSubmit={(e: FormEvent) => {
+            e.preventDefault();
+            submitAction(
+              () => api.createTermExam({ ...termExamForm, sequence: Number(termExamForm.sequence) }),
+              () => {
+                setTermExamForm({ semesterId: "", name: "", code: "", sequence: "1" });
+                termExams.mutate();
+              },
+            );
+          }}
+        >
+          <div className="space-y-2">
+            <Label>Semester (required)</Label>
+            <NativeSelect
+              className="w-40"
+              placeholder="Select semester"
+              value={termExamForm.semesterId}
+              onChange={(v) => setTermExamForm((f) => ({ ...f, semesterId: v }))}
+              options={(semesters.data ?? []).map((s) => ({ value: s.id, label: s.name }))}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Name</Label>
+            <Input
+              required
+              placeholder="Mid Term Exam"
+              value={termExamForm.name}
+              onChange={(e) => setTermExamForm((f) => ({ ...f, name: e.target.value }))}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Code</Label>
+            <Input
+              required
+              className="w-20"
+              value={termExamForm.code}
+              onChange={(e) => setTermExamForm((f) => ({ ...f, code: e.target.value }))}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Sequence</Label>
+            <Input
+              required
+              type="number"
+              min={1}
+              className="w-20"
+              value={termExamForm.sequence}
+              onChange={(e) => setTermExamForm((f) => ({ ...f, sequence: e.target.value }))}
+            />
+          </div>
+          <div className="flex flex-col items-start gap-1">
+            <Button type="submit" disabled={!termExamForm.semesterId}>
+              Add
+            </Button>
+            {!termExamForm.semesterId ? <RequiredHint text="Select a semester first." /> : null}
           </div>
         </form>
       </EntityCard>
@@ -1038,17 +1200,17 @@ export default function OrgStructurePage() {
         emptyLabel="No sections yet."
         items={sections.data}
         error={!!sections.error}
-        // Also retries `programs`/`terms` — each section below shows a
-        // program and term name sourced from those separate queries.
+        // Also retries `programs`/`semesters` — each section below shows a
+        // program and semester name sourced from those separate queries.
         onRetry={() => {
           sections.mutate();
           programs.mutate();
-          terms.mutate();
+          semesters.mutate();
         }}
         renderItem={(s: {
           id: string;
           programId: string;
-          termId: string;
+          semesterId: string;
           name: string;
           code: string;
           capacity: number | null;
@@ -1059,7 +1221,7 @@ export default function OrgStructurePage() {
               <span className="text-muted-foreground">
                 {" "}
                 · {programs.data?.find((p) => p.id === s.programId)?.name ?? "Unknown program"} ·{" "}
-                {terms.data?.find((t) => t.id === s.termId)?.name ?? "Unknown term"}
+                {semesters.data?.find((t) => t.id === s.semesterId)?.name ?? "Unknown semester"}
               </span>
               {s.capacity ? (
                 <span className="text-muted-foreground"> · capacity {s.capacity}</span>
@@ -1074,7 +1236,7 @@ export default function OrgStructurePage() {
                   setEditingSectionId(s.id);
                   setEditSectionForm({
                     programId: s.programId,
-                    termId: s.termId,
+                    semesterId: s.semesterId,
                     name: s.name,
                     code: s.code,
                     capacity: s.capacity ? String(s.capacity) : "",
@@ -1124,13 +1286,13 @@ export default function OrgStructurePage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Term</Label>
+                <Label>Semester</Label>
                 <NativeSelect
                   className="w-40"
-                  placeholder="Select term"
-                  value={editSectionForm.termId}
-                  onChange={(v) => setEditSectionForm((f) => ({ ...f, termId: v }))}
-                  options={(terms.data ?? []).map((t) => ({ value: t.id, label: t.name }))}
+                  placeholder="Select semester"
+                  value={editSectionForm.semesterId}
+                  onChange={(v) => setEditSectionForm((f) => ({ ...f, semesterId: v }))}
+                  options={(semesters.data ?? []).map((t) => ({ value: t.id, label: t.name }))}
                 />
               </div>
               <div className="space-y-2">
@@ -1181,7 +1343,7 @@ export default function OrgStructurePage() {
                   capacity: sectionForm.capacity ? Number(sectionForm.capacity) : undefined,
                 }),
               () => {
-                setSectionForm({ programId: "", termId: "", name: "", code: "", capacity: "" });
+                setSectionForm({ programId: "", semesterId: "", name: "", code: "", capacity: "" });
                 sections.mutate();
               },
             );
@@ -1198,13 +1360,13 @@ export default function OrgStructurePage() {
             />
           </div>
           <div className="space-y-2">
-            <Label>Term (required)</Label>
+            <Label>Semester (required)</Label>
             <NativeSelect
               className="w-40"
-              placeholder="Select term"
-              value={sectionForm.termId}
-              onChange={(v) => setSectionForm((f) => ({ ...f, termId: v }))}
-              options={(terms.data ?? []).map((t) => ({ value: t.id, label: t.name }))}
+              placeholder="Select semester"
+              value={sectionForm.semesterId}
+              onChange={(v) => setSectionForm((f) => ({ ...f, semesterId: v }))}
+              options={(semesters.data ?? []).map((t) => ({ value: t.id, label: t.name }))}
             />
           </div>
           <div className="space-y-2">
@@ -1235,12 +1397,12 @@ export default function OrgStructurePage() {
             />
           </div>
           <div className="flex flex-col items-start gap-1">
-            <Button type="submit" disabled={!sectionForm.programId || !sectionForm.termId}>
+            <Button type="submit" disabled={!sectionForm.programId || !sectionForm.semesterId}>
               Add
             </Button>
-            {!sectionForm.programId || !sectionForm.termId ? (
+            {!sectionForm.programId || !sectionForm.semesterId ? (
               <RequiredHint
-                text={`Select a ${[!sectionForm.programId ? "program" : null, !sectionForm.termId ? "term" : null].filter(Boolean).join(" and ")} first.`}
+                text={`Select a ${[!sectionForm.programId ? "program" : null, !sectionForm.semesterId ? "semester" : null].filter(Boolean).join(" and ")} first.`}
               />
             ) : null}
           </div>

@@ -681,7 +681,7 @@ export default function TransportPage() {
                 placeholder="Select enrollment"
                 value={assignForm.studentEnrollmentId}
                 onChange={(v) => setAssignForm((f) => ({ ...f, studentEnrollmentId: v }))}
-                options={studentEnrollments.map((en) => ({ value: en.id, label: `${en.term.name}` }))}
+                options={studentEnrollments.map((en) => ({ value: en.id, label: `${en.semester.name}` }))}
               />
             </div>
             <div className="space-y-1">

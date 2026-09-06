@@ -61,13 +61,13 @@ export class DashboardsService {
 
     const activeEnrollment = await tx.studentEnrollment.findFirst({
       where: { organizationId, studentId, status: "ACTIVE" },
-      include: { program: true, section: true, term: true },
+      include: { program: true, section: true, semester: true },
     });
 
     const fetchWeeklyTimetable = async (): Promise<unknown[]> => {
       if (!activeEnrollment) return [];
       return tx.classSchedule.findMany({
-        where: { organizationId, sectionId: activeEnrollment.sectionId, termId: activeEnrollment.termId },
+        where: { organizationId, sectionId: activeEnrollment.sectionId, semesterId: activeEnrollment.semesterId },
         include: { period: true, room: true, teachingAssignment: { include: { subject: true, employee: true } } },
         orderBy: [{ dayOfWeek: "asc" }, { period: { sequence: "asc" } }],
       });
@@ -82,7 +82,7 @@ export class DashboardsService {
       const syllabi = await tx.syllabus.findMany({
         where: {
           organizationId,
-          termId: activeEnrollment.termId,
+          semesterId: activeEnrollment.semesterId,
           curriculumSubjectId: { in: curricula.flatMap((c) => c.subjects.map((s) => s.id)) },
         },
         include: { curriculumSubject: { include: { subject: true } } },
@@ -144,7 +144,7 @@ export class DashboardsService {
 
       const teachingAssignments = await tx.teachingAssignment.findMany({
         where: { organizationId, employeeId },
-        include: { subject: true, section: true, term: true },
+        include: { subject: true, section: true, semester: true },
       });
       const teachingAssignmentIds = teachingAssignments.map((t) => t.id);
 

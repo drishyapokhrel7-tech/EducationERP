@@ -53,7 +53,7 @@ export default function DashboardPage() {
   const departmentsQuery = useSWR("departments", () => api.listDepartments());
   const programsQuery = useSWR("programs", () => api.listPrograms());
   const academicYearsQuery = useSWR("academic-years", () => api.listAcademicYears());
-  const termsQuery = useSWR("terms", () => api.listTerms());
+  const semestersQuery = useSWR("semesters", () => api.listSemesters());
   const sectionsQuery = useSWR("sections", () => api.listSections());
   const staffTypesQuery = useSWR("staff-types", () => api.listStaffTypes());
   const designationsQuery = useSWR("designations", () => api.listDesignations());
@@ -69,7 +69,7 @@ export default function DashboardPage() {
     departmentsQuery.data,
     programsQuery.data,
     academicYearsQuery.data,
-    termsQuery.data,
+    semestersQuery.data,
     sectionsQuery.data,
     staffTypesQuery.data,
     designationsQuery.data,
@@ -92,7 +92,7 @@ export default function DashboardPage() {
       done: (academicYearsQuery.data ?? []).length > 0,
       href: "/dashboard/org-structure#academic-years",
     },
-    { label: "Term", done: (termsQuery.data ?? []).length > 0, href: "/dashboard/org-structure#terms" },
+    { label: "Semester", done: (semestersQuery.data ?? []).length > 0, href: "/dashboard/org-structure#semesters" },
     { label: "Section", done: (sectionsQuery.data ?? []).length > 0, href: "/dashboard/org-structure#sections" },
     { label: "Staff type", done: (staffTypesQuery.data ?? []).length > 0, href: "/dashboard/staff#staff-types" },
     {

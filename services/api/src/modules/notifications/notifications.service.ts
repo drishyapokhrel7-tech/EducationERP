@@ -44,7 +44,7 @@ export class NotificationsService {
       if (!ta) return;
 
       const enrollments = await tx.studentEnrollment.findMany({
-        where: { organizationId, sectionId: ta.sectionId, termId: ta.termId, status: "ACTIVE" },
+        where: { organizationId, sectionId: ta.sectionId, semesterId: ta.semesterId, status: "ACTIVE" },
         include: { student: true },
       });
       const recipientUserIds = [...new Set(enrollments.map((e) => e.student.userId).filter((id): id is string => !!id))].filter(

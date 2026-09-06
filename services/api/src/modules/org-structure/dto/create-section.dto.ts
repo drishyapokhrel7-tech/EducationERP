@@ -5,7 +5,7 @@ export class CreateSectionDto {
   programId!: string;
 
   @IsString()
-  termId!: string;
+  semesterId!: string;
 
   @IsString()
   @MinLength(1)

@@ -11,5 +11,5 @@ export class CreateTeachingAssignmentDto {
   sectionId!: string;
 
   @IsString()
-  termId!: string;
+  semesterId!: string;
 }

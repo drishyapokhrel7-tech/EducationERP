@@ -10,7 +10,7 @@ export class EnrollApplicationDto {
   sectionId!: string;
 
   @IsString()
-  termId!: string;
+  semesterId!: string;
 
   @IsDateString()
   enrollmentDate!: string;

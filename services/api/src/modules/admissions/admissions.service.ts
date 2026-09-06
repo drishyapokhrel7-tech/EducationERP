@@ -90,12 +90,12 @@ export class AdmissionsService {
     }
 
     return this.prisma.withTenant(organizationId, async (tx) => {
-      const [section, term] = await Promise.all([
+      const [section, semester] = await Promise.all([
         tx.section.findUnique({ where: { id: dto.sectionId } }),
-        tx.term.findUnique({ where: { id: dto.termId } }),
+        tx.semester.findUnique({ where: { id: dto.semesterId } }),
       ]);
       if (!section) throw new NotFoundException("Section not found");
-      if (!term) throw new NotFoundException("Term not found");
+      if (!semester) throw new NotFoundException("Semester not found");
 
       // Same generated-code rule and collision-retry as the direct
       // Students-page create path (StudentsService.createStudent) —
@@ -151,7 +151,7 @@ export class AdmissionsService {
           studentId: student.id,
           programId: application.programId,
           sectionId: dto.sectionId,
-          termId: dto.termId,
+          semesterId: dto.semesterId,
           enrollmentDate: new Date(dto.enrollmentDate),
         },
       });

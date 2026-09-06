@@ -328,7 +328,7 @@ export class StudentsService {
     return this.prisma.withTenant(organizationId, (tx) =>
       tx.studentEnrollment.findMany({
         where: { organizationId, studentId },
-        include: { program: true, section: true, term: true },
+        include: { program: true, section: true, semester: true },
       }),
     );
   }
@@ -342,7 +342,7 @@ export class StudentsService {
       const where = {
         organizationId,
         ...(filters.programId ? { programId: filters.programId } : {}),
-        ...(filters.termId ? { termId: filters.termId } : {}),
+        ...(filters.semesterId ? { semesterId: filters.semesterId } : {}),
         ...(filters.sectionId ? { sectionId: filters.sectionId } : {}),
         ...(filters.status ? { status: filters.status } : {}),
       };
@@ -350,7 +350,7 @@ export class StudentsService {
         () =>
           tx.studentEnrollment.findMany({
             where,
-            include: { student: true, program: true, section: true, term: true },
+            include: { student: true, program: true, section: true, semester: true },
             orderBy: [{ student: { firstName: "asc" } }, { student: { lastName: "asc" } }],
             skip: ((filters.page ?? 1) - 1) * (filters.pageSize ?? 25),
             take: filters.pageSize ?? 25,
@@ -371,7 +371,7 @@ export class StudentsService {
       return tx.studentEnrollment.update({
         where: { id },
         data: { status: dto.status },
-        include: { student: true, program: true, section: true, term: true },
+        include: { student: true, program: true, section: true, semester: true },
       });
     });
   }
@@ -379,14 +379,14 @@ export class StudentsService {
   async createEnrollment(organizationId: string, studentId: string, dto: CreateEnrollmentDto) {
     await this.requireStudent(organizationId, studentId);
     return this.prisma.withTenant(organizationId, async (tx) => {
-      const [program, section, term] = await Promise.all([
+      const [program, section, semester] = await Promise.all([
         tx.program.findUnique({ where: { id: dto.programId } }),
         tx.section.findUnique({ where: { id: dto.sectionId } }),
-        tx.term.findUnique({ where: { id: dto.termId } }),
+        tx.semester.findUnique({ where: { id: dto.semesterId } }),
       ]);
       if (!program) throw new NotFoundException("Program not found");
       if (!section) throw new NotFoundException("Section not found");
-      if (!term) throw new NotFoundException("Term not found");
+      if (!semester) throw new NotFoundException("Semester not found");
 
       return tx.studentEnrollment.create({
         data: {
@@ -394,7 +394,7 @@ export class StudentsService {
           studentId,
           programId: dto.programId,
           sectionId: dto.sectionId,
-          termId: dto.termId,
+          semesterId: dto.semesterId,
           enrollmentDate: new Date(dto.enrollmentDate),
         },
       });

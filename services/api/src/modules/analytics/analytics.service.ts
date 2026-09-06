@@ -143,7 +143,7 @@ export class AnalyticsService {
         tx.admissionApplication.findMany({ where: { organizationId } }),
         tx.studentEnrollment.findMany({
           where: { organizationId, status: "ACTIVE" },
-          include: { term: { include: { academicYear: true } } },
+          include: { semester: { include: { academicYear: true } } },
         }),
       ]);
 
@@ -152,7 +152,7 @@ export class AnalyticsService {
 
       const byYear = new Map<string, number>();
       for (const e of enrollments) {
-        const key = e.term.academicYear.name;
+        const key = e.semester.academicYear.name;
         byYear.set(key, (byYear.get(key) ?? 0) + 1);
       }
 

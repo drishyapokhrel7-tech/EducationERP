@@ -9,7 +9,7 @@ datasource db {
 
 // ── Organization / tenancy hierarchy (plan §6 "Organization") ──────────────
 // Organization → Campus → Faculty → Department → Program → AcademicYear →
-// Term → Section, matching plan §4's stated hierarchy exactly. Phase 1
+// Semester → Section, matching plan §4's stated hierarchy exactly. Phase 1
 // modeled only the top two tiers; Phase 2 completes the rest.
 
 // Licensing tier, set only by a PlatformAdmin (see that model below) —
@@ -56,7 +56,8 @@ model Organization {
   departments                 Department[]
   programs                    Program[]
   academicYears               AcademicYear[]
-  terms                       Term[]
+  semesters                   Semester[]
+  termExams                   TermExam[]
   sections                    Section[]
   staffTypes                  StaffType[]
   designations                Designation[]
@@ -378,14 +379,21 @@ model AcademicYear {
   updatedAt      DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  terms        Term[]
+  semesters    Semester[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
   @@map("academic_years")
 }
 
-model Term {
+// The enrollment-side academic period — what a student is enrolled
+// into, what fees/timetable/syllabus attach to. Deliberately has NO
+// relation to Exam/TermExam — exam periods (Mid Term, Internal,
+// Pre-board) are a separate concept scoped under TermExam below, not
+// something an enrollment or any of its related tables ever needs to
+// know about. See TermExam's own doc comment for the other half of
+// this split.
+model Semester {
   id             String   @id @default(uuid())
   organizationId String
   academicYearId String
@@ -404,19 +412,44 @@ model Term {
   teachingAssignments TeachingAssignment[]
   classSchedules      ClassSchedule[]
   syllabi             Syllabus[]
-  exams               Exam[]
   feeStructures       FeeStructure[]
+  termExams           TermExam[]
 
   @@unique([academicYearId, code])
   @@index([organizationId])
-  @@map("terms")
+  @@map("semesters")
+}
+
+// The exam-only period ("Mid Term Exam," "Internal Exam," "Pre-board
+// Exam") — scoped per Semester, but a genuinely separate concept from
+// it. Only Exam references this; nothing on the enrollment side
+// (StudentEnrollment, Section, TeachingAssignment, ClassSchedule,
+// Syllabus, FeeStructure) ever does, by design — an enrollment has no
+// business knowing which exam period is currently running.
+model TermExam {
+  id             String   @id @default(uuid())
+  organizationId String
+  semesterId     String
+  name           String
+  code           String
+  sequence       Int
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  semester     Semester     @relation(fields: [semesterId], references: [id])
+  exams        Exam[]
+
+  @@unique([semesterId, code])
+  @@index([organizationId])
+  @@map("term_exams")
 }
 
 model Section {
   id             String    @id @default(uuid())
   organizationId String
   programId      String
-  termId         String
+  semesterId     String
   name           String
   code           String
   capacity       Int?
@@ -426,14 +459,14 @@ model Section {
 
   organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   program             Program              @relation(fields: [programId], references: [id])
-  term                Term                 @relation(fields: [termId], references: [id])
+  semester            Semester             @relation(fields: [semesterId], references: [id])
   studentEnrollments  StudentEnrollment[]
   teachingAssignments TeachingAssignment[]
   classSchedules      ClassSchedule[]
   attendanceSessions  AttendanceSession[]
   classSessions       ClassSession[]
 
-  @@unique([termId, programId, code])
+  @@unique([semesterId, programId, code])
   @@index([organizationId])
   @@map("sections")
 }
@@ -988,7 +1021,7 @@ model StudentEnrollment {
   studentId      String
   programId      String
   sectionId      String
-  termId         String
+  semesterId     String
   enrollmentDate DateTime
   status         EnrollmentStatus @default(ACTIVE)
   createdAt      DateTime         @default(now())
@@ -998,13 +1031,13 @@ model StudentEnrollment {
   student             Student                     @relation(fields: [studentId], references: [id])
   program             Program                     @relation(fields: [programId], references: [id])
   section             Section                     @relation(fields: [sectionId], references: [id])
-  term                Term                        @relation(fields: [termId], references: [id])
+  semester            Semester                    @relation(fields: [semesterId], references: [id])
   invoices            Invoice[]
   feeAssignments      StudentFeeAssignment[]
   transportAssignment StudentTransportAssignment?
   hostelAllocation    HostelAllocation?
 
-  @@unique([studentId, termId])
+  @@unique([studentId, semesterId])
   @@index([organizationId])
   @@map("student_enrollments")
 }
@@ -1098,7 +1131,7 @@ model AdmissionStatusHistory {
 
 // ── Timetable & Scheduling (plan §6 "Academic": rooms, periods,
 // teaching_assignments, class_schedules — Phase 3 slice 3a) ────────────────
-// Section/Program/Term/Subject/Employee already exist from Phase 2; this
+// Section/Program/Semester/Subject/Employee already exist from Phase 2; this
 // slice is the first piece of Phase 3 (Teaching, Learning, Timetable &
 // Attendance) and everything else in that phase (syllabus, lesson plans,
 // class sessions, "My Classes Today") is built on top of the weekly
@@ -1159,14 +1192,14 @@ model TeachingAssignment {
   employeeId     String
   subjectId      String
   sectionId      String
-  termId         String
+  semesterId     String
   createdAt      DateTime @default(now())
 
   organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   employee         Employee          @relation(fields: [employeeId], references: [id])
   subject          Subject           @relation(fields: [subjectId], references: [id])
   section          Section           @relation(fields: [sectionId], references: [id])
-  term             Term              @relation(fields: [termId], references: [id])
+  semester         Semester          @relation(fields: [semesterId], references: [id])
   classSchedules   ClassSchedule[]
   lessonPlans      LessonPlan[]
   assignments      Assignment[]
@@ -1175,9 +1208,9 @@ model TeachingAssignment {
   announcements    Announcement[]
   discussionTopics DiscussionTopic[]
 
-  // One teacher per subject+section+term — re-assigning means changing
-  // this row, not stacking a second one alongside it.
-  @@unique([sectionId, subjectId, termId])
+  // One teacher per subject+section+semester — re-assigning means
+  // changing this row, not stacking a second one alongside it.
+  @@unique([sectionId, subjectId, semesterId])
   @@index([organizationId])
   @@map("teaching_assignments")
 }
@@ -1185,7 +1218,7 @@ model TeachingAssignment {
 model ClassSchedule {
   id                   String   @id @default(uuid())
   organizationId       String
-  termId               String
+  semesterId           String
   teachingAssignmentId String
   // sectionId and teacherId are denormalized off teachingAssignment
   // (not just a convenience) — Postgres unique constraints need real
@@ -1203,7 +1236,7 @@ model ClassSchedule {
   updatedAt            DateTime @updatedAt
 
   organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  term               Term                @relation(fields: [termId], references: [id])
+  semester           Semester            @relation(fields: [semesterId], references: [id])
   teachingAssignment TeachingAssignment  @relation(fields: [teachingAssignmentId], references: [id])
   section            Section             @relation(fields: [sectionId], references: [id])
   teacher            Employee            @relation(fields: [teacherId], references: [id])
@@ -1212,9 +1245,9 @@ model ClassSchedule {
   attendanceSessions AttendanceSession[]
   classSessions      ClassSession[]
 
-  @@unique([termId, roomId, dayOfWeek, periodId], map: "class_schedules_room_slot_key")
-  @@unique([termId, sectionId, dayOfWeek, periodId], map: "class_schedules_section_slot_key")
-  @@unique([termId, teacherId, dayOfWeek, periodId], map: "class_schedules_teacher_slot_key")
+  @@unique([semesterId, roomId, dayOfWeek, periodId], map: "class_schedules_room_slot_key")
+  @@unique([semesterId, sectionId, dayOfWeek, periodId], map: "class_schedules_section_slot_key")
+  @@unique([semesterId, teacherId, dayOfWeek, periodId], map: "class_schedules_teacher_slot_key")
   @@index([organizationId])
   @@map("class_schedules")
 }
@@ -1653,7 +1686,7 @@ model Syllabus {
   id                  String   @id @default(uuid())
   organizationId      String
   curriculumSubjectId String
-  termId              String
+  semesterId          String
   name                String?
   description         String?
   createdAt           DateTime @default(now())
@@ -1661,12 +1694,12 @@ model Syllabus {
 
   organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   curriculumSubject CurriculumSubject @relation(fields: [curriculumSubjectId], references: [id])
-  term              Term              @relation(fields: [termId], references: [id])
+  semester          Semester          @relation(fields: [semesterId], references: [id])
   nodes             SyllabusNode[]
 
-  // One syllabus per curriculum-subject+term — revising means editing
-  // this row's nodes, not creating a second syllabus alongside it.
-  @@unique([curriculumSubjectId, termId])
+  // One syllabus per curriculum-subject+semester — revising means
+  // editing this row's nodes, not creating a second syllabus alongside it.
+  @@unique([curriculumSubjectId, semesterId])
   @@index([organizationId])
   @@map("syllabi")
 }
@@ -2145,7 +2178,7 @@ model Exam {
   id              String   @id @default(uuid())
   organizationId  String
   examTypeId      String
-  termId          String
+  termExamId      String
   name            String
   // Optional — an exam can exist before its grading scale is decided;
   // 4d's grade computation requires it, this slice's scheduling doesn't.
@@ -2155,13 +2188,13 @@ model Exam {
 
   organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   examType      ExamType       @relation(fields: [examTypeId], references: [id])
-  term          Term           @relation(fields: [termId], references: [id])
+  termExam      TermExam       @relation(fields: [termExamId], references: [id])
   gradingScheme GradingScheme? @relation(fields: [gradingSchemeId], references: [id])
   examSubjects  ExamSubject[]
   reportCards   ReportCard[]
 
   @@index([organizationId])
-  @@index([termId])
+  @@index([termExamId])
   @@map("exams")
 }
 
@@ -2405,18 +2438,18 @@ model FeeStructure {
   id             String   @id @default(uuid())
   organizationId String
   programId      String
-  termId         String
+  semesterId     String
   name           String
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   program      Program                @relation(fields: [programId], references: [id])
-  term         Term                   @relation(fields: [termId], references: [id])
+  semester     Semester               @relation(fields: [semesterId], references: [id])
   items        FeeStructureItem[]
   assignments  StudentFeeAssignment[]
 
-  @@unique([programId, termId, name])
+  @@unique([programId, semesterId, name])
   @@index([organizationId])
   @@map("fee_structures")
 }

@@ -82,12 +82,12 @@ export class FinanceService {
 
   async createFeeStructure(organizationId: string, dto: CreateFeeStructureDto) {
     return this.prisma.withTenant(organizationId, async (tx) => {
-      // FK-vs-RLS-parent-guard: program/term/categories must actually
+      // FK-vs-RLS-parent-guard: program/semester/categories must actually
       // be visible to this org, not just any row with a matching id.
       const program = await tx.program.findUnique({ where: { id: dto.programId } });
       if (!program) throw new NotFoundException("Program not found");
-      const term = await tx.term.findUnique({ where: { id: dto.termId } });
-      if (!term) throw new NotFoundException("Term not found");
+      const semester = await tx.semester.findUnique({ where: { id: dto.semesterId } });
+      if (!semester) throw new NotFoundException("Semester not found");
       for (const item of dto.items) {
         const category = await tx.feeCategory.findUnique({ where: { id: item.feeCategoryId } });
         if (!category) throw new NotFoundException(`Fee category ${item.feeCategoryId} not found`);
@@ -97,7 +97,7 @@ export class FinanceService {
         data: {
           organizationId,
           programId: dto.programId,
-          termId: dto.termId,
+          semesterId: dto.semesterId,
           name: dto.name,
           items: {
             create: dto.items.map((item) => ({
@@ -116,7 +116,7 @@ export class FinanceService {
     return this.prisma.withTenant(organizationId, (tx) =>
       tx.feeStructure.findMany({
         where: { organizationId },
-        include: { program: true, term: true, items: { include: { feeCategory: true } } },
+        include: { program: true, semester: true, items: { include: { feeCategory: true } } },
         orderBy: { createdAt: "desc" },
       }),
     );
@@ -142,7 +142,7 @@ export class FinanceService {
     return this.prisma.withTenant(organizationId, async (tx) => {
       const feeStructure = await this.loadFeeStructure(tx, feeStructureId);
       const enrollments = await tx.studentEnrollment.findMany({
-        where: { organizationId, programId: feeStructure.programId, termId: feeStructure.termId, status: "ACTIVE" },
+        where: { organizationId, programId: feeStructure.programId, semesterId: feeStructure.semesterId, status: "ACTIVE" },
       });
 
       const assigned: string[] = [];
@@ -170,7 +170,7 @@ export class FinanceService {
     return this.prisma.withTenant(organizationId, async (tx) => {
       const feeStructure = await this.loadFeeStructure(tx, feeStructureId);
       const enrollments = await tx.studentEnrollment.findMany({
-        where: { organizationId, programId: feeStructure.programId, termId: feeStructure.termId, status: "ACTIVE" },
+        where: { organizationId, programId: feeStructure.programId, semesterId: feeStructure.semesterId, status: "ACTIVE" },
       });
 
       let eligibleCount = 0;
@@ -202,11 +202,11 @@ export class FinanceService {
     organizationId: string,
     userId: string,
     feeStructure: Prisma.FeeStructureGetPayload<{ include: { items: true } }>,
-    enrollment: { id: string; studentId: string; programId: string; termId: string },
+    enrollment: { id: string; studentId: string; programId: string; semesterId: string },
     dueDate: string,
   ) {
-    if (enrollment.programId !== feeStructure.programId || enrollment.termId !== feeStructure.termId) {
-      throw new BadRequestException("This enrollment's program/term does not match the fee structure's");
+    if (enrollment.programId !== feeStructure.programId || enrollment.semesterId !== feeStructure.semesterId) {
+      throw new BadRequestException("This enrollment's program/semester does not match the fee structure's");
     }
     const existing = await tx.studentFeeAssignment.findUnique({
       where: {

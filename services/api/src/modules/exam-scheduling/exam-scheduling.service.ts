@@ -14,7 +14,7 @@ export class ExamSchedulingService {
     return this.prisma.withTenant(organizationId, (tx) =>
       tx.exam.findMany({
         where: { organizationId },
-        include: { examType: true, term: true, gradingScheme: true },
+        include: { examType: true, termExam: { include: { semester: true } }, gradingScheme: true },
         orderBy: { createdAt: "desc" },
       }),
     );
@@ -25,8 +25,8 @@ export class ExamSchedulingService {
       const examType = await tx.examType.findUnique({ where: { id: dto.examTypeId } });
       if (!examType) throw new NotFoundException("Exam type not found");
 
-      const term = await tx.term.findUnique({ where: { id: dto.termId } });
-      if (!term) throw new NotFoundException("Term not found");
+      const termExam = await tx.termExam.findUnique({ where: { id: dto.termExamId } });
+      if (!termExam) throw new NotFoundException("Term exam not found");
 
       if (dto.gradingSchemeId) {
         const gradingScheme = await tx.gradingScheme.findUnique({ where: { id: dto.gradingSchemeId } });
@@ -37,7 +37,7 @@ export class ExamSchedulingService {
         data: {
           organizationId,
           examTypeId: dto.examTypeId,
-          termId: dto.termId,
+          termExamId: dto.termExamId,
           name: dto.name,
           gradingSchemeId: dto.gradingSchemeId,
         },
@@ -49,7 +49,7 @@ export class ExamSchedulingService {
     return this.prisma.withTenant(organizationId, async (tx) => {
       const exam = await tx.exam.findUnique({
         where: { id: examId },
-        include: { examType: true, term: true, gradingScheme: true },
+        include: { examType: true, termExam: { include: { semester: true } }, gradingScheme: true },
       });
       if (!exam) throw new NotFoundException("Exam not found");
 

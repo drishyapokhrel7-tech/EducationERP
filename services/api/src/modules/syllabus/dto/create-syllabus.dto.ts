@@ -5,7 +5,7 @@ export class CreateSyllabusDto {
   curriculumSubjectId!: string;
 
   @IsString()
-  termId!: string;
+  semesterId!: string;
 
   @IsOptional()
   @IsString()

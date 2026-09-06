@@ -1,6 +1,6 @@
 import { IsDateString, IsInt, IsString, Min, MinLength } from "class-validator";
 
-export class CreateTermDto {
+export class CreateSemesterDto {
   @IsString()
   academicYearId!: string;
 

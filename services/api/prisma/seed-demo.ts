@@ -380,7 +380,7 @@ async function main() {
   const allProgramIds = { ...schoolProgramIds, ...collegeProgramIds };
 
   const academicYear = await upsertAcademicYear(organization.id, "2026-2027", "2026-08-01", "2027-06-30");
-  const term = await upsertTerm(organization.id, academicYear.id, "Term 1", "T1", 1, "2026-08-01", "2026-12-15");
+  const semester = await upsertSemester(organization.id, academicYear.id, "Term 1", "T1", 1, "2026-08-01", "2026-12-15");
 
   const sectionIds: Record<string, string> = {};
   for (const s of [
@@ -391,7 +391,7 @@ async function main() {
     const section = await upsertSection(
       organization.id,
       allProgramIds[s.programCode],
-      term.id,
+      semester.id,
       s.name,
       s.code,
       s.capacity,
@@ -413,7 +413,7 @@ async function main() {
       student.id,
       allProgramIds[s.programCode],
       sectionIds[s.sectionCode],
-      term.id,
+      semester.id,
       "2026-08-01",
     );
   }
@@ -444,7 +444,7 @@ async function main() {
         a.enrollAs.studentCode,
         allProgramIds[a.programCode],
         sectionIds[a.enrollAs.sectionCode],
-        term.id,
+        semester.id,
         "2026-08-15",
       );
     }
@@ -529,7 +529,7 @@ async function upsertAcademicYear(organizationId: string, name: string, startDat
   });
 }
 
-async function upsertTerm(
+async function upsertSemester(
   organizationId: string,
   academicYearId: string,
   name: string,
@@ -538,9 +538,9 @@ async function upsertTerm(
   startDate: string,
   endDate: string,
 ) {
-  const existing = await prisma.term.findFirst({ where: { academicYearId, code } });
+  const existing = await prisma.semester.findFirst({ where: { academicYearId, code } });
   if (existing) return existing;
-  return prisma.term.create({
+  return prisma.semester.create({
     data: {
       organizationId,
       academicYearId,
@@ -556,14 +556,14 @@ async function upsertTerm(
 async function upsertSection(
   organizationId: string,
   programId: string,
-  termId: string,
+  semesterId: string,
   name: string,
   code: string,
   capacity: number,
 ) {
-  const existing = await prisma.section.findFirst({ where: { termId, programId, code } });
+  const existing = await prisma.section.findFirst({ where: { semesterId, programId, code } });
   if (existing) return existing;
-  return prisma.section.create({ data: { organizationId, programId, termId, name, code, capacity } });
+  return prisma.section.create({ data: { organizationId, programId, semesterId, name, code, capacity } });
 }
 
 async function upsertStudent(
@@ -616,13 +616,13 @@ async function upsertEnrollment(
   studentId: string,
   programId: string,
   sectionId: string,
-  termId: string,
+  semesterId: string,
   enrollmentDate: string,
 ) {
-  const existing = await prisma.studentEnrollment.findFirst({ where: { studentId, termId } });
+  const existing = await prisma.studentEnrollment.findFirst({ where: { studentId, semesterId } });
   if (existing) return existing;
   return prisma.studentEnrollment.create({
-    data: { organizationId, studentId, programId, sectionId, termId, enrollmentDate: new Date(enrollmentDate) },
+    data: { organizationId, studentId, programId, sectionId, semesterId, enrollmentDate: new Date(enrollmentDate) },
   });
 }
 
@@ -681,7 +681,7 @@ async function enrollApplication(
   studentCode: string,
   programId: string,
   sectionId: string,
-  termId: string,
+  semesterId: string,
   enrollmentDate: string,
 ) {
   const application = await prisma.admissionApplication.findUnique({ where: { id: applicationId } });
@@ -704,7 +704,7 @@ async function enrollApplication(
     await upsertStudentGuardian(organizationId, student.id, guardian.id, "Guardian", true);
   }
 
-  await upsertEnrollment(organizationId, student.id, programId, sectionId, termId, enrollmentDate);
+  await upsertEnrollment(organizationId, student.id, programId, sectionId, semesterId, enrollmentDate);
 
   await prisma.admissionApplication.update({
     where: { id: applicationId },

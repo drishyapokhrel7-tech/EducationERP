@@ -5,7 +5,7 @@ export class CreateExamDto {
   examTypeId!: string;
 
   @IsString()
-  termId!: string;
+  termExamId!: string;
 
   @IsString()
   @MinLength(1)

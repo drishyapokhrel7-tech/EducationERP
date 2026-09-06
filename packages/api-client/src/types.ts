@@ -221,7 +221,7 @@ export interface UpdateAcademicYearInput {
   endDate?: string;
 }
 
-export interface Term {
+export interface Semester {
   id: string;
   organizationId: string;
   academicYearId: string;
@@ -232,7 +232,7 @@ export interface Term {
   endDate: string;
 }
 
-export interface CreateTermInput {
+export interface CreateSemesterInput {
   academicYearId: string;
   name: string;
   code: string;
@@ -241,7 +241,7 @@ export interface CreateTermInput {
   endDate: string;
 }
 
-export interface UpdateTermInput {
+export interface UpdateSemesterInput {
   academicYearId?: string;
   name?: string;
   code?: string;
@@ -250,11 +250,36 @@ export interface UpdateTermInput {
   endDate?: string;
 }
 
+// Exam-only period ("Mid Term Exam," "Internal Exam," "Pre-board
+// Exam") scoped per Semester — a genuinely separate concept from
+// Semester itself. Only Exam references this.
+export interface TermExam {
+  id: string;
+  organizationId: string;
+  semesterId: string;
+  name: string;
+  code: string;
+  sequence: number;
+}
+
+export interface CreateTermExamInput {
+  semesterId: string;
+  name: string;
+  code: string;
+  sequence: number;
+}
+
+export interface UpdateTermExamInput {
+  name?: string;
+  code?: string;
+  sequence?: number;
+}
+
 export interface Section {
   id: string;
   organizationId: string;
   programId: string;
-  termId: string;
+  semesterId: string;
   name: string;
   code: string;
   capacity: number | null;
@@ -262,7 +287,7 @@ export interface Section {
 
 export interface CreateSectionInput {
   programId: string;
-  termId: string;
+  semesterId: string;
   name: string;
   code: string;
   capacity?: number;
@@ -270,7 +295,7 @@ export interface CreateSectionInput {
 
 export interface UpdateSectionInput {
   programId?: string;
-  termId?: string;
+  semesterId?: string;
   name?: string;
   code?: string;
   capacity?: number;
@@ -596,18 +621,18 @@ export interface StudentEnrollment {
   studentId: string;
   programId: string;
   sectionId: string;
-  termId: string;
+  semesterId: string;
   enrollmentDate: string;
   status: EnrollmentStatus;
   program: Program;
   section: Section;
-  term: Term;
+  semester: Semester;
 }
 
 export interface CreateEnrollmentInput {
   programId: string;
   sectionId: string;
-  termId: string;
+  semesterId: string;
   enrollmentDate: string;
 }
 
@@ -619,20 +644,20 @@ export interface EnrollmentListItem {
   studentId: string;
   programId: string;
   sectionId: string;
-  termId: string;
+  semesterId: string;
   enrollmentDate: string;
   status: EnrollmentStatus;
   student: StudentPicker;
   program: Program;
   section: Section;
-  term: Term;
+  semester: Semester;
 }
 
 export interface ListEnrollmentsParams {
   page?: number;
   pageSize?: number;
   programId?: string;
-  termId?: string;
+  semesterId?: string;
   sectionId?: string;
   status?: EnrollmentStatus;
 }
@@ -708,7 +733,7 @@ export interface EnrollApplicationInput {
   // studentCode is deliberately absent — generated server-side, same
   // as the direct Students-page create path.
   sectionId: string;
-  termId: string;
+  semesterId: string;
   enrollmentDate: string;
 }
 
@@ -781,31 +806,31 @@ export interface TeachingAssignment {
   employeeId: string;
   subjectId: string;
   sectionId: string;
-  termId: string;
+  semesterId: string;
   employee: Employee;
   subject: Subject;
   section: Section;
-  term: Term;
+  semester: Semester;
 }
 
 export interface CreateTeachingAssignmentInput {
   employeeId: string;
   subjectId: string;
   sectionId: string;
-  termId: string;
+  semesterId: string;
 }
 
 export interface UpdateTeachingAssignmentInput {
   employeeId?: string;
   subjectId?: string;
   sectionId?: string;
-  termId?: string;
+  semesterId?: string;
 }
 
 export interface ClassSchedule {
   id: string;
   organizationId: string;
-  termId: string;
+  semesterId: string;
   teachingAssignmentId: string;
   sectionId: string;
   teacherId: string;
@@ -903,16 +928,16 @@ export interface Syllabus {
   id: string;
   organizationId: string;
   curriculumSubjectId: string;
-  termId: string;
+  semesterId: string;
   name: string | null;
   description: string | null;
   curriculumSubject: CurriculumSubject & { subject: Subject; curriculum: Curriculum };
-  term: Term;
+  semester: Semester;
 }
 
 export interface CreateSyllabusInput {
   curriculumSubjectId: string;
-  termId: string;
+  semesterId: string;
   name?: string;
   description?: string;
 }
@@ -1114,7 +1139,7 @@ export interface AssignmentTeachingAssignmentSummary {
   id: string;
   subjectId: string;
   sectionId: string;
-  termId: string;
+  semesterId: string;
   employeeId: string;
   subject: Subject;
   employee: Employee;
@@ -1369,10 +1394,10 @@ export interface DashboardTeachingAssignment {
   id: string;
   subjectId: string;
   sectionId: string;
-  termId: string;
+  semesterId: string;
   subject: Subject;
   section: Section;
-  term: Term;
+  semester: Semester;
 }
 
 export interface DashboardClassSchedule {
@@ -1568,13 +1593,13 @@ export interface ExamSummary {
   id: string;
   organizationId: string;
   examTypeId: string;
-  termId: string;
+  termExamId: string;
   name: string;
   gradingSchemeId: string | null;
   createdAt: string;
   updatedAt: string;
   examType: ExamType;
-  term: Term;
+  termExam: TermExam & { semester: Semester };
   gradingScheme: GradingScheme | null;
 }
 
@@ -1619,7 +1644,7 @@ export interface Exam extends ExamSummary {
 
 export interface CreateExamInput {
   examTypeId: string;
-  termId: string;
+  termExamId: string;
   name: string;
   gradingSchemeId?: string;
 }
@@ -2014,18 +2039,18 @@ export interface FeeStructureRecord {
   id: string;
   organizationId: string;
   programId: string;
-  termId: string;
+  semesterId: string;
   name: string;
   createdAt: string;
   updatedAt: string;
   program: Program;
-  term: Term;
+  semester: Semester;
   items: FeeStructureItemRecord[];
 }
 
 export interface CreateFeeStructureInput {
   programId: string;
-  termId: string;
+  semesterId: string;
   name: string;
   items: { feeCategoryId: string; amount: number }[];
 }

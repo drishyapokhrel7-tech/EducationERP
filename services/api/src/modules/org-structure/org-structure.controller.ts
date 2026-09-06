@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { OrgStructureService } from "./org-structure.service";
 import { CreateFacultyDto } from "./dto/create-faculty.dto";
 import { UpdateFacultyDto } from "./dto/update-faculty.dto";
@@ -8,8 +8,10 @@ import { CreateProgramDto } from "./dto/create-program.dto";
 import { UpdateProgramDto } from "./dto/update-program.dto";
 import { CreateAcademicYearDto } from "./dto/create-academic-year.dto";
 import { UpdateAcademicYearDto } from "./dto/update-academic-year.dto";
-import { CreateTermDto } from "./dto/create-term.dto";
-import { UpdateTermDto } from "./dto/update-term.dto";
+import { CreateSemesterDto } from "./dto/create-semester.dto";
+import { UpdateSemesterDto } from "./dto/update-semester.dto";
+import { CreateTermExamDto } from "./dto/create-term-exam.dto";
+import { UpdateTermExamDto } from "./dto/update-term-exam.dto";
 import { CreateSectionDto } from "./dto/create-section.dto";
 import { UpdateSectionDto } from "./dto/update-section.dto";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
@@ -119,28 +121,57 @@ export class OrgStructureController {
     return this.orgStructure.deleteAcademicYear(user.organizationId, id);
   }
 
-  @Get("terms")
-  @RequirePermissions("term:view")
-  listTerms(@CurrentUser() user: JwtPayload) {
-    return this.orgStructure.listTerms(user.organizationId);
+  @Get("semesters")
+  @RequirePermissions("semester:view")
+  listSemesters(@CurrentUser() user: JwtPayload) {
+    return this.orgStructure.listSemesters(user.organizationId);
   }
 
-  @Post("terms")
-  @RequirePermissions("term:create")
-  createTerm(@CurrentUser() user: JwtPayload, @Body() dto: CreateTermDto) {
-    return this.orgStructure.createTerm(user.organizationId, dto);
+  @Post("semesters")
+  @RequirePermissions("semester:create")
+  createSemester(@CurrentUser() user: JwtPayload, @Body() dto: CreateSemesterDto) {
+    return this.orgStructure.createSemester(user.organizationId, dto);
   }
 
-  @Patch("terms/:id")
-  @RequirePermissions("term:update")
-  updateTerm(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: UpdateTermDto) {
-    return this.orgStructure.updateTerm(user.organizationId, id, dto);
+  @Patch("semesters/:id")
+  @RequirePermissions("semester:update")
+  updateSemester(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: UpdateSemesterDto) {
+    return this.orgStructure.updateSemester(user.organizationId, id, dto);
   }
 
-  @Delete("terms/:id")
-  @RequirePermissions("term:delete")
-  deleteTerm(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
-    return this.orgStructure.deleteTerm(user.organizationId, id);
+  @Delete("semesters/:id")
+  @RequirePermissions("semester:delete")
+  deleteSemester(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.orgStructure.deleteSemester(user.organizationId, id);
+  }
+
+  // Term Exams are scoped per semester (Mid Term/Internal/Pre-board
+  // Exam) — a genuinely separate concept from Semester itself, see
+  // Semester/TermExam's own schema doc comments. Only the Exam module
+  // ever references a TermExam; enrollment/section/fee/timetable/
+  // syllabus never do.
+  @Get("term-exams")
+  @RequirePermissions("term_exam:view")
+  listTermExams(@CurrentUser() user: JwtPayload, @Query("semesterId") semesterId?: string) {
+    return this.orgStructure.listTermExams(user.organizationId, semesterId);
+  }
+
+  @Post("term-exams")
+  @RequirePermissions("term_exam:create")
+  createTermExam(@CurrentUser() user: JwtPayload, @Body() dto: CreateTermExamDto) {
+    return this.orgStructure.createTermExam(user.organizationId, dto);
+  }
+
+  @Patch("term-exams/:id")
+  @RequirePermissions("term_exam:update")
+  updateTermExam(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: UpdateTermExamDto) {
+    return this.orgStructure.updateTermExam(user.organizationId, id, dto);
+  }
+
+  @Delete("term-exams/:id")
+  @RequirePermissions("term_exam:delete")
+  deleteTermExam(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.orgStructure.deleteTermExam(user.organizationId, id);
   }
 
   @Get("sections")

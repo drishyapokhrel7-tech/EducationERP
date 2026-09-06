@@ -33,7 +33,7 @@ export default function TimetablePage() {
   const employees = useSWR("employees-picker", () => api.listEmployeesPicker());
   const subjects = useSWR("subjects", () => api.listSubjects());
   const sections = useSWR("sections", () => api.listSections());
-  const terms = useSWR("terms", () => api.listTerms());
+  const semesters = useSWR("semesters", () => api.listSemesters());
   const rooms = useSWR("rooms", () => api.listRooms());
   const periods = useSWR("periods", () => api.listPeriods());
   const teachingAssignments = useSWR("teaching-assignments", () => api.listTeachingAssignments());
@@ -54,7 +54,7 @@ export default function TimetablePage() {
     employeeId: "",
     subjectId: "",
     sectionId: "",
-    termId: "",
+    semesterId: "",
   });
   const [scheduleForm, setScheduleForm] = useState({
     teachingAssignmentId: "",
@@ -67,7 +67,7 @@ export default function TimetablePage() {
     employeeId: "",
     subjectId: "",
     sectionId: "",
-    termId: "",
+    semesterId: "",
   });
   const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
   const [editScheduleForm, setEditScheduleForm] = useState({
@@ -88,7 +88,7 @@ export default function TimetablePage() {
         <h1 className="text-2xl font-semibold">Timetable</h1>
         <p className="text-muted-foreground text-sm">
           Rooms and periods define the slots. A teaching assignment pairs a teacher with a
-          subject and section for a term; a schedule entry places that pairing into a
+          subject and section for a semester; a schedule entry places that pairing into a
           day/period/room.
         </p>
       </div>
@@ -487,16 +487,16 @@ export default function TimetablePage() {
           employeeId: string;
           subjectId: string;
           sectionId: string;
-          termId: string;
+          semesterId: string;
           employee: { firstName: string; lastName: string };
           subject: { name: string };
           section: { name: string };
-          term: { name: string };
+          semester: { name: string };
         }) => (
           <div className="flex items-center justify-between gap-2">
             <span>
               {a.employee.firstName} {a.employee.lastName} teaches {a.subject.name} to{" "}
-              {a.section.name} <span className="text-muted-foreground">({a.term.name})</span>
+              {a.section.name} <span className="text-muted-foreground">({a.semester.name})</span>
             </span>
             <div className="flex items-center gap-2">
               <Button
@@ -509,7 +509,7 @@ export default function TimetablePage() {
                     employeeId: a.employeeId,
                     subjectId: a.subjectId,
                     sectionId: a.sectionId,
-                    termId: a.termId,
+                    semesterId: a.semesterId,
                   });
                 }}
               >
@@ -572,13 +572,13 @@ export default function TimetablePage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label className="text-xs">Term</Label>
+                <Label className="text-xs">Semester</Label>
                 <NativeSelect
                   className="w-36"
-                  placeholder="Select term"
-                  value={editAssignmentForm.termId}
-                  onChange={(v) => setEditAssignmentForm((f) => ({ ...f, termId: v }))}
-                  options={(terms.data ?? []).map((t) => ({ value: t.id, label: t.name }))}
+                  placeholder="Select semester"
+                  value={editAssignmentForm.semesterId}
+                  onChange={(v) => setEditAssignmentForm((f) => ({ ...f, semesterId: v }))}
+                  options={(semesters.data ?? []).map((t) => ({ value: t.id, label: t.name }))}
                 />
               </div>
               <Button type="submit" size="sm">
@@ -598,7 +598,7 @@ export default function TimetablePage() {
             submitAction(
               () => api.createTeachingAssignment(assignmentForm),
               () => {
-                setAssignmentForm({ employeeId: "", subjectId: "", sectionId: "", termId: "" });
+                setAssignmentForm({ employeeId: "", subjectId: "", sectionId: "", semesterId: "" });
                 teachingAssignments.mutate();
               },
             );
@@ -638,13 +638,13 @@ export default function TimetablePage() {
             />
           </div>
           <div className="space-y-2">
-            <Label>Term</Label>
+            <Label>Semester</Label>
             <NativeSelect
               className="w-36"
-              placeholder="Select term"
-              value={assignmentForm.termId}
-              onChange={(v) => setAssignmentForm((f) => ({ ...f, termId: v }))}
-              options={(terms.data ?? []).map((t) => ({ value: t.id, label: t.name }))}
+              placeholder="Select semester"
+              value={assignmentForm.semesterId}
+              onChange={(v) => setAssignmentForm((f) => ({ ...f, semesterId: v }))}
+              options={(semesters.data ?? []).map((t) => ({ value: t.id, label: t.name }))}
             />
           </div>
           <Button
@@ -653,7 +653,7 @@ export default function TimetablePage() {
               !assignmentForm.employeeId ||
               !assignmentForm.subjectId ||
               !assignmentForm.sectionId ||
-              !assignmentForm.termId
+              !assignmentForm.semesterId
             }
           >
             Add

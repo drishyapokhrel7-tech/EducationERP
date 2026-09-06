@@ -69,7 +69,7 @@ export default function LearningDashboardsPage() {
                     <ul className="text-muted-foreground list-disc pl-5">
                       {teacherDashboard.data.teachingAssignments.map((t) => (
                         <li key={t.id}>
-                          {t.subject.name} · {t.section.name} · {t.term.name}
+                          {t.subject.name} · {t.section.name} · {t.semester.name}
                         </li>
                       ))}
                     </ul>

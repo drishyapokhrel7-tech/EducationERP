@@ -37,7 +37,7 @@ export default function AdmissionsPage() {
   const applications = useSWR("admission-applications", () => api.listAdmissionApplications());
   const programs = useSWR("programs", () => api.listPrograms());
   const sections = useSWR("sections", () => api.listSections());
-  const terms = useSWR("terms", () => api.listTerms());
+  const semesters = useSWR("semesters", () => api.listSemesters());
 
   const [form, setForm] = useState({
     programId: "",
@@ -49,7 +49,7 @@ export default function AdmissionsPage() {
     appliedDate: "",
   });
   const [statusEdits, setStatusEdits] = useState<Record<string, AdmissionStatus>>({});
-  const [enrollForms, setEnrollForms] = useState<Record<string, { sectionId: string; termId: string; enrollmentDate: string }>>(
+  const [enrollForms, setEnrollForms] = useState<Record<string, { sectionId: string; semesterId: string; enrollmentDate: string }>>(
     {},
   );
 
@@ -74,7 +74,7 @@ export default function AdmissionsPage() {
           ) : (
             <ul className="space-y-4 divide-y">
               {applications.data.map((app) => {
-                const enrollForm = enrollForms[app.id] ?? { sectionId: "", termId: "", enrollmentDate: "" };
+                const enrollForm = enrollForms[app.id] ?? { sectionId: "", semesterId: "", enrollmentDate: "" };
                 return (
                   <li key={app.id} className="space-y-2 pt-4 first:pt-0">
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -128,7 +128,7 @@ export default function AdmissionsPage() {
                           submitAction(
                             () => api.enrollApplication(app.id, enrollForm),
                             () => {
-                              setEnrollForms((f) => ({ ...f, [app.id]: { sectionId: "", termId: "", enrollmentDate: "" } }));
+                              setEnrollForms((f) => ({ ...f, [app.id]: { sectionId: "", semesterId: "", enrollmentDate: "" } }));
                               applications.mutate();
                             },
                           );
@@ -145,12 +145,12 @@ export default function AdmissionsPage() {
                         />
                         <NativeSelect
                           className="w-32"
-                          placeholder="Term"
-                          value={enrollForm.termId}
+                          placeholder="Semester"
+                          value={enrollForm.semesterId}
                           onChange={(v) =>
-                            setEnrollForms((f) => ({ ...f, [app.id]: { ...enrollForm, termId: v } }))
+                            setEnrollForms((f) => ({ ...f, [app.id]: { ...enrollForm, semesterId: v } }))
                           }
-                          options={(terms.data ?? []).map((t) => ({ value: t.id, label: t.name }))}
+                          options={(semesters.data ?? []).map((t) => ({ value: t.id, label: t.name }))}
                         />
                         <Input
                           required
@@ -166,7 +166,7 @@ export default function AdmissionsPage() {
                         <Button
                           type="submit"
                           size="sm"
-                          disabled={!enrollForm.sectionId || !enrollForm.termId}
+                          disabled={!enrollForm.sectionId || !enrollForm.semesterId}
                         >
                           Enroll
                         </Button>

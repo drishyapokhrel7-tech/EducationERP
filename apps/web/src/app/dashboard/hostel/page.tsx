@@ -581,7 +581,7 @@ export default function HostelPage() {
                 placeholder="Select enrollment"
                 value={allocForm.studentEnrollmentId}
                 onChange={(v) => setAllocForm((f) => ({ ...f, studentEnrollmentId: v }))}
-                options={studentEnrollments.map((en) => ({ value: en.id, label: en.term.name }))}
+                options={studentEnrollments.map((en) => ({ value: en.id, label: en.semester.name }))}
               />
             </div>
             <div className="space-y-1">

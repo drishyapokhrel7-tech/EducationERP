@@ -34,7 +34,8 @@ import type {
   CreateStudentLoginInput,
   CreateStudentLoginResult,
   CreateSubjectInput,
-  CreateTermInput,
+  CreateSemesterInput,
+  CreateTermExamInput,
   Curriculum,
   CurriculumSubject,
   Department,
@@ -59,14 +60,16 @@ import type {
   StudentStatusHistoryEntry,
   Subject,
   TeacherProfile,
-  Term,
+  Semester,
+  TermExam,
   UpdateAdmissionStatusInput,
   UpdateStudentStatusInput,
   UpdateFacultyInput,
   UpdateDepartmentInput,
   UpdateProgramInput,
   UpdateAcademicYearInput,
-  UpdateTermInput,
+  UpdateSemesterInput,
+  UpdateTermExamInput,
   UpdateSectionInput,
   UpdateStaffTypeInput,
   UpdateDesignationInput,
@@ -609,15 +612,33 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
     deleteAcademicYear: (id: string) =>
       request<{ deleted: true }>(`/organizations/me/academic-years/${id}`, { method: "DELETE" }),
 
-    listTerms: () => request<Term[]>("/organizations/me/terms"),
-    createTerm: (input: CreateTermInput) =>
-      request<Term>("/organizations/me/terms", {
+    listSemesters: () => request<Semester[]>("/organizations/me/semesters"),
+    createSemester: (input: CreateSemesterInput) =>
+      request<Semester>("/organizations/me/semesters", {
         method: "POST",
         body: JSON.stringify(input),
       }),
-    updateTerm: (id: string, input: UpdateTermInput) =>
-      request<Term>(`/organizations/me/terms/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
-    deleteTerm: (id: string) => request<{ deleted: true }>(`/organizations/me/terms/${id}`, { method: "DELETE" }),
+    updateSemester: (id: string, input: UpdateSemesterInput) =>
+      request<Semester>(`/organizations/me/semesters/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    deleteSemester: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/semesters/${id}`, { method: "DELETE" }),
+
+    // Term Exams are scoped per semester (Mid Term/Internal/Pre-board
+    // Exam) — a genuinely separate concept from Semester itself. Only
+    // the Exam module ever references one.
+    listTermExams: (semesterId?: string) =>
+      request<TermExam[]>(
+        semesterId ? `/organizations/me/term-exams?semesterId=${semesterId}` : "/organizations/me/term-exams",
+      ),
+    createTermExam: (input: CreateTermExamInput) =>
+      request<TermExam>("/organizations/me/term-exams", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    updateTermExam: (id: string, input: UpdateTermExamInput) =>
+      request<TermExam>(`/organizations/me/term-exams/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    deleteTermExam: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/term-exams/${id}`, { method: "DELETE" }),
 
     listSections: () => request<Section[]>("/organizations/me/sections"),
     createSection: (input: CreateSectionInput) =>
@@ -770,7 +791,7 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       if (params.page) q.set("page", String(params.page));
       if (params.pageSize) q.set("pageSize", String(params.pageSize));
       if (params.programId) q.set("programId", params.programId);
-      if (params.termId) q.set("termId", params.termId);
+      if (params.semesterId) q.set("semesterId", params.semesterId);
       if (params.sectionId) q.set("sectionId", params.sectionId);
       if (params.status) q.set("status", params.status);
       const qs = q.toString();

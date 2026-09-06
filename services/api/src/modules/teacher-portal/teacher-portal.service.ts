@@ -149,16 +149,16 @@ export class TeacherPortalService {
   // Feeds the "actual topic taught" picker on the record-progress form
   // — the admin equivalent browses the full syllabus catalog
   // (syllabus:view), which a roleless teacher login can't reach, so
-  // this resolves it scoped to exactly the session's own subject+term.
+  // this resolves it scoped to exactly the session's own subject+semester.
   async getSyllabusNodesForSession(organizationId: string, userId: string, sessionId: string) {
     const employee = await this.getOwnEmployee(organizationId, userId);
     return this.prisma.withTenant(organizationId, async (tx) => {
       const session = await this.loadOwnSession(tx, employee.id, sessionId);
-      const { subjectId, termId } = session.classSchedule.teachingAssignment;
+      const { subjectId, semesterId } = session.classSchedule.teachingAssignment;
 
       const curriculumSubjects = await tx.curriculumSubject.findMany({ where: { organizationId, subjectId } });
       const syllabi = await tx.syllabus.findMany({
-        where: { organizationId, termId, curriculumSubjectId: { in: curriculumSubjects.map((cs) => cs.id) } },
+        where: { organizationId, semesterId, curriculumSubjectId: { in: curriculumSubjects.map((cs) => cs.id) } },
       });
       return tx.syllabusNode.findMany({
         where: { organizationId, syllabusId: { in: syllabi.map((s) => s.id) } },
@@ -583,7 +583,7 @@ export class TeacherPortalService {
     return this.prisma.withTenant(organizationId, async (tx) => {
       const ta = await this.assertOwnsTeachingAssignment(tx, employee.id, teachingAssignmentId);
       const enrollments = await tx.studentEnrollment.findMany({
-        where: { organizationId, sectionId: ta.sectionId, termId: ta.termId, status: "ACTIVE" },
+        where: { organizationId, sectionId: ta.sectionId, semesterId: ta.semesterId, status: "ACTIVE" },
         include: { student: true },
         orderBy: { student: { firstName: "asc" } },
       });

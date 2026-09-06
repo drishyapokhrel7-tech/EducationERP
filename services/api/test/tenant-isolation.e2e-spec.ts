@@ -174,7 +174,7 @@ describe("Tenant isolation (e2e)", () => {
     ).rejects.toThrow(/row-level security/i);
   });
 
-  describe("org hierarchy (faculty → department → program → year → term → section)", () => {
+  describe("org hierarchy (faculty → department → program → year → semester → section)", () => {
     const auth = (token: string) => ["Authorization", `Bearer ${token}`] as [string, string];
 
     it("builds the whole chain for org A and each step is scoped to it", async () => {
@@ -209,8 +209,8 @@ describe("Tenant isolation (e2e)", () => {
         .send({ name: "2099-2100", startDate: "2099-08-01", endDate: "2100-06-30" })
         .expect(201);
 
-      const term = await request(app.getHttpServer())
-        .post("/organizations/me/terms")
+      const semester = await request(app.getHttpServer())
+        .post("/organizations/me/semesters")
         .set(...auth(tokenA))
         .send({
           academicYearId: year.body.id,
@@ -225,12 +225,12 @@ describe("Tenant isolation (e2e)", () => {
       const section = await request(app.getHttpServer())
         .post("/organizations/me/sections")
         .set(...auth(tokenA))
-        .send({ programId: program.body.id, termId: term.body.id, name: "Section", code: "A" })
+        .send({ programId: program.body.id, semesterId: semester.body.id, name: "Section", code: "A" })
         .expect(201);
       expect(section.body.organizationId).toBe(orgAId);
 
       // Org B sees none of it via list endpoints.
-      for (const path of ["faculties", "departments", "programs", "academic-years", "terms", "sections"]) {
+      for (const path of ["faculties", "departments", "programs", "academic-years", "semesters", "sections"]) {
         const res = await request(app.getHttpServer())
           .get(`/organizations/me/${path}`)
           .set(...auth(tokenB))
@@ -489,8 +489,8 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(token))
         .send({ name: `${suffix} Year`, startDate: "2099-08-01", endDate: "2100-06-30" })
         .expect(201);
-      const term = await request(app.getHttpServer())
-        .post("/organizations/me/terms")
+      const semester = await request(app.getHttpServer())
+        .post("/organizations/me/semesters")
         .set(...auth(token))
         .send({
           academicYearId: year.body.id,
@@ -504,9 +504,9 @@ describe("Tenant isolation (e2e)", () => {
       const section = await request(app.getHttpServer())
         .post("/organizations/me/sections")
         .set(...auth(token))
-        .send({ programId: program.body.id, termId: term.body.id, name: `Section ${suffix}`, code: `S${suffix}` })
+        .send({ programId: program.body.id, semesterId: semester.body.id, name: `Section ${suffix}`, code: `S${suffix}` })
         .expect(201);
-      return { programId: program.body.id, sectionId: section.body.id, termId: term.body.id };
+      return { programId: program.body.id, sectionId: section.body.id, semesterId: semester.body.id };
     }
 
     it("builds a student with a guardian and enrollment for org A, scoped to it", async () => {
@@ -545,13 +545,18 @@ describe("Tenant isolation (e2e)", () => {
         .expect(200);
       expect(statusChange.body.status).toBe("WITHDRAWN");
 
-      for (const path of ["students", "guardians"]) {
-        const res = await request(app.getHttpServer())
-          .get(`/organizations/me/${path}`)
-          .set(...auth(tokenB))
-          .expect(200);
-        expect(res.body).toEqual([]);
-      }
+      const studentsList = await request(app.getHttpServer())
+        .get("/organizations/me/students")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(studentsList.body.data).toEqual([]);
+      expect(studentsList.body.total).toBe(0);
+
+      const guardiansList = await request(app.getHttpServer())
+        .get("/organizations/me/guardians")
+        .set(...auth(tokenB))
+        .expect(200);
+      expect(guardiansList.body).toEqual([]);
 
       await request(app.getHttpServer())
         .get(`/organizations/me/students/${student.body.id}/enrollments`)
@@ -559,7 +564,7 @@ describe("Tenant isolation (e2e)", () => {
         .expect(404);
     });
 
-    it("rejects enrolling a student under another tenant's program/section/term (404)", async () => {
+    it("rejects enrolling a student under another tenant's program/section/semester (404)", async () => {
       const target = await buildEnrollmentTarget(tokenA, "GUARD");
 
       const studentB = await request(app.getHttpServer())
@@ -617,8 +622,8 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(token))
         .send({ name: `Admission Year ${suffix}`, startDate: "2099-08-01", endDate: "2100-06-30" })
         .expect(201);
-      const term = await request(app.getHttpServer())
-        .post("/organizations/me/terms")
+      const semester = await request(app.getHttpServer())
+        .post("/organizations/me/semesters")
         .set(...auth(token))
         .send({
           academicYearId: year.body.id,
@@ -632,9 +637,9 @@ describe("Tenant isolation (e2e)", () => {
       const section = await request(app.getHttpServer())
         .post("/organizations/me/sections")
         .set(...auth(token))
-        .send({ programId: program.body.id, termId: term.body.id, name: `Admission Section ${suffix}`, code: `AS${suffix}` })
+        .send({ programId: program.body.id, semesterId: semester.body.id, name: `Admission Section ${suffix}`, code: `AS${suffix}` })
         .expect(201);
-      return { programId: program.body.id, sectionId: section.body.id, termId: term.body.id };
+      return { programId: program.body.id, sectionId: section.body.id, semesterId: semester.body.id };
     }
 
     it("takes an application from submission through approval to a real enrollment, scoped to org A", async () => {
@@ -688,16 +693,15 @@ describe("Tenant isolation (e2e)", () => {
       await request(app.getHttpServer())
         .post(`/organizations/me/admission-applications/${notApproved.body.id}/enroll`)
         .set(...auth(tokenA))
-        .send({ studentCode: "SHOULD-FAIL", sectionId: target.sectionId, termId: target.termId, enrollmentDate: "2099-08-01" })
+        .send({ sectionId: target.sectionId, semesterId: target.semesterId, enrollmentDate: "2099-08-01" })
         .expect(400);
 
       const student = await request(app.getHttpServer())
         .post(`/organizations/me/admission-applications/${application.body.id}/enroll`)
         .set(...auth(tokenA))
         .send({
-          studentCode: "ADM-STU-001",
           sectionId: target.sectionId,
-          termId: target.termId,
+          semesterId: target.semesterId,
           enrollmentDate: "2099-08-01",
         })
         .expect(201);
@@ -709,7 +713,7 @@ describe("Tenant isolation (e2e)", () => {
         .get("/organizations/me/students")
         .set(...auth(tokenA))
         .expect(200);
-      const enrolled = students.body.find((s: { id: string }) => s.id === student.body.id);
+      const enrolled = students.body.data.find((s: { id: string }) => s.id === student.body.id);
       expect(enrolled.guardians).toHaveLength(1);
       expect(enrolled.guardians[0].guardian.firstName).toBe("Pierre");
 
@@ -717,7 +721,7 @@ describe("Tenant isolation (e2e)", () => {
       await request(app.getHttpServer())
         .post(`/organizations/me/admission-applications/${application.body.id}/enroll`)
         .set(...auth(tokenA))
-        .send({ studentCode: "ADM-STU-002", sectionId: target.sectionId, termId: target.termId, enrollmentDate: "2099-08-01" })
+        .send({ sectionId: target.sectionId, semesterId: target.semesterId, enrollmentDate: "2099-08-01" })
         .expect(400);
 
       const listB = await request(app.getHttpServer())
@@ -727,7 +731,7 @@ describe("Tenant isolation (e2e)", () => {
       expect(listB.body).toEqual([]);
     });
 
-    it("rejects creating an application under another tenant's program, and enrolling under another tenant's section/term (404)", async () => {
+    it("rejects creating an application under another tenant's program, and enrolling under another tenant's section/semester (404)", async () => {
       const target = await buildEnrollmentTarget(tokenA, "ADMGUARD");
 
       await request(app.getHttpServer())
@@ -764,9 +768,8 @@ describe("Tenant isolation (e2e)", () => {
         .post(`/organizations/me/admission-applications/${applicationB.body.id}/enroll`)
         .set(...auth(tokenB))
         .send({
-          studentCode: "SNEAK-ENROLL",
           sectionId: target.sectionId,
-          termId: target.termId,
+          semesterId: target.semesterId,
           enrollmentDate: "2099-08-01",
         })
         .expect(404);
@@ -880,8 +883,8 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(token))
         .send({ name: `Timetable Year ${suffix}`, startDate: "2099-08-01", endDate: "2100-06-30" })
         .expect(201);
-      const term = await request(app.getHttpServer())
-        .post("/organizations/me/terms")
+      const semester = await request(app.getHttpServer())
+        .post("/organizations/me/semesters")
         .set(...auth(token))
         .send({
           academicYearId: year.body.id,
@@ -895,7 +898,7 @@ describe("Tenant isolation (e2e)", () => {
       const section = await request(app.getHttpServer())
         .post("/organizations/me/sections")
         .set(...auth(token))
-        .send({ programId: program.body.id, termId: term.body.id, name: `Timetable Section ${suffix}`, code: `TS${suffix}` })
+        .send({ programId: program.body.id, semesterId: semester.body.id, name: `Timetable Section ${suffix}`, code: `TS${suffix}` })
         .expect(201);
       const staffType = await request(app.getHttpServer())
         .post("/organizations/me/staff-types")
@@ -938,7 +941,7 @@ describe("Tenant isolation (e2e)", () => {
         .expect(201);
       return {
         campusId: campus.body.id,
-        termId: term.body.id,
+        semesterId: semester.body.id,
         sectionId: section.body.id,
         employeeId: employee.body.id,
         subjectId: subject.body.id,
@@ -953,7 +956,7 @@ describe("Tenant isolation (e2e)", () => {
       const assignment = await request(app.getHttpServer())
         .post("/organizations/me/teaching-assignments")
         .set(...auth(tokenA))
-        .send({ employeeId: t.employeeId, subjectId: t.subjectId, sectionId: t.sectionId, termId: t.termId })
+        .send({ employeeId: t.employeeId, subjectId: t.subjectId, sectionId: t.sectionId, semesterId: t.semesterId })
         .expect(201);
       expect(assignment.body.organizationId).toBe(orgAId);
 
@@ -986,25 +989,25 @@ describe("Tenant isolation (e2e)", () => {
       await request(app.getHttpServer())
         .post("/organizations/me/teaching-assignments")
         .set(...auth(tokenB))
-        .send({ employeeId: t.employeeId, subjectId: t.subjectId, sectionId: t.sectionId, termId: t.termId })
+        .send({ employeeId: t.employeeId, subjectId: t.subjectId, sectionId: t.sectionId, semesterId: t.semesterId })
         .expect(404);
     });
 
-    it("rejects double-booking the same room, section or teacher in one term/day/period (409)", async () => {
+    it("rejects double-booking the same room, section or teacher in one semester/day/period (409)", async () => {
       const t = await buildTimetableTarget(tokenA, "TTCONF");
 
       const assignment = await request(app.getHttpServer())
         .post("/organizations/me/teaching-assignments")
         .set(...auth(tokenA))
-        .send({ employeeId: t.employeeId, subjectId: t.subjectId, sectionId: t.sectionId, termId: t.termId })
+        .send({ employeeId: t.employeeId, subjectId: t.subjectId, sectionId: t.sectionId, semesterId: t.semesterId })
         .expect(201);
 
-      // Assigning the same section+subject+term a second time is rejected
+      // Assigning the same section+subject+semester a second time is rejected
       // before it ever reaches the schedule step.
       await request(app.getHttpServer())
         .post("/organizations/me/teaching-assignments")
         .set(...auth(tokenA))
-        .send({ employeeId: t.employeeId, subjectId: t.subjectId, sectionId: t.sectionId, termId: t.termId })
+        .send({ employeeId: t.employeeId, subjectId: t.subjectId, sectionId: t.sectionId, semesterId: t.semesterId })
         .expect(409);
 
       await request(app.getHttpServer())
@@ -1015,12 +1018,12 @@ describe("Tenant isolation (e2e)", () => {
 
       // Same room, same day/period, different section/teacher -> conflict.
       // A second independent target is the simplest way to get a
-      // different section+teacher sharing the same term.
+      // different section+teacher sharing the same semester.
       const t2 = await buildTimetableTarget(tokenA, "TTCONF2");
       const assignment2 = await request(app.getHttpServer())
         .post("/organizations/me/teaching-assignments")
         .set(...auth(tokenA))
-        .send({ employeeId: t2.employeeId, subjectId: t2.subjectId, sectionId: t2.sectionId, termId: t.termId })
+        .send({ employeeId: t2.employeeId, subjectId: t2.subjectId, sectionId: t2.sectionId, semesterId: t.semesterId })
         .expect(201);
 
       await request(app.getHttpServer())
@@ -1060,8 +1063,8 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(token))
         .send({ name: `Attendance Year ${suffix}`, startDate: "2099-08-01", endDate: "2100-06-30" })
         .expect(201);
-      const term = await request(app.getHttpServer())
-        .post("/organizations/me/terms")
+      const semester = await request(app.getHttpServer())
+        .post("/organizations/me/semesters")
         .set(...auth(token))
         .send({
           academicYearId: year.body.id,
@@ -1075,7 +1078,7 @@ describe("Tenant isolation (e2e)", () => {
       const section = await request(app.getHttpServer())
         .post("/organizations/me/sections")
         .set(...auth(token))
-        .send({ programId: program.body.id, termId: term.body.id, name: `Attendance Section ${suffix}`, code: `AS${suffix}` })
+        .send({ programId: program.body.id, semesterId: semester.body.id, name: `Attendance Section ${suffix}`, code: `AS${suffix}` })
         .expect(201);
       const staffType = await request(app.getHttpServer())
         .post("/organizations/me/staff-types")
@@ -1119,7 +1122,7 @@ describe("Tenant isolation (e2e)", () => {
       const assignment = await request(app.getHttpServer())
         .post("/organizations/me/teaching-assignments")
         .set(...auth(token))
-        .send({ employeeId: employee.body.id, subjectId: subject.body.id, sectionId: section.body.id, termId: term.body.id })
+        .send({ employeeId: employee.body.id, subjectId: subject.body.id, sectionId: section.body.id, semesterId: semester.body.id })
         .expect(201);
       const classSchedule = await request(app.getHttpServer())
         .post("/organizations/me/class-schedules")
@@ -1145,7 +1148,7 @@ describe("Tenant isolation (e2e)", () => {
           .send({
             programId: program.body.id,
             sectionId: section.body.id,
-            termId: term.body.id,
+            semesterId: semester.body.id,
             enrollmentDate: "2099-08-01",
           })
           .expect(201);
@@ -1324,8 +1327,8 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(token))
         .send({ name: `Syllabus Year ${suffix}`, startDate: "2099-08-01", endDate: "2100-06-30" })
         .expect(201);
-      const term = await request(app.getHttpServer())
-        .post("/organizations/me/terms")
+      const semester = await request(app.getHttpServer())
+        .post("/organizations/me/semesters")
         .set(...auth(token))
         .send({
           academicYearId: year.body.id,
@@ -1339,7 +1342,7 @@ describe("Tenant isolation (e2e)", () => {
       const section = await request(app.getHttpServer())
         .post("/organizations/me/sections")
         .set(...auth(token))
-        .send({ programId: program.body.id, termId: term.body.id, name: `Syllabus Section ${suffix}`, code: `SS${suffix}` })
+        .send({ programId: program.body.id, semesterId: semester.body.id, name: `Syllabus Section ${suffix}`, code: `SS${suffix}` })
         .expect(201);
       const subject = await request(app.getHttpServer())
         .post("/organizations/me/subjects")
@@ -1383,10 +1386,10 @@ describe("Tenant isolation (e2e)", () => {
       const assignment = await request(app.getHttpServer())
         .post("/organizations/me/teaching-assignments")
         .set(...auth(token))
-        .send({ employeeId: employee.body.id, subjectId: subject.body.id, sectionId: section.body.id, termId: term.body.id })
+        .send({ employeeId: employee.body.id, subjectId: subject.body.id, sectionId: section.body.id, semesterId: semester.body.id })
         .expect(201);
 
-      return { curriculumSubjectId: curriculumSubject.body.id, termId: term.body.id, teachingAssignmentId: assignment.body.id };
+      return { curriculumSubjectId: curriculumSubject.body.id, semesterId: semester.body.id, teachingAssignmentId: assignment.body.id };
     }
 
     it("creates a syllabus, builds a unit→chapter→topic→subtopic tree with objectives, creates a lesson plan, and stays tenant-scoped", async () => {
@@ -1395,15 +1398,15 @@ describe("Tenant isolation (e2e)", () => {
       const syllabus = await request(app.getHttpServer())
         .post("/organizations/me/syllabi")
         .set(...auth(tokenA))
-        .send({ curriculumSubjectId: t.curriculumSubjectId, termId: t.termId, name: "Test Syllabus" })
+        .send({ curriculumSubjectId: t.curriculumSubjectId, semesterId: t.semesterId, name: "Test Syllabus" })
         .expect(201);
       expect(syllabus.body.organizationId).toBe(orgAId);
 
-      // Duplicate syllabus for the same curriculum-subject+term is rejected.
+      // Duplicate syllabus for the same curriculum-subject+semester is rejected.
       await request(app.getHttpServer())
         .post("/organizations/me/syllabi")
         .set(...auth(tokenA))
-        .send({ curriculumSubjectId: t.curriculumSubjectId, termId: t.termId })
+        .send({ curriculumSubjectId: t.curriculumSubjectId, semesterId: t.semesterId })
         .expect(409);
 
       const unit = await request(app.getHttpServer())
@@ -1481,7 +1484,7 @@ describe("Tenant isolation (e2e)", () => {
       const syllabus = await request(app.getHttpServer())
         .post("/organizations/me/syllabi")
         .set(...auth(tokenA))
-        .send({ curriculumSubjectId: t.curriculumSubjectId, termId: t.termId })
+        .send({ curriculumSubjectId: t.curriculumSubjectId, semesterId: t.semesterId })
         .expect(201);
       const unit = await request(app.getHttpServer())
         .post(`/organizations/me/syllabi/${syllabus.body.id}/nodes`)
@@ -1502,7 +1505,7 @@ describe("Tenant isolation (e2e)", () => {
       const syllabusA = await request(app.getHttpServer())
         .post("/organizations/me/syllabi")
         .set(...auth(tokenA))
-        .send({ curriculumSubjectId: t.curriculumSubjectId, termId: t.termId })
+        .send({ curriculumSubjectId: t.curriculumSubjectId, semesterId: t.semesterId })
         .expect(201);
       const unitA = await request(app.getHttpServer())
         .post(`/organizations/me/syllabi/${syllabusA.body.id}/nodes`)
@@ -1513,7 +1516,7 @@ describe("Tenant isolation (e2e)", () => {
       await request(app.getHttpServer())
         .post("/organizations/me/syllabi")
         .set(...auth(tokenB))
-        .send({ curriculumSubjectId: t.curriculumSubjectId, termId: t.termId })
+        .send({ curriculumSubjectId: t.curriculumSubjectId, semesterId: t.semesterId })
         .expect(404);
 
       await request(app.getHttpServer())
@@ -1570,8 +1573,8 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(token))
         .send({ name: `ClassSession Year ${suffix}`, startDate: "2099-08-01", endDate: "2100-06-30" })
         .expect(201);
-      const term = await request(app.getHttpServer())
-        .post("/organizations/me/terms")
+      const semester = await request(app.getHttpServer())
+        .post("/organizations/me/semesters")
         .set(...auth(token))
         .send({
           academicYearId: year.body.id,
@@ -1585,7 +1588,7 @@ describe("Tenant isolation (e2e)", () => {
       const section = await request(app.getHttpServer())
         .post("/organizations/me/sections")
         .set(...auth(token))
-        .send({ programId: program.body.id, termId: term.body.id, name: `ClassSession Section ${suffix}`, code: `CSS${suffix}` })
+        .send({ programId: program.body.id, semesterId: semester.body.id, name: `ClassSession Section ${suffix}`, code: `CSS${suffix}` })
         .expect(201);
       const subject = await request(app.getHttpServer())
         .post("/organizations/me/subjects")
@@ -1605,7 +1608,7 @@ describe("Tenant isolation (e2e)", () => {
       const syllabus = await request(app.getHttpServer())
         .post("/organizations/me/syllabi")
         .set(...auth(token))
-        .send({ curriculumSubjectId: curriculumSubject.body.id, termId: term.body.id })
+        .send({ curriculumSubjectId: curriculumSubject.body.id, semesterId: semester.body.id })
         .expect(201);
       const unit = await request(app.getHttpServer())
         .post(`/organizations/me/syllabi/${syllabus.body.id}/nodes`)
@@ -1649,7 +1652,7 @@ describe("Tenant isolation (e2e)", () => {
       const assignment = await request(app.getHttpServer())
         .post("/organizations/me/teaching-assignments")
         .set(...auth(token))
-        .send({ employeeId: employee.body.id, subjectId: subject.body.id, sectionId: section.body.id, termId: term.body.id })
+        .send({ employeeId: employee.body.id, subjectId: subject.body.id, sectionId: section.body.id, semesterId: semester.body.id })
         .expect(201);
       const classSchedule = await request(app.getHttpServer())
         .post("/organizations/me/class-schedules")
@@ -1792,8 +1795,8 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(token))
         .send({ name: `Assign Year ${suffix}`, startDate: "2099-08-01", endDate: "2100-06-30" })
         .expect(201);
-      const term = await request(app.getHttpServer())
-        .post("/organizations/me/terms")
+      const semester = await request(app.getHttpServer())
+        .post("/organizations/me/semesters")
         .set(...auth(token))
         .send({
           academicYearId: year.body.id,
@@ -1807,7 +1810,7 @@ describe("Tenant isolation (e2e)", () => {
       const section = await request(app.getHttpServer())
         .post("/organizations/me/sections")
         .set(...auth(token))
-        .send({ programId: program.body.id, termId: term.body.id, name: `Assign Section ${suffix}`, code: `ASS${suffix}` })
+        .send({ programId: program.body.id, semesterId: semester.body.id, name: `Assign Section ${suffix}`, code: `ASS${suffix}` })
         .expect(201);
       const subject = await request(app.getHttpServer())
         .post("/organizations/me/subjects")
@@ -1841,7 +1844,7 @@ describe("Tenant isolation (e2e)", () => {
       const assignment = await request(app.getHttpServer())
         .post("/organizations/me/teaching-assignments")
         .set(...auth(token))
-        .send({ employeeId: employee.body.id, subjectId: subject.body.id, sectionId: section.body.id, termId: term.body.id })
+        .send({ employeeId: employee.body.id, subjectId: subject.body.id, sectionId: section.body.id, semesterId: semester.body.id })
         .expect(201);
       const student = await request(app.getHttpServer())
         .post("/organizations/me/students")
@@ -2048,8 +2051,8 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(token))
         .send({ name: `Dash Year ${suffix}`, startDate: "2099-08-01", endDate: "2100-06-30" })
         .expect(201);
-      const term = await request(app.getHttpServer())
-        .post("/organizations/me/terms")
+      const semester = await request(app.getHttpServer())
+        .post("/organizations/me/semesters")
         .set(...auth(token))
         .send({
           academicYearId: year.body.id,
@@ -2063,7 +2066,7 @@ describe("Tenant isolation (e2e)", () => {
       const section = await request(app.getHttpServer())
         .post("/organizations/me/sections")
         .set(...auth(token))
-        .send({ programId: program.body.id, termId: term.body.id, name: `Dash Section ${suffix}`, code: `DAS${suffix}` })
+        .send({ programId: program.body.id, semesterId: semester.body.id, name: `Dash Section ${suffix}`, code: `DAS${suffix}` })
         .expect(201);
       const subject = await request(app.getHttpServer())
         .post("/organizations/me/subjects")
@@ -2107,7 +2110,7 @@ describe("Tenant isolation (e2e)", () => {
       const teachingAssignment = await request(app.getHttpServer())
         .post("/organizations/me/teaching-assignments")
         .set(...auth(token))
-        .send({ employeeId: employee.body.id, subjectId: subject.body.id, sectionId: section.body.id, termId: term.body.id })
+        .send({ employeeId: employee.body.id, subjectId: subject.body.id, sectionId: section.body.id, semesterId: semester.body.id })
         .expect(201);
       const room = await request(app.getHttpServer())
         .post("/organizations/me/rooms")
@@ -2133,7 +2136,7 @@ describe("Tenant isolation (e2e)", () => {
       await request(app.getHttpServer())
         .post(`/organizations/me/students/${student.body.id}/enrollments`)
         .set(...auth(token))
-        .send({ programId: program.body.id, sectionId: section.body.id, termId: term.body.id, enrollmentDate: "2099-08-01" })
+        .send({ programId: program.body.id, sectionId: section.body.id, semesterId: semester.body.id, enrollmentDate: "2099-08-01" })
         .expect(201);
 
       const guardian = await request(app.getHttpServer())
@@ -2150,7 +2153,7 @@ describe("Tenant isolation (e2e)", () => {
       const syllabus = await request(app.getHttpServer())
         .post("/organizations/me/syllabi")
         .set(...auth(token))
-        .send({ curriculumSubjectId: curriculumSubject.body.id, termId: term.body.id })
+        .send({ curriculumSubjectId: curriculumSubject.body.id, semesterId: semester.body.id })
         .expect(201);
       const unit = await request(app.getHttpServer())
         .post(`/organizations/me/syllabi/${syllabus.body.id}/nodes`)
@@ -2519,17 +2522,22 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(token))
         .send({ name: `ExSched Year ${suffix}`, startDate: "2099-01-01", endDate: "2099-12-31" })
         .expect(201);
-      const term = await request(app.getHttpServer())
-        .post("/organizations/me/terms")
+      const semester = await request(app.getHttpServer())
+        .post("/organizations/me/semesters")
         .set(...auth(token))
         .send({
           academicYearId: year.body.id,
-          name: `ExSched Term ${suffix}`,
+          name: `ExSched Semester ${suffix}`,
           code: `ET${suffix}`,
           sequence: 1,
           startDate: "2099-01-01",
           endDate: "2099-06-30",
         })
+        .expect(201);
+      const termExam = await request(app.getHttpServer())
+        .post("/organizations/me/term-exams")
+        .set(...auth(token))
+        .send({ semesterId: semester.body.id, name: `ExSched Term Exam ${suffix}`, code: `ETE${suffix}`, sequence: 1 })
         .expect(201);
       const room = await request(app.getHttpServer())
         .post("/organizations/me/rooms")
@@ -2543,7 +2551,7 @@ describe("Tenant isolation (e2e)", () => {
         .expect(201);
 
       return {
-        termId: term.body.id,
+        termExamId: termExam.body.id,
         examTypeId: examType.body.id,
         roomId: room.body.id,
         curriculumSubjectAId: curriculumSubjectA.body.id,
@@ -2557,7 +2565,7 @@ describe("Tenant isolation (e2e)", () => {
       const exam = await request(app.getHttpServer())
         .post("/organizations/me/exams")
         .set(...auth(tokenA))
-        .send({ examTypeId: t.examTypeId, termId: t.termId, name: "Terminal Exam" })
+        .send({ examTypeId: t.examTypeId, termExamId: t.termExamId, name: "Terminal Exam" })
         .expect(201);
       expect(exam.body.organizationId).toBe(orgAId);
 
@@ -2651,19 +2659,19 @@ describe("Tenant isolation (e2e)", () => {
       expect(listB.body).toEqual([]);
     });
 
-    it("rejects creating an exam under another tenant's term/exam type, and scheduling under another tenant's exam subject (404)", async () => {
+    it("rejects creating an exam under another tenant's term exam/exam type, and scheduling under another tenant's exam subject (404)", async () => {
       const t = await buildExamSchedulingTarget(tokenA, "ESR");
 
       await request(app.getHttpServer())
         .post("/organizations/me/exams")
         .set(...auth(tokenB))
-        .send({ examTypeId: t.examTypeId, termId: t.termId, name: "Cross-tenant exam" })
+        .send({ examTypeId: t.examTypeId, termExamId: t.termExamId, name: "Cross-tenant exam" })
         .expect(404);
 
       const exam = await request(app.getHttpServer())
         .post("/organizations/me/exams")
         .set(...auth(tokenA))
-        .send({ examTypeId: t.examTypeId, termId: t.termId, name: "Owned Exam" })
+        .send({ examTypeId: t.examTypeId, termExamId: t.termExamId, name: "Owned Exam" })
         .expect(201);
 
       await request(app.getHttpServer())
@@ -2747,17 +2755,22 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(token))
         .send({ name: `ExEval Year ${suffix}`, startDate: "2099-01-01", endDate: "2099-12-31" })
         .expect(201);
-      const term = await request(app.getHttpServer())
-        .post("/organizations/me/terms")
+      const semester = await request(app.getHttpServer())
+        .post("/organizations/me/semesters")
         .set(...auth(token))
         .send({
           academicYearId: year.body.id,
-          name: `ExEval Term ${suffix}`,
+          name: `ExEval Semester ${suffix}`,
           code: `EVT${suffix}`,
           sequence: 1,
           startDate: "2099-01-01",
           endDate: "2099-06-30",
         })
+        .expect(201);
+      const termExam = await request(app.getHttpServer())
+        .post("/organizations/me/term-exams")
+        .set(...auth(token))
+        .send({ semesterId: semester.body.id, name: `ExEval Term Exam ${suffix}`, code: `EVTE${suffix}`, sequence: 1 })
         .expect(201);
       const examType = await request(app.getHttpServer())
         .post("/organizations/me/exam-types")
@@ -2767,7 +2780,7 @@ describe("Tenant isolation (e2e)", () => {
       const exam = await request(app.getHttpServer())
         .post("/organizations/me/exams")
         .set(...auth(token))
-        .send({ examTypeId: examType.body.id, termId: term.body.id, name: `ExEval Exam ${suffix}` })
+        .send({ examTypeId: examType.body.id, termExamId: termExam.body.id, name: `ExEval Exam ${suffix}` })
         .expect(201);
       const examSubject = await request(app.getHttpServer())
         .post(`/organizations/me/exams/${exam.body.id}/subjects`)
@@ -2938,17 +2951,22 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(token))
         .send({ name: `ExGrade Year ${suffix}`, startDate: "2099-01-01", endDate: "2099-12-31" })
         .expect(201);
-      const term = await request(app.getHttpServer())
-        .post("/organizations/me/terms")
+      const semester = await request(app.getHttpServer())
+        .post("/organizations/me/semesters")
         .set(...auth(token))
         .send({
           academicYearId: year.body.id,
-          name: `ExGrade Term ${suffix}`,
+          name: `ExGrade Semester ${suffix}`,
           code: `EGT${suffix}`,
           sequence: 1,
           startDate: "2099-01-01",
           endDate: "2099-06-30",
         })
+        .expect(201);
+      const termExam = await request(app.getHttpServer())
+        .post("/organizations/me/term-exams")
+        .set(...auth(token))
+        .send({ semesterId: semester.body.id, name: `ExGrade Term Exam ${suffix}`, code: `EGTE${suffix}`, sequence: 1 })
         .expect(201);
       const examType = await request(app.getHttpServer())
         .post("/organizations/me/exam-types")
@@ -2976,7 +2994,7 @@ describe("Tenant isolation (e2e)", () => {
       const examNoScheme = await request(app.getHttpServer())
         .post("/organizations/me/exams")
         .set(...auth(token))
-        .send({ examTypeId: examType.body.id, termId: term.body.id, name: `ExGrade No-Scheme Exam ${suffix}` })
+        .send({ examTypeId: examType.body.id, termExamId: termExam.body.id, name: `ExGrade No-Scheme Exam ${suffix}` })
         .expect(201);
       const examSubjectNoScheme = await request(app.getHttpServer())
         .post(`/organizations/me/exams/${examNoScheme.body.id}/subjects`)
@@ -2989,7 +3007,7 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(token))
         .send({
           examTypeId: examType.body.id,
-          termId: term.body.id,
+          termExamId: termExam.body.id,
           name: `ExGrade Exam ${suffix}`,
           gradingSchemeId: gradingScheme.body.id,
         })
@@ -3296,8 +3314,8 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(token))
         .send({ name: `OnlineExam Year ${suffix}`, startDate: "2099-01-01", endDate: "2099-12-31" })
         .expect(201);
-      const term = await request(app.getHttpServer())
-        .post("/organizations/me/terms")
+      const semester = await request(app.getHttpServer())
+        .post("/organizations/me/semesters")
         .set(...auth(token))
         .send({
           academicYearId: year.body.id,
@@ -3313,10 +3331,15 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(token))
         .send({ name: `OnlineExam Type ${suffix}`, code: `OEET${suffix}` })
         .expect(201);
+      const termExam = await request(app.getHttpServer())
+        .post("/organizations/me/term-exams")
+        .set(...auth(token))
+        .send({ semesterId: semester.body.id, name: `OnlineExam Term Exam ${suffix}`, code: `OETE${suffix}`, sequence: 1 })
+        .expect(201);
       const exam = await request(app.getHttpServer())
         .post("/organizations/me/exams")
         .set(...auth(token))
-        .send({ examTypeId: examType.body.id, termId: term.body.id, name: `OnlineExam ${suffix}` })
+        .send({ examTypeId: examType.body.id, termExamId: termExam.body.id, name: `OnlineExam ${suffix}` })
         .expect(201);
 
       const bank = await request(app.getHttpServer())
@@ -3905,10 +3928,10 @@ describe("Tenant isolation (e2e)", () => {
         .expect(201);
       // startDate/endDate bracket real "now" with a wide margin — this
       // is what AttendanceReconciliationService actually checks
-      // (term.startDate <= capturedAt <= term.endDate) to disambiguate
+      // (semester.startDate <= capturedAt <= semester.endDate) to disambiguate
       // which of a student's ACTIVE enrollments is current.
-      const term = await request(app.getHttpServer())
-        .post("/organizations/me/terms")
+      const semester = await request(app.getHttpServer())
+        .post("/organizations/me/semesters")
         .set(...auth(token))
         .send({
           academicYearId: year.body.id,
@@ -3922,7 +3945,7 @@ describe("Tenant isolation (e2e)", () => {
       const section = await request(app.getHttpServer())
         .post("/organizations/me/sections")
         .set(...auth(token))
-        .send({ programId: program.body.id, termId: term.body.id, name: `Reconciliation Section ${suffix}`, code: `RS${suffix}` })
+        .send({ programId: program.body.id, semesterId: semester.body.id, name: `Reconciliation Section ${suffix}`, code: `RS${suffix}` })
         .expect(201);
       const staffType = await request(app.getHttpServer())
         .post("/organizations/me/staff-types")
@@ -3968,7 +3991,7 @@ describe("Tenant isolation (e2e)", () => {
       const assignment = await request(app.getHttpServer())
         .post("/organizations/me/teaching-assignments")
         .set(...auth(token))
-        .send({ employeeId: employee.body.id, subjectId: subject.body.id, sectionId: section.body.id, termId: term.body.id })
+        .send({ employeeId: employee.body.id, subjectId: subject.body.id, sectionId: section.body.id, semesterId: semester.body.id })
         .expect(201);
       const classSchedule = await request(app.getHttpServer())
         .post("/organizations/me/class-schedules")
@@ -3979,7 +4002,7 @@ describe("Tenant isolation (e2e)", () => {
       return {
         programId: program.body.id,
         sectionId: section.body.id,
-        termId: term.body.id,
+        semesterId: semester.body.id,
         classScheduleId: classSchedule.body.id,
         employeeId: employee.body.id,
       };
@@ -4002,7 +4025,7 @@ describe("Tenant isolation (e2e)", () => {
       await request(app.getHttpServer())
         .post(`/organizations/me/students/${student1.body.id}/enrollments`)
         .set(...auth(tokenA))
-        .send({ programId: t.programId, sectionId: t.sectionId, termId: t.termId, enrollmentDate: "2020-01-01" })
+        .send({ programId: t.programId, sectionId: t.sectionId, semesterId: t.semesterId, enrollmentDate: "2020-01-01" })
         .expect(201);
 
       const enrollment1 = await request(app.getHttpServer())
@@ -4074,7 +4097,7 @@ describe("Tenant isolation (e2e)", () => {
       await request(app.getHttpServer())
         .post(`/organizations/me/students/${student2.body.id}/enrollments`)
         .set(...auth(tokenA))
-        .send({ programId: t.programId, sectionId: t.sectionId, termId: t.termId, enrollmentDate: "2020-01-01" })
+        .send({ programId: t.programId, sectionId: t.sectionId, semesterId: t.semesterId, enrollmentDate: "2020-01-01" })
         .expect(201);
 
       await request(app.getHttpServer())
@@ -4206,7 +4229,7 @@ describe("Tenant isolation (e2e)", () => {
       await request(app.getHttpServer())
         .post(`/organizations/me/students/${student.body.id}/enrollments`)
         .set(...auth(tokenA))
-        .send({ programId: t.programId, sectionId: t.sectionId, termId: t.termId, enrollmentDate: "2020-01-01" })
+        .send({ programId: t.programId, sectionId: t.sectionId, semesterId: t.semesterId, enrollmentDate: "2020-01-01" })
         .expect(201);
 
       const device = await request(app.getHttpServer())
@@ -4357,8 +4380,8 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(token))
         .send({ name: `Finance Year ${suffix}`, startDate: "2099-01-01", endDate: "2099-12-31" })
         .expect(201);
-      const term = await request(app.getHttpServer())
-        .post("/organizations/me/terms")
+      const semester = await request(app.getHttpServer())
+        .post("/organizations/me/semesters")
         .set(...auth(token))
         .send({
           academicYearId: year.body.id,
@@ -4372,7 +4395,7 @@ describe("Tenant isolation (e2e)", () => {
       const section = await request(app.getHttpServer())
         .post("/organizations/me/sections")
         .set(...auth(token))
-        .send({ programId: program.body.id, termId: term.body.id, name: `Finance Section ${suffix}`, code: `FNS${suffix}` })
+        .send({ programId: program.body.id, semesterId: semester.body.id, name: `Finance Section ${suffix}`, code: `FNS${suffix}` })
         .expect(201);
 
       const studentIds: string[] = [];
@@ -4394,7 +4417,7 @@ describe("Tenant isolation (e2e)", () => {
           .send({
             programId: program.body.id,
             sectionId: section.body.id,
-            termId: term.body.id,
+            semesterId: semester.body.id,
             enrollmentDate: "2099-01-01",
           })
           .expect(201);
@@ -4402,7 +4425,7 @@ describe("Tenant isolation (e2e)", () => {
         enrollmentIds.push(enrollment.body.id);
       }
 
-      return { programId: program.body.id, termId: term.body.id, studentIds, enrollmentIds };
+      return { programId: program.body.id, semesterId: semester.body.id, studentIds, enrollmentIds };
     }
 
     it("assigns a fee structure (single and bulk), snapshots invoice items, tracks payments to PAID, applies a discount, and stays tenant-scoped", async () => {
@@ -4424,7 +4447,7 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(tokenA))
         .send({
           programId: t.programId,
-          termId: t.termId,
+          semesterId: t.semesterId,
           name: `Term 1 Fees ${run}`,
           items: [
             { feeCategoryId: tuition.body.id, amount: 5000 },
@@ -4451,7 +4474,7 @@ describe("Tenant isolation (e2e)", () => {
         .send({ studentEnrollmentId: t.enrollmentIds[0], dueDate: "2099-02-01" })
         .expect(409);
 
-      // Bulk assigns everyone else still enrolled for this program/term —
+      // Bulk assigns everyone else still enrolled for this program/semester —
       // student 1 is already assigned and gets skipped, not double-billed.
       const bulk = await request(app.getHttpServer())
         .post(`/organizations/me/fee-structures/${structure.body.id}/assign-bulk`)
@@ -4465,7 +4488,7 @@ describe("Tenant isolation (e2e)", () => {
         .get("/organizations/me/invoices")
         .set(...auth(tokenA))
         .expect(200);
-      const invoice2 = invoices.body.find((i: { studentEnrollmentId: string }) => i.studentEnrollmentId === t.enrollmentIds[1]);
+      const invoice2 = invoices.body.data.find((i: { studentEnrollmentId: string }) => i.studentEnrollmentId === t.enrollmentIds[1]);
       expect(invoice2).toBeDefined();
 
       const payment1 = await request(app.getHttpServer())
@@ -4521,7 +4544,7 @@ describe("Tenant isolation (e2e)", () => {
         .get("/organizations/me/invoices")
         .set(...auth(tokenB))
         .expect(200);
-      expect(invoicesB.body).toEqual([]);
+      expect(invoicesB.body.data).toEqual([]);
       await request(app.getHttpServer())
         .get(`/organizations/me/invoices/${invoice1.body.id}`)
         .set(...auth(tokenB))
@@ -4542,7 +4565,7 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(tokenA))
         .send({
           programId: t.programId,
-          termId: t.termId,
+          semesterId: t.semesterId,
           name: `Tuition Only ${run}`,
           items: [{ feeCategoryId: examFee.body.id, amount: 4000 }],
         })
@@ -4578,7 +4601,7 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(tokenA))
         .send({
           programId: t.programId,
-          termId: t.termId,
+          semesterId: t.semesterId,
           name: `Exam Fees ${run}`,
           items: [{ feeCategoryId: examFee.body.id, amount: 2000 }],
         })
@@ -4676,8 +4699,8 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(token))
         .send({ name: `Esewa Year ${suffix}`, startDate: "2099-01-01", endDate: "2099-12-31" })
         .expect(201);
-      const term = await request(app.getHttpServer())
-        .post("/organizations/me/terms")
+      const semester = await request(app.getHttpServer())
+        .post("/organizations/me/semesters")
         .set(...auth(token))
         .send({
           academicYearId: year.body.id,
@@ -4691,7 +4714,7 @@ describe("Tenant isolation (e2e)", () => {
       const section = await request(app.getHttpServer())
         .post("/organizations/me/sections")
         .set(...auth(token))
-        .send({ programId: program.body.id, termId: term.body.id, name: `Esewa Section ${suffix}`, code: `ESS${suffix}` })
+        .send({ programId: program.body.id, semesterId: semester.body.id, name: `Esewa Section ${suffix}`, code: `ESS${suffix}` })
         .expect(201);
       const student = await request(app.getHttpServer())
         .post("/organizations/me/students")
@@ -4701,7 +4724,7 @@ describe("Tenant isolation (e2e)", () => {
       const enrollment = await request(app.getHttpServer())
         .post(`/organizations/me/students/${student.body.id}/enrollments`)
         .set(...auth(token))
-        .send({ programId: program.body.id, sectionId: section.body.id, termId: term.body.id, enrollmentDate: "2099-01-01" })
+        .send({ programId: program.body.id, sectionId: section.body.id, semesterId: semester.body.id, enrollmentDate: "2099-01-01" })
         .expect(201);
 
       const category = await request(app.getHttpServer())
@@ -4714,7 +4737,7 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(token))
         .send({
           programId: program.body.id,
-          termId: term.body.id,
+          semesterId: semester.body.id,
           name: `Esewa Fees ${suffix}`,
           items: [{ feeCategoryId: category.body.id, amount: 1000 }],
         })
@@ -5667,8 +5690,8 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(token))
         .send({ name: `Transport Year ${suffix}`, startDate: "2099-01-01", endDate: "2099-12-31" })
         .expect(201);
-      const term = await request(app.getHttpServer())
-        .post("/organizations/me/terms")
+      const semester = await request(app.getHttpServer())
+        .post("/organizations/me/semesters")
         .set(...auth(token))
         .send({
           academicYearId: year.body.id,
@@ -5682,7 +5705,7 @@ describe("Tenant isolation (e2e)", () => {
       const section = await request(app.getHttpServer())
         .post("/organizations/me/sections")
         .set(...auth(token))
-        .send({ programId: program.body.id, termId: term.body.id, name: `Transport Section ${suffix}`, code: `TRS${suffix}` })
+        .send({ programId: program.body.id, semesterId: semester.body.id, name: `Transport Section ${suffix}`, code: `TRS${suffix}` })
         .expect(201);
       const student = await request(app.getHttpServer())
         .post("/organizations/me/students")
@@ -5692,7 +5715,7 @@ describe("Tenant isolation (e2e)", () => {
       const enrollment = await request(app.getHttpServer())
         .post(`/organizations/me/students/${student.body.id}/enrollments`)
         .set(...auth(token))
-        .send({ programId: program.body.id, sectionId: section.body.id, termId: term.body.id, enrollmentDate: "2099-01-01" })
+        .send({ programId: program.body.id, sectionId: section.body.id, semesterId: semester.body.id, enrollmentDate: "2099-01-01" })
         .expect(201);
       return enrollment.body.id as string;
     }
@@ -5998,8 +6021,8 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(token))
         .send({ name: `Teacher Year ${suffix}`, startDate: "2099-08-01", endDate: "2100-06-30" })
         .expect(201);
-      const term = await request(app.getHttpServer())
-        .post("/organizations/me/terms")
+      const semester = await request(app.getHttpServer())
+        .post("/organizations/me/semesters")
         .set(...auth(token))
         .send({
           academicYearId: year.body.id,
@@ -6013,7 +6036,7 @@ describe("Tenant isolation (e2e)", () => {
       const section = await request(app.getHttpServer())
         .post("/organizations/me/sections")
         .set(...auth(token))
-        .send({ programId: program.body.id, termId: term.body.id, name: `Teacher Section ${suffix}`, code: `TCS${suffix}` })
+        .send({ programId: program.body.id, semesterId: semester.body.id, name: `Teacher Section ${suffix}`, code: `TCS${suffix}` })
         .expect(201);
       const staffType = await request(app.getHttpServer())
         .post("/organizations/me/staff-types")
@@ -6041,7 +6064,7 @@ describe("Tenant isolation (e2e)", () => {
         .send({ name: `Period ${suffix}`, code: `TCP${suffix}`, sequence: 1, startTime: "09:00", endTime: "09:45" })
         .expect(201);
       return {
-        termId: term.body.id,
+        semesterId: semester.body.id,
         sectionId: section.body.id,
         staffTypeId: staffType.body.id,
         designationId: designation.body.id,
@@ -6077,7 +6100,7 @@ describe("Tenant isolation (e2e)", () => {
       const assignment = await request(app.getHttpServer())
         .post("/organizations/me/teaching-assignments")
         .set(...auth(tokenA))
-        .send({ employeeId: teacherEmployeeId, subjectId: f.subjectId, sectionId: f.sectionId, termId: f.termId })
+        .send({ employeeId: teacherEmployeeId, subjectId: f.subjectId, sectionId: f.sectionId, semesterId: f.semesterId })
         .expect(201);
       const schedule = await request(app.getHttpServer())
         .post("/organizations/me/class-schedules")
@@ -6232,8 +6255,8 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(tokenA))
         .send({ name: `Module Year ${suffix}`, startDate: "2099-08-01", endDate: "2100-06-30" })
         .expect(201);
-      const term = await request(app.getHttpServer())
-        .post("/organizations/me/terms")
+      const semester = await request(app.getHttpServer())
+        .post("/organizations/me/semesters")
         .set(...auth(tokenA))
         .send({
           academicYearId: year.body.id,
@@ -6247,7 +6270,7 @@ describe("Tenant isolation (e2e)", () => {
       const section = await request(app.getHttpServer())
         .post("/organizations/me/sections")
         .set(...auth(tokenA))
-        .send({ programId: program.body.id, termId: term.body.id, name: `Module Section ${suffix}`, code: `MODS${suffix}` })
+        .send({ programId: program.body.id, semesterId: semester.body.id, name: `Module Section ${suffix}`, code: `MODS${suffix}` })
         .expect(201);
       const staffType = await request(app.getHttpServer())
         .post("/organizations/me/staff-types")
@@ -6297,7 +6320,7 @@ describe("Tenant isolation (e2e)", () => {
       const assignment = await request(app.getHttpServer())
         .post("/organizations/me/teaching-assignments")
         .set(...auth(tokenA))
-        .send({ employeeId: teacher.body.id, subjectId: subject.body.id, sectionId: section.body.id, termId: term.body.id })
+        .send({ employeeId: teacher.body.id, subjectId: subject.body.id, sectionId: section.body.id, semesterId: semester.body.id })
         .expect(201);
 
       const teacherLogin = await request(app.getHttpServer())
@@ -6372,7 +6395,7 @@ describe("Tenant isolation (e2e)", () => {
       await request(app.getHttpServer())
         .post(`/organizations/me/students/${student.body.id}/enrollments`)
         .set(...auth(tokenA))
-        .send({ programId: program.body.id, sectionId: section.body.id, termId: term.body.id, enrollmentDate: "2099-08-01" })
+        .send({ programId: program.body.id, sectionId: section.body.id, semesterId: semester.body.id, enrollmentDate: "2099-08-01" })
         .expect(201);
       const studentLogin = await request(app.getHttpServer())
         .post(`/organizations/me/students/${student.body.id}/create-login`)
@@ -6426,7 +6449,7 @@ describe("Tenant isolation (e2e)", () => {
       expect(modulesAfter.body[0].items[0].completed).toBe(true);
 
       // A student not enrolled in this course (no StudentEnrollment for
-      // this section+term) can't reach its modules — build a second,
+      // this section+semester) can't reach its modules — build a second,
       // unrelated student to confirm.
       const otherStudent = await request(app.getHttpServer())
         .post("/organizations/me/students")
@@ -6488,8 +6511,8 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(tokenA))
         .send({ name: `Assign Year ${suffix}`, startDate: "2099-08-01", endDate: "2100-06-30" })
         .expect(201);
-      const term = await request(app.getHttpServer())
-        .post("/organizations/me/terms")
+      const semester = await request(app.getHttpServer())
+        .post("/organizations/me/semesters")
         .set(...auth(tokenA))
         .send({
           academicYearId: year.body.id,
@@ -6503,7 +6526,7 @@ describe("Tenant isolation (e2e)", () => {
       const section = await request(app.getHttpServer())
         .post("/organizations/me/sections")
         .set(...auth(tokenA))
-        .send({ programId: program.body.id, termId: term.body.id, name: `Assign Section ${suffix}`, code: `ASS${suffix}` })
+        .send({ programId: program.body.id, semesterId: semester.body.id, name: `Assign Section ${suffix}`, code: `ASS${suffix}` })
         .expect(201);
       const staffType = await request(app.getHttpServer())
         .post("/organizations/me/staff-types")
@@ -6553,7 +6576,7 @@ describe("Tenant isolation (e2e)", () => {
       const teachingAssignment = await request(app.getHttpServer())
         .post("/organizations/me/teaching-assignments")
         .set(...auth(tokenA))
-        .send({ employeeId: teacher.body.id, subjectId: subject.body.id, sectionId: section.body.id, termId: term.body.id })
+        .send({ employeeId: teacher.body.id, subjectId: subject.body.id, sectionId: section.body.id, semesterId: semester.body.id })
         .expect(201);
 
       const teacherLogin = await request(app.getHttpServer())
@@ -6607,7 +6630,7 @@ describe("Tenant isolation (e2e)", () => {
       await request(app.getHttpServer())
         .post(`/organizations/me/students/${student.body.id}/enrollments`)
         .set(...auth(tokenA))
-        .send({ programId: program.body.id, sectionId: section.body.id, termId: term.body.id, enrollmentDate: "2099-08-01" })
+        .send({ programId: program.body.id, sectionId: section.body.id, semesterId: semester.body.id, enrollmentDate: "2099-08-01" })
         .expect(201);
       const studentLogin = await request(app.getHttpServer())
         .post(`/organizations/me/students/${student.body.id}/create-login`)
@@ -6764,8 +6787,8 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(tokenA))
         .send({ name: `Quiz Year ${suffix}`, startDate: "2099-08-01", endDate: "2100-06-30" })
         .expect(201);
-      const term = await request(app.getHttpServer())
-        .post("/organizations/me/terms")
+      const semester = await request(app.getHttpServer())
+        .post("/organizations/me/semesters")
         .set(...auth(tokenA))
         .send({
           academicYearId: year.body.id,
@@ -6779,7 +6802,7 @@ describe("Tenant isolation (e2e)", () => {
       const section = await request(app.getHttpServer())
         .post("/organizations/me/sections")
         .set(...auth(tokenA))
-        .send({ programId: program.body.id, termId: term.body.id, name: `Quiz Section ${suffix}`, code: `QZS${suffix}` })
+        .send({ programId: program.body.id, semesterId: semester.body.id, name: `Quiz Section ${suffix}`, code: `QZS${suffix}` })
         .expect(201);
       const staffType = await request(app.getHttpServer())
         .post("/organizations/me/staff-types")
@@ -6829,7 +6852,7 @@ describe("Tenant isolation (e2e)", () => {
       const teachingAssignment = await request(app.getHttpServer())
         .post("/organizations/me/teaching-assignments")
         .set(...auth(tokenA))
-        .send({ employeeId: teacher.body.id, subjectId: subject.body.id, sectionId: section.body.id, termId: term.body.id })
+        .send({ employeeId: teacher.body.id, subjectId: subject.body.id, sectionId: section.body.id, semesterId: semester.body.id })
         .expect(201);
 
       const teacherLogin = await request(app.getHttpServer())
@@ -6908,7 +6931,7 @@ describe("Tenant isolation (e2e)", () => {
       await request(app.getHttpServer())
         .post(`/organizations/me/students/${student.body.id}/enrollments`)
         .set(...auth(tokenA))
-        .send({ programId: program.body.id, sectionId: section.body.id, termId: term.body.id, enrollmentDate: "2099-08-01" })
+        .send({ programId: program.body.id, sectionId: section.body.id, semesterId: semester.body.id, enrollmentDate: "2099-08-01" })
         .expect(201);
       const studentLogin = await request(app.getHttpServer())
         .post(`/organizations/me/students/${student.body.id}/create-login`)
@@ -7100,8 +7123,8 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(tokenA))
         .send({ name: `Announce Year ${suffix}`, startDate: "2099-08-01", endDate: "2100-06-30" })
         .expect(201);
-      const term = await request(app.getHttpServer())
-        .post("/organizations/me/terms")
+      const semester = await request(app.getHttpServer())
+        .post("/organizations/me/semesters")
         .set(...auth(tokenA))
         .send({
           academicYearId: year.body.id,
@@ -7115,7 +7138,7 @@ describe("Tenant isolation (e2e)", () => {
       const section = await request(app.getHttpServer())
         .post("/organizations/me/sections")
         .set(...auth(tokenA))
-        .send({ programId: program.body.id, termId: term.body.id, name: `Announce Section ${suffix}`, code: `ANS${suffix}` })
+        .send({ programId: program.body.id, semesterId: semester.body.id, name: `Announce Section ${suffix}`, code: `ANS${suffix}` })
         .expect(201);
       const staffType = await request(app.getHttpServer())
         .post("/organizations/me/staff-types")
@@ -7165,7 +7188,7 @@ describe("Tenant isolation (e2e)", () => {
       const teachingAssignment = await request(app.getHttpServer())
         .post("/organizations/me/teaching-assignments")
         .set(...auth(tokenA))
-        .send({ employeeId: teacher.body.id, subjectId: subject.body.id, sectionId: section.body.id, termId: term.body.id })
+        .send({ employeeId: teacher.body.id, subjectId: subject.body.id, sectionId: section.body.id, semesterId: semester.body.id })
         .expect(201);
 
       const teacherLogin = await request(app.getHttpServer())
@@ -7213,7 +7236,7 @@ describe("Tenant isolation (e2e)", () => {
       await request(app.getHttpServer())
         .post(`/organizations/me/students/${student.body.id}/enrollments`)
         .set(...auth(tokenA))
-        .send({ programId: program.body.id, sectionId: section.body.id, termId: term.body.id, enrollmentDate: "2099-08-01" })
+        .send({ programId: program.body.id, sectionId: section.body.id, semesterId: semester.body.id, enrollmentDate: "2099-08-01" })
         .expect(201);
       const studentLogin = await request(app.getHttpServer())
         .post(`/organizations/me/students/${student.body.id}/create-login`)
@@ -7333,8 +7356,8 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(tokenA))
         .send({ name: `Discuss Year ${suffix}`, startDate: "2099-08-01", endDate: "2100-06-30" })
         .expect(201);
-      const term = await request(app.getHttpServer())
-        .post("/organizations/me/terms")
+      const semester = await request(app.getHttpServer())
+        .post("/organizations/me/semesters")
         .set(...auth(tokenA))
         .send({
           academicYearId: year.body.id,
@@ -7348,7 +7371,7 @@ describe("Tenant isolation (e2e)", () => {
       const section = await request(app.getHttpServer())
         .post("/organizations/me/sections")
         .set(...auth(tokenA))
-        .send({ programId: program.body.id, termId: term.body.id, name: `Discuss Section ${suffix}`, code: `DIS${suffix}` })
+        .send({ programId: program.body.id, semesterId: semester.body.id, name: `Discuss Section ${suffix}`, code: `DIS${suffix}` })
         .expect(201);
       const staffType = await request(app.getHttpServer())
         .post("/organizations/me/staff-types")
@@ -7398,7 +7421,7 @@ describe("Tenant isolation (e2e)", () => {
       const teachingAssignment = await request(app.getHttpServer())
         .post("/organizations/me/teaching-assignments")
         .set(...auth(tokenA))
-        .send({ employeeId: teacher.body.id, subjectId: subject.body.id, sectionId: section.body.id, termId: term.body.id })
+        .send({ employeeId: teacher.body.id, subjectId: subject.body.id, sectionId: section.body.id, semesterId: semester.body.id })
         .expect(201);
 
       const teacherLogin = await request(app.getHttpServer())
@@ -7463,7 +7486,7 @@ describe("Tenant isolation (e2e)", () => {
       await request(app.getHttpServer())
         .post(`/organizations/me/students/${student.body.id}/enrollments`)
         .set(...auth(tokenA))
-        .send({ programId: program.body.id, sectionId: section.body.id, termId: term.body.id, enrollmentDate: "2099-08-01" })
+        .send({ programId: program.body.id, sectionId: section.body.id, semesterId: semester.body.id, enrollmentDate: "2099-08-01" })
         .expect(201);
       const studentLogin = await request(app.getHttpServer())
         .post(`/organizations/me/students/${student.body.id}/create-login`)
@@ -7617,8 +7640,8 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(tokenA))
         .send({ name: `Gradebook Year ${suffix}`, startDate: "2099-08-01", endDate: "2100-06-30" })
         .expect(201);
-      const term = await request(app.getHttpServer())
-        .post("/organizations/me/terms")
+      const semester = await request(app.getHttpServer())
+        .post("/organizations/me/semesters")
         .set(...auth(tokenA))
         .send({
           academicYearId: year.body.id,
@@ -7632,7 +7655,7 @@ describe("Tenant isolation (e2e)", () => {
       const section = await request(app.getHttpServer())
         .post("/organizations/me/sections")
         .set(...auth(tokenA))
-        .send({ programId: program.body.id, termId: term.body.id, name: `Gradebook Section ${suffix}`, code: `GBS${suffix}` })
+        .send({ programId: program.body.id, semesterId: semester.body.id, name: `Gradebook Section ${suffix}`, code: `GBS${suffix}` })
         .expect(201);
       const staffType = await request(app.getHttpServer())
         .post("/organizations/me/staff-types")
@@ -7682,7 +7705,7 @@ describe("Tenant isolation (e2e)", () => {
       const teachingAssignment = await request(app.getHttpServer())
         .post("/organizations/me/teaching-assignments")
         .set(...auth(tokenA))
-        .send({ employeeId: teacher.body.id, subjectId: subject.body.id, sectionId: section.body.id, termId: term.body.id })
+        .send({ employeeId: teacher.body.id, subjectId: subject.body.id, sectionId: section.body.id, semesterId: semester.body.id })
         .expect(201);
 
       const teacherLogin = await request(app.getHttpServer())
@@ -7707,7 +7730,7 @@ describe("Tenant isolation (e2e)", () => {
       const otherTeacherToken = otherTeacherSession.body.accessToken as string;
 
       // Two enrolled students, one unrelated student never enrolled in
-      // this section+term (must never appear in the roster).
+      // this section+semester (must never appear in the roster).
       const student1 = await request(app.getHttpServer())
         .post("/organizations/me/students")
         .set(...auth(tokenA))
@@ -7716,7 +7739,7 @@ describe("Tenant isolation (e2e)", () => {
       await request(app.getHttpServer())
         .post(`/organizations/me/students/${student1.body.id}/enrollments`)
         .set(...auth(tokenA))
-        .send({ programId: program.body.id, sectionId: section.body.id, termId: term.body.id, enrollmentDate: "2099-08-01" })
+        .send({ programId: program.body.id, sectionId: section.body.id, semesterId: semester.body.id, enrollmentDate: "2099-08-01" })
         .expect(201);
       const student2 = await request(app.getHttpServer())
         .post("/organizations/me/students")
@@ -7726,7 +7749,7 @@ describe("Tenant isolation (e2e)", () => {
       await request(app.getHttpServer())
         .post(`/organizations/me/students/${student2.body.id}/enrollments`)
         .set(...auth(tokenA))
-        .send({ programId: program.body.id, sectionId: section.body.id, termId: term.body.id, enrollmentDate: "2099-08-01" })
+        .send({ programId: program.body.id, sectionId: section.body.id, semesterId: semester.body.id, enrollmentDate: "2099-08-01" })
         .expect(201);
       const outsideStudent = await request(app.getHttpServer())
         .post("/organizations/me/students")
@@ -7789,8 +7812,8 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(tokenA))
         .send({ name: `Notify Year ${suffix}`, startDate: "2099-08-01", endDate: "2100-06-30" })
         .expect(201);
-      const term = await request(app.getHttpServer())
-        .post("/organizations/me/terms")
+      const semester = await request(app.getHttpServer())
+        .post("/organizations/me/semesters")
         .set(...auth(tokenA))
         .send({
           academicYearId: year.body.id,
@@ -7804,7 +7827,7 @@ describe("Tenant isolation (e2e)", () => {
       const section = await request(app.getHttpServer())
         .post("/organizations/me/sections")
         .set(...auth(tokenA))
-        .send({ programId: program.body.id, termId: term.body.id, name: `Notify Section ${suffix}`, code: `NTS${suffix}` })
+        .send({ programId: program.body.id, semesterId: semester.body.id, name: `Notify Section ${suffix}`, code: `NTS${suffix}` })
         .expect(201);
       const staffType = await request(app.getHttpServer())
         .post("/organizations/me/staff-types")
@@ -7839,7 +7862,7 @@ describe("Tenant isolation (e2e)", () => {
       const teachingAssignment = await request(app.getHttpServer())
         .post("/organizations/me/teaching-assignments")
         .set(...auth(tokenA))
-        .send({ employeeId: teacher.body.id, subjectId: subject.body.id, sectionId: section.body.id, termId: term.body.id })
+        .send({ employeeId: teacher.body.id, subjectId: subject.body.id, sectionId: section.body.id, semesterId: semester.body.id })
         .expect(201);
       const teacherLogin = await request(app.getHttpServer())
         .post(`/organizations/me/employees/${teacher.body.id}/create-login`)
@@ -7863,7 +7886,7 @@ describe("Tenant isolation (e2e)", () => {
       await request(app.getHttpServer())
         .post(`/organizations/me/students/${student1.body.id}/enrollments`)
         .set(...auth(tokenA))
-        .send({ programId: program.body.id, sectionId: section.body.id, termId: term.body.id, enrollmentDate: "2099-08-01" })
+        .send({ programId: program.body.id, sectionId: section.body.id, semesterId: semester.body.id, enrollmentDate: "2099-08-01" })
         .expect(201);
       const student1Login = await request(app.getHttpServer())
         .post(`/organizations/me/students/${student1.body.id}/create-login`)
@@ -7884,7 +7907,7 @@ describe("Tenant isolation (e2e)", () => {
       await request(app.getHttpServer())
         .post(`/organizations/me/students/${student2.body.id}/enrollments`)
         .set(...auth(tokenA))
-        .send({ programId: program.body.id, sectionId: section.body.id, termId: term.body.id, enrollmentDate: "2099-08-01" })
+        .send({ programId: program.body.id, sectionId: section.body.id, semesterId: semester.body.id, enrollmentDate: "2099-08-01" })
         .expect(201);
       const student2Login = await request(app.getHttpServer())
         .post(`/organizations/me/students/${student2.body.id}/create-login`)
@@ -8185,8 +8208,8 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(tokenA))
         .send({ name: `Storage Year ${suffix}`, startDate: "2099-08-01", endDate: "2100-06-30" })
         .expect(201);
-      const term = await request(app.getHttpServer())
-        .post("/organizations/me/terms")
+      const semester = await request(app.getHttpServer())
+        .post("/organizations/me/semesters")
         .set(...auth(tokenA))
         .send({
           academicYearId: year.body.id,
@@ -8200,7 +8223,7 @@ describe("Tenant isolation (e2e)", () => {
       const section = await request(app.getHttpServer())
         .post("/organizations/me/sections")
         .set(...auth(tokenA))
-        .send({ programId: program.body.id, termId: term.body.id, name: `Storage Section ${suffix}`, code: `FSS${suffix}` })
+        .send({ programId: program.body.id, semesterId: semester.body.id, name: `Storage Section ${suffix}`, code: `FSS${suffix}` })
         .expect(201);
       const staffType = await request(app.getHttpServer())
         .post("/organizations/me/staff-types")
@@ -8234,7 +8257,7 @@ describe("Tenant isolation (e2e)", () => {
       const teachingAssignment = await request(app.getHttpServer())
         .post("/organizations/me/teaching-assignments")
         .set(...auth(tokenA))
-        .send({ employeeId: teacher.body.id, subjectId: subject.body.id, sectionId: section.body.id, termId: term.body.id })
+        .send({ employeeId: teacher.body.id, subjectId: subject.body.id, sectionId: section.body.id, semesterId: semester.body.id })
         .expect(201);
       const teacherLogin = await request(app.getHttpServer())
         .post(`/organizations/me/employees/${teacher.body.id}/create-login`)
@@ -8290,8 +8313,8 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(token))
         .send({ name: `Hostel Year ${suffix}`, startDate: "2099-01-01", endDate: "2099-12-31" })
         .expect(201);
-      const term = await request(app.getHttpServer())
-        .post("/organizations/me/terms")
+      const semester = await request(app.getHttpServer())
+        .post("/organizations/me/semesters")
         .set(...auth(token))
         .send({
           academicYearId: year.body.id,
@@ -8305,7 +8328,7 @@ describe("Tenant isolation (e2e)", () => {
       const section = await request(app.getHttpServer())
         .post("/organizations/me/sections")
         .set(...auth(token))
-        .send({ programId: program.body.id, termId: term.body.id, name: `Hostel Section ${suffix}`, code: `HSS${suffix}` })
+        .send({ programId: program.body.id, semesterId: semester.body.id, name: `Hostel Section ${suffix}`, code: `HSS${suffix}` })
         .expect(201);
       const student = await request(app.getHttpServer())
         .post("/organizations/me/students")
@@ -8315,7 +8338,7 @@ describe("Tenant isolation (e2e)", () => {
       const enrollment = await request(app.getHttpServer())
         .post(`/organizations/me/students/${student.body.id}/enrollments`)
         .set(...auth(token))
-        .send({ programId: program.body.id, sectionId: section.body.id, termId: term.body.id, enrollmentDate: "2099-01-01" })
+        .send({ programId: program.body.id, sectionId: section.body.id, semesterId: semester.body.id, enrollmentDate: "2099-01-01" })
         .expect(201);
       return { enrollmentId: enrollment.body.id as string, studentId: student.body.id as string };
     }
@@ -8862,7 +8885,7 @@ describe("Tenant isolation (e2e)", () => {
       const template = await request(app.getHttpServer())
         .post("/organizations/me/message-templates")
         .set(...auth(tokenA))
-        .send({ name: `Welcome ${suffix}`, channel: "EMAIL", subject: "Welcome", body: "Welcome to the term!" })
+        .send({ name: `Welcome ${suffix}`, channel: "EMAIL", subject: "Welcome", body: "Welcome to the semester!" })
         .expect(201);
 
       const { userId, username } = await buildEmployeeWithLogin(tokenA, suffix, "CommsPass123");
@@ -8875,7 +8898,7 @@ describe("Tenant isolation (e2e)", () => {
         .send({ channel: "EMAIL", audience: "ALL_STAFF", templateId: template.body.id })
         .expect(201);
       expect(fromTemplate.body.subject).toBe("Welcome");
-      expect(fromTemplate.body.body).toBe("Welcome to the term!");
+      expect(fromTemplate.body.body).toBe("Welcome to the semester!");
       expect(fromTemplate.body.status).toBe("DRAFT");
 
       // A template built for a different channel can't be used.
@@ -10044,8 +10067,8 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(tokenA))
         .send({ name: `Analytics Year ${suffix}`, startDate: "2099-08-01", endDate: "2100-06-30" })
         .expect(201);
-      const term = await request(app.getHttpServer())
-        .post("/organizations/me/terms")
+      const semester = await request(app.getHttpServer())
+        .post("/organizations/me/semesters")
         .set(...auth(tokenA))
         .send({
           academicYearId: year.body.id,
@@ -10059,7 +10082,7 @@ describe("Tenant isolation (e2e)", () => {
       const section = await request(app.getHttpServer())
         .post("/organizations/me/sections")
         .set(...auth(tokenA))
-        .send({ programId: program.body.id, termId: term.body.id, name: `Analytics Section ${suffix}`, code: `ANS${suffix}` })
+        .send({ programId: program.body.id, semesterId: semester.body.id, name: `Analytics Section ${suffix}`, code: `ANS${suffix}` })
         .expect(201);
       const staffType = await request(app.getHttpServer())
         .post("/organizations/me/staff-types")
@@ -10113,7 +10136,7 @@ describe("Tenant isolation (e2e)", () => {
       const teachingAssignment = await request(app.getHttpServer())
         .post("/organizations/me/teaching-assignments")
         .set(...auth(tokenA))
-        .send({ employeeId: employee.body.id, subjectId: subject.body.id, sectionId: section.body.id, termId: term.body.id })
+        .send({ employeeId: employee.body.id, subjectId: subject.body.id, sectionId: section.body.id, semesterId: semester.body.id })
         .expect(201);
       const classSchedule = await request(app.getHttpServer())
         .post("/organizations/me/class-schedules")
@@ -10121,7 +10144,7 @@ describe("Tenant isolation (e2e)", () => {
         .send({ teachingAssignmentId: teachingAssignment.body.id, roomId: room.body.id, periodId: period.body.id, dayOfWeek: 1 })
         .expect(201);
 
-      // ── Two students, enrolled in this program/section/term.
+      // ── Two students, enrolled in this program/section/semester.
       const studentIds: string[] = [];
       const enrollmentIds: string[] = [];
       for (const n of [1, 2]) {
@@ -10133,7 +10156,7 @@ describe("Tenant isolation (e2e)", () => {
         const enrollment = await request(app.getHttpServer())
           .post(`/organizations/me/students/${student.body.id}/enrollments`)
           .set(...auth(tokenA))
-          .send({ programId: program.body.id, sectionId: section.body.id, termId: term.body.id, enrollmentDate: "2099-08-01" })
+          .send({ programId: program.body.id, sectionId: section.body.id, semesterId: semester.body.id, enrollmentDate: "2099-08-01" })
           .expect(201);
         studentIds.push(student.body.id);
         enrollmentIds.push(enrollment.body.id);
@@ -10172,7 +10195,7 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(tokenA))
         .send({
           programId: program.body.id,
-          termId: term.body.id,
+          semesterId: semester.body.id,
           name: `Analytics Fees ${suffix}`,
           items: [{ feeCategoryId: feeCategory.body.id, amount: 1000 }],
         })
@@ -10242,10 +10265,15 @@ describe("Tenant isolation (e2e)", () => {
           ],
         })
         .expect(201);
+      const termExam = await request(app.getHttpServer())
+        .post("/organizations/me/term-exams")
+        .set(...auth(tokenA))
+        .send({ semesterId: semester.body.id, name: `Analytics Term Exam ${suffix}`, code: `ANTE${suffix}`, sequence: 1 })
+        .expect(201);
       const exam = await request(app.getHttpServer())
         .post("/organizations/me/exams")
         .set(...auth(tokenA))
-        .send({ examTypeId: examType.body.id, termId: term.body.id, name: `Analytics Exam ${suffix}`, gradingSchemeId: gradingScheme.body.id })
+        .send({ examTypeId: examType.body.id, termExamId: termExam.body.id, name: `Analytics Exam ${suffix}`, gradingSchemeId: gradingScheme.body.id })
         .expect(201);
       const examSubject = await request(app.getHttpServer())
         .post(`/organizations/me/exams/${exam.body.id}/subjects`)
@@ -10448,8 +10476,8 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(tokenA))
         .send({ name: `Analytics2 Year ${suffix}`, startDate: "2099-08-01", endDate: "2100-06-30" })
         .expect(201);
-      const term = await request(app.getHttpServer())
-        .post("/organizations/me/terms")
+      const semester = await request(app.getHttpServer())
+        .post("/organizations/me/semesters")
         .set(...auth(tokenA))
         .send({
           academicYearId: year.body.id,
@@ -10463,7 +10491,7 @@ describe("Tenant isolation (e2e)", () => {
       const section = await request(app.getHttpServer())
         .post("/organizations/me/sections")
         .set(...auth(tokenA))
-        .send({ programId: program.body.id, termId: term.body.id, name: `Analytics2 Section ${suffix}`, code: `AN2S${suffix}` })
+        .send({ programId: program.body.id, semesterId: semester.body.id, name: `Analytics2 Section ${suffix}`, code: `AN2S${suffix}` })
         .expect(201);
       const staffType = await request(app.getHttpServer())
         .post("/organizations/me/staff-types")
@@ -10507,7 +10535,7 @@ describe("Tenant isolation (e2e)", () => {
       const teachingAssignment = await request(app.getHttpServer())
         .post("/organizations/me/teaching-assignments")
         .set(...auth(tokenA))
-        .send({ employeeId: employee.body.id, subjectId: subject.body.id, sectionId: section.body.id, termId: term.body.id })
+        .send({ employeeId: employee.body.id, subjectId: subject.body.id, sectionId: section.body.id, semesterId: semester.body.id })
         .expect(201);
 
       // ── Two students, enrolled (one passes the exam, one fails).
@@ -10519,7 +10547,7 @@ describe("Tenant isolation (e2e)", () => {
       const enrollment1 = await request(app.getHttpServer())
         .post(`/organizations/me/students/${student1.body.id}/enrollments`)
         .set(...auth(tokenA))
-        .send({ programId: program.body.id, sectionId: section.body.id, termId: term.body.id, enrollmentDate: "2099-08-01" })
+        .send({ programId: program.body.id, sectionId: section.body.id, semesterId: semester.body.id, enrollmentDate: "2099-08-01" })
         .expect(201);
       const student2 = await request(app.getHttpServer())
         .post("/organizations/me/students")
@@ -10529,7 +10557,7 @@ describe("Tenant isolation (e2e)", () => {
       await request(app.getHttpServer())
         .post(`/organizations/me/students/${student2.body.id}/enrollments`)
         .set(...auth(tokenA))
-        .send({ programId: program.body.id, sectionId: section.body.id, termId: term.body.id, enrollmentDate: "2099-08-01" })
+        .send({ programId: program.body.id, sectionId: section.body.id, semesterId: semester.body.id, enrollmentDate: "2099-08-01" })
         .expect(201);
 
       // ── Continuous learning: an assignment submitted+graded, and a
@@ -10583,7 +10611,7 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(tokenA))
         .send({
           programId: program.body.id,
-          termId: term.body.id,
+          semesterId: semester.body.id,
           name: `Analytics2 Fees ${suffix}`,
           items: [{ feeCategoryId: feeCategory.body.id, amount: 1000 }],
         })
@@ -10623,10 +10651,15 @@ describe("Tenant isolation (e2e)", () => {
           ],
         })
         .expect(201);
+      const termExam = await request(app.getHttpServer())
+        .post("/organizations/me/term-exams")
+        .set(...auth(tokenA))
+        .send({ semesterId: semester.body.id, name: `Analytics2 Term Exam ${suffix}`, code: `AN2TE${suffix}`, sequence: 1 })
+        .expect(201);
       const exam = await request(app.getHttpServer())
         .post("/organizations/me/exams")
         .set(...auth(tokenA))
-        .send({ examTypeId: examType.body.id, termId: term.body.id, name: `Analytics2 Exam ${suffix}`, gradingSchemeId: gradingScheme.body.id })
+        .send({ examTypeId: examType.body.id, termExamId: termExam.body.id, name: `Analytics2 Exam ${suffix}`, gradingSchemeId: gradingScheme.body.id })
         .expect(201);
       const examSubject = await request(app.getHttpServer())
         .post(`/organizations/me/exams/${exam.body.id}/subjects`)
@@ -10866,7 +10899,7 @@ describe("Tenant isolation (e2e)", () => {
       expect(byFirstName.body.guardians.some((g: { id: string }) => g.id === guardian.body.id)).toBe(true);
 
       // ── Per-category lastName/code/email/phone matches are precise
-      // — a term unique to one category never leaks into another's
+      // — a search term unique to one category never leaks into another's
       // results ──
       const byStudentLastName = await request(app.getHttpServer())
         .get(`/organizations/me/search?q=student${suffix}`)
@@ -11001,7 +11034,7 @@ describe("Tenant isolation (e2e)", () => {
         .expect(201);
 
       // Earlier describe blocks in this file build their own
-      // academic-year/term chain, but that's not a safe assumption
+      // academic-year/semester chain, but that's not a safe assumption
       // here: running this file with a `-t` filter (as this slice's
       // own verification does, to run part 1 + part 2 together
       // without the rest of the suite) skips every other `it()`, so
@@ -11011,17 +11044,22 @@ describe("Tenant isolation (e2e)", () => {
         .set(...auth(tokenA))
         .send({ name: `Search Year ${suffix}`, startDate: "2099-08-01", endDate: "2100-06-30" })
         .expect(201);
-      const termA = await request(app.getHttpServer())
-        .post("/organizations/me/terms")
+      const semesterA = await request(app.getHttpServer())
+        .post("/organizations/me/semesters")
         .set(...auth(tokenA))
         .send({
           academicYearId: yearA.body.id,
-          name: "Term",
+          name: "Semester",
           code: `ST${suffix}`,
           sequence: 1,
           startDate: "2099-08-01",
           endDate: "2099-12-15",
         })
+        .expect(201);
+      const termExamA = await request(app.getHttpServer())
+        .post("/organizations/me/term-exams")
+        .set(...auth(tokenA))
+        .send({ semesterId: semesterA.body.id, name: "Mid Term Exam", code: `MTE${suffix}`, sequence: 1 })
         .expect(201);
       const examType = await request(app.getHttpServer())
         .post("/organizations/me/exam-types")
@@ -11031,7 +11069,7 @@ describe("Tenant isolation (e2e)", () => {
       const exam = await request(app.getHttpServer())
         .post("/organizations/me/exams")
         .set(...auth(tokenA))
-        .send({ examTypeId: examType.body.id, termId: termA.body.id, name: `Search Exam ${suffix}` })
+        .send({ examTypeId: examType.body.id, termExamId: termExamA.body.id, name: `Search Exam ${suffix}` })
         .expect(201);
 
       // ── Per-category matches are precise ──
@@ -11194,6 +11232,7 @@ describe("Tenant isolation (e2e)", () => {
         .expect(200);
       expect(statusAt49.body).toEqual({
         edition: "FREE",
+        editionExpiresAt: null,
         studentCount: 49,
         employeeCount: 0,
         limit: 50,
@@ -11282,6 +11321,7 @@ describe("Tenant isolation (e2e)", () => {
         .expect(200);
       expect(statusAfterUpgrade.body).toEqual({
         edition: "PROFESSIONAL",
+        editionExpiresAt: null,
         studentCount: 51,
         employeeCount: 1,
         limit: 500,
@@ -11634,7 +11674,7 @@ describe("Tenant isolation (e2e)", () => {
         const year = await tx.academicYear.create({
           data: { organizationId: perfOrgId, name: "2099-2100", startDate: new Date("2099-08-01"), endDate: new Date("2100-06-30") },
         });
-        const term = await tx.term.create({
+        const semester = await tx.semester.create({
           data: {
             organizationId: perfOrgId,
             academicYearId: year.id,
@@ -11646,7 +11686,7 @@ describe("Tenant isolation (e2e)", () => {
           },
         });
         const section = await tx.section.create({
-          data: { organizationId: perfOrgId, programId: program.id, termId: term.id, name: "A", code: "SEC-A" },
+          data: { organizationId: perfOrgId, programId: program.id, semesterId: semester.id, name: "A", code: "SEC-A" },
         });
         const enrollment = await tx.studentEnrollment.create({
           data: {
@@ -11654,7 +11694,7 @@ describe("Tenant isolation (e2e)", () => {
             studentId: invoiceStudent.id,
             programId: program.id,
             sectionId: section.id,
-            termId: term.id,
+            semesterId: semester.id,
             enrollmentDate: new Date("2099-08-01"),
           },
         });

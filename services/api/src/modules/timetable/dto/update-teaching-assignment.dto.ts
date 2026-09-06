@@ -15,5 +15,5 @@ export class UpdateTeachingAssignmentDto {
 
   @IsOptional()
   @IsString()
-  termId?: string;
+  semesterId?: string;
 }

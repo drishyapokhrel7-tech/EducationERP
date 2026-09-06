@@ -15,7 +15,7 @@ export class CreateFeeStructureDto {
   programId!: string;
 
   @IsString()
-  termId!: string;
+  semesterId!: string;
 
   @IsString()
   @MinLength(1)

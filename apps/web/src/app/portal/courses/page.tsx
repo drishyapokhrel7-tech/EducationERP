@@ -31,7 +31,7 @@ export default function PortalCoursesPage() {
                     {c.subject.name}
                   </Link>
                   <p className="text-muted-foreground text-sm">
-                    {c.employee.firstName} {c.employee.lastName} · {c.section.name} · {c.term.name}
+                    {c.employee.firstName} {c.employee.lastName} · {c.section.name} · {c.semester.name}
                   </p>
                 </li>
               ))}

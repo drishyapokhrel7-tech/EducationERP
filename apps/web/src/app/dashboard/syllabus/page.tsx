@@ -57,7 +57,7 @@ function orderTree(nodes: SyllabusNode[]): SyllabusNode[] {
 export default function SyllabusPage() {
   const syllabi = useSWR("syllabi", () => api.listSyllabi());
   const curricula = useSWR("curricula", () => api.listCurricula());
-  const terms = useSWR("terms", () => api.listTerms());
+  const semesters = useSWR("semesters", () => api.listSemesters());
   const teachingAssignments = useSWR("teaching-assignments", () => api.listTeachingAssignments());
   const lessonPlans = useSWR("lesson-plans", () => api.listLessonPlans());
 
@@ -65,7 +65,7 @@ export default function SyllabusPage() {
     c.subjects.map((cs) => ({ value: cs.id, label: `${c.name} · ${cs.subject.name}` })),
   );
 
-  const [syllabusForm, setSyllabusForm] = useState({ curriculumSubjectId: "", termId: "", name: "" });
+  const [syllabusForm, setSyllabusForm] = useState({ curriculumSubjectId: "", semesterId: "", name: "" });
   const [activeSyllabusId, setActiveSyllabusId] = useState<string | null>(null);
   const activeSyllabus = useSWR(
     activeSyllabusId ? ["syllabus", activeSyllabusId] : null,
@@ -99,7 +99,7 @@ export default function SyllabusPage() {
       <div>
         <h1 className="text-2xl font-semibold">Syllabus</h1>
         <p className="text-muted-foreground text-sm">
-          A syllabus belongs to one curriculum subject and term, and is organized as
+          A syllabus belongs to one curriculum subject and semester, and is organized as
           unit → chapter → topic → subtopic. Lesson plans attach a teaching assignment to a node.
         </p>
       </div>
@@ -112,7 +112,7 @@ export default function SyllabusPage() {
           id: string;
           name: string | null;
           curriculumSubject: { subject: { name: string }; curriculum: { name: string } };
-          term: { name: string };
+          semester: { name: string };
         }) => (
           <button
             type="button"
@@ -120,7 +120,7 @@ export default function SyllabusPage() {
             onClick={() => setActiveSyllabusId(s.id)}
           >
             {s.name || `${s.curriculumSubject.curriculum.name} · ${s.curriculumSubject.subject.name}`}{" "}
-            <span className="text-muted-foreground">({s.term.name})</span>
+            <span className="text-muted-foreground">({s.semester.name})</span>
           </button>
         )}
       >
@@ -132,11 +132,11 @@ export default function SyllabusPage() {
               () =>
                 api.createSyllabus({
                   curriculumSubjectId: syllabusForm.curriculumSubjectId,
-                  termId: syllabusForm.termId,
+                  semesterId: syllabusForm.semesterId,
                   name: syllabusForm.name || undefined,
                 }),
               () => {
-                setSyllabusForm({ curriculumSubjectId: "", termId: "", name: "" });
+                setSyllabusForm({ curriculumSubjectId: "", semesterId: "", name: "" });
                 syllabi.mutate();
               },
             );
@@ -153,13 +153,13 @@ export default function SyllabusPage() {
             />
           </div>
           <div className="space-y-2">
-            <Label>Term</Label>
+            <Label>Semester</Label>
             <NativeSelect
               className="w-36"
-              placeholder="Select term"
-              value={syllabusForm.termId}
-              onChange={(v) => setSyllabusForm((f) => ({ ...f, termId: v }))}
-              options={(terms.data ?? []).map((t) => ({ value: t.id, label: t.name }))}
+              placeholder="Select semester"
+              value={syllabusForm.semesterId}
+              onChange={(v) => setSyllabusForm((f) => ({ ...f, semesterId: v }))}
+              options={(semesters.data ?? []).map((t) => ({ value: t.id, label: t.name }))}
             />
           </div>
           <div className="space-y-2">
@@ -170,7 +170,7 @@ export default function SyllabusPage() {
               onChange={(e) => setSyllabusForm((f) => ({ ...f, name: e.target.value }))}
             />
           </div>
-          <Button type="submit" disabled={!syllabusForm.curriculumSubjectId || !syllabusForm.termId}>
+          <Button type="submit" disabled={!syllabusForm.curriculumSubjectId || !syllabusForm.semesterId}>
             Add
           </Button>
         </form>

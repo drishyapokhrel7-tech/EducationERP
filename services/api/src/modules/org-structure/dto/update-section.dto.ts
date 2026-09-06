@@ -7,7 +7,7 @@ export class UpdateSectionDto {
 
   @IsOptional()
   @IsString()
-  termId?: string;
+  semesterId?: string;
 
   @IsOptional()
   @IsString()

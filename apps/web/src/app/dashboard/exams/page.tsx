@@ -260,7 +260,8 @@ function ReportCardSection({ examId, students }: { examId: string; students: Stu
 
 export default function ExamsPage() {
   const examTypes = useSWR("exam-types", () => api.listExamTypes());
-  const terms = useSWR("terms", () => api.listTerms());
+  const semesters = useSWR("semesters", () => api.listSemesters());
+  const termExams = useSWR("term-exams", () => api.listTermExams());
   const gradingSchemes = useSWR("grading-schemes", () => api.listGradingSchemes());
   const curricula = useSWR("curricula", () => api.listCurricula());
   const rooms = useSWR("rooms", () => api.listRooms());
@@ -279,7 +280,10 @@ export default function ExamsPage() {
   const submit = submitAction;
 
   // --- Exams ---------------------------------------------------------------
-  const [examForm, setExamForm] = useState({ examTypeId: "", termId: "", name: "", gradingSchemeId: "" });
+  const [examForm, setExamForm] = useState({ examTypeId: "", termExamId: "", name: "", gradingSchemeId: "" });
+  // Term Exam is scoped per semester — this picks which semester's term
+  // exams to offer below, it's never sent to the API itself.
+  const [examSemesterFilterId, setExamSemesterFilterId] = useState("");
 
   const [activeExamId, setActiveExamId] = useState<string | null>(null);
   const activeExam = useSWR(activeExamId ? ["exam", activeExamId] : null, () => api.getExam(activeExamId as string));
@@ -310,8 +314,8 @@ export default function ExamsPage() {
       <div>
         <h1 className="text-2xl font-semibold">Exams</h1>
         <p className="text-muted-foreground text-sm">
-          Bind slice 4a&apos;s exam types and grading schemes to a real sitting for a term — which
-          subjects are examined, on which dates, and in which rooms.
+          Bind slice 4a&apos;s exam types and grading schemes to a real sitting for a term exam —
+          which subjects are examined, on which dates, and in which rooms.
         </p>
       </div>
 
@@ -333,7 +337,7 @@ export default function ExamsPage() {
                   >
                     {e.name}{" "}
                     <span className="text-muted-foreground">
-                      ({e.examType.name} · {e.term.name}
+                      ({e.examType.name} · {e.termExam.name} ({e.termExam.semester.name})
                       {e.gradingScheme ? ` · ${e.gradingScheme.name}` : ""})
                     </span>
                   </button>
@@ -352,12 +356,12 @@ export default function ExamsPage() {
                 () =>
                   api.createExam({
                     examTypeId: examForm.examTypeId,
-                    termId: examForm.termId,
+                    termExamId: examForm.termExamId,
                     name: examForm.name,
                     gradingSchemeId: examForm.gradingSchemeId || undefined,
                   }),
                 () => {
-                  setExamForm({ examTypeId: "", termId: "", name: "", gradingSchemeId: "" });
+                  setExamForm({ examTypeId: "", termExamId: "", name: "", gradingSchemeId: "" });
                   exams.mutate();
                 },
               );
@@ -374,13 +378,28 @@ export default function ExamsPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Term</Label>
+              <Label>Semester</Label>
               <NativeSelect
                 className="w-40"
-                placeholder="Select term"
-                value={examForm.termId}
-                onChange={(v) => setExamForm((f) => ({ ...f, termId: v }))}
-                options={(terms.data ?? []).map((t) => ({ value: t.id, label: t.name }))}
+                placeholder="Select semester"
+                value={examSemesterFilterId}
+                onChange={(v) => {
+                  setExamSemesterFilterId(v);
+                  setExamForm((f) => ({ ...f, termExamId: "" }));
+                }}
+                options={(semesters.data ?? []).map((s) => ({ value: s.id, label: s.name }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Term exam</Label>
+              <NativeSelect
+                className="w-40"
+                placeholder="Select term exam"
+                value={examForm.termExamId}
+                onChange={(v) => setExamForm((f) => ({ ...f, termExamId: v }))}
+                options={(termExams.data ?? [])
+                  .filter((te) => !examSemesterFilterId || te.semesterId === examSemesterFilterId)
+                  .map((te) => ({ value: te.id, label: te.name }))}
               />
             </div>
             <div className="space-y-2">
@@ -402,7 +421,7 @@ export default function ExamsPage() {
                 options={(gradingSchemes.data ?? []).map((s) => ({ value: s.id, label: s.name }))}
               />
             </div>
-            <Button type="submit" disabled={!examForm.examTypeId || !examForm.termId || !examForm.name}>
+            <Button type="submit" disabled={!examForm.examTypeId || !examForm.termExamId || !examForm.name}>
               Add
             </Button>
           </form>

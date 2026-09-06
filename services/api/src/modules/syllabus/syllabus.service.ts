@@ -22,32 +22,32 @@ export class SyllabusService {
     return this.prisma.withTenant(organizationId, (tx) =>
       tx.syllabus.findMany({
         where: { organizationId },
-        include: { curriculumSubject: { include: { subject: true, curriculum: true } }, term: true },
+        include: { curriculumSubject: { include: { subject: true, curriculum: true } }, semester: true },
       }),
     );
   }
 
   async createSyllabus(organizationId: string, dto: CreateSyllabusDto) {
     return this.prisma.withTenant(organizationId, async (tx) => {
-      const [curriculumSubject, term] = await Promise.all([
+      const [curriculumSubject, semester] = await Promise.all([
         tx.curriculumSubject.findUnique({ where: { id: dto.curriculumSubjectId } }),
-        tx.term.findUnique({ where: { id: dto.termId } }),
+        tx.semester.findUnique({ where: { id: dto.semesterId } }),
       ]);
       if (!curriculumSubject) throw new NotFoundException("Curriculum subject not found");
-      if (!term) throw new NotFoundException("Term not found");
+      if (!semester) throw new NotFoundException("Semester not found");
 
       const existing = await tx.syllabus.findUnique({
-        where: { curriculumSubjectId_termId: { curriculumSubjectId: dto.curriculumSubjectId, termId: dto.termId } },
+        where: { curriculumSubjectId_semesterId: { curriculumSubjectId: dto.curriculumSubjectId, semesterId: dto.semesterId } },
       });
       if (existing) {
-        throw new ConflictException("A syllabus for this curriculum subject and term already exists");
+        throw new ConflictException("A syllabus for this curriculum subject and semester already exists");
       }
 
       return tx.syllabus.create({
         data: {
           organizationId,
           curriculumSubjectId: dto.curriculumSubjectId,
-          termId: dto.termId,
+          semesterId: dto.semesterId,
           name: dto.name,
           description: dto.description,
         },
@@ -59,7 +59,7 @@ export class SyllabusService {
     return this.prisma.withTenant(organizationId, async (tx) => {
       const syllabus = await tx.syllabus.findUnique({
         where: { id: syllabusId },
-        include: { curriculumSubject: { include: { subject: true, curriculum: true } }, term: true },
+        include: { curriculumSubject: { include: { subject: true, curriculum: true } }, semester: true },
       });
       if (!syllabus) throw new NotFoundException("Syllabus not found");
 

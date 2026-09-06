@@ -10,8 +10,10 @@ import { CreateProgramDto } from "./dto/create-program.dto";
 import { UpdateProgramDto } from "./dto/update-program.dto";
 import { CreateAcademicYearDto } from "./dto/create-academic-year.dto";
 import { UpdateAcademicYearDto } from "./dto/update-academic-year.dto";
-import { CreateTermDto } from "./dto/create-term.dto";
-import { UpdateTermDto } from "./dto/update-term.dto";
+import { CreateSemesterDto } from "./dto/create-semester.dto";
+import { UpdateSemesterDto } from "./dto/update-semester.dto";
+import { CreateTermExamDto } from "./dto/create-term-exam.dto";
+import { UpdateTermExamDto } from "./dto/update-term-exam.dto";
 import { CreateSectionDto } from "./dto/create-section.dto";
 import { UpdateSectionDto } from "./dto/update-section.dto";
 
@@ -213,7 +215,7 @@ export class OrgStructureService {
   async deleteAcademicYear(organizationId: string, id: string) {
     return this.prisma.withTenant(organizationId, async (tx) => {
       await this.loadAcademicYear(tx, organizationId, id);
-      await assertNoDependents([tx.term.count({ where: { academicYearId: id } })], "academic year");
+      await assertNoDependents([tx.semester.count({ where: { academicYearId: id } })], "academic year");
       await tx.academicYear.delete({ where: { id } });
       return { deleted: true };
     });
@@ -227,13 +229,13 @@ export class OrgStructureService {
     return academicYear;
   }
 
-  listTerms(organizationId: string) {
+  listSemesters(organizationId: string) {
     return this.prisma.withTenant(organizationId, (tx) =>
-      tx.term.findMany({ where: { organizationId } }),
+      tx.semester.findMany({ where: { organizationId } }),
     );
   }
 
-  async createTerm(organizationId: string, dto: CreateTermDto) {
+  async createSemester(organizationId: string, dto: CreateSemesterDto) {
     return this.prisma.withTenant(organizationId, async (tx) => {
       const academicYear = await tx.academicYear.findUnique({
         where: { id: dto.academicYearId },
@@ -241,7 +243,7 @@ export class OrgStructureService {
       if (!academicYear) {
         throw new NotFoundException("Academic year not found");
       }
-      return tx.term.create({
+      return tx.semester.create({
         data: {
           organizationId,
           academicYearId: dto.academicYearId,
@@ -255,10 +257,10 @@ export class OrgStructureService {
     });
   }
 
-  async updateTerm(organizationId: string, id: string, dto: UpdateTermDto) {
+  async updateSemester(organizationId: string, id: string, dto: UpdateSemesterDto) {
     return this.prisma.withTenant(organizationId, async (tx) => {
-      await this.loadTerm(tx, organizationId, id);
-      return tx.term.update({
+      await this.loadSemester(tx, organizationId, id);
+      return tx.semester.update({
         where: { id },
         data: {
           academicYearId: dto.academicYearId,
@@ -272,29 +274,83 @@ export class OrgStructureService {
     });
   }
 
-  async deleteTerm(organizationId: string, id: string) {
+  async deleteSemester(organizationId: string, id: string) {
     return this.prisma.withTenant(organizationId, async (tx) => {
-      await this.loadTerm(tx, organizationId, id);
+      await this.loadSemester(tx, organizationId, id);
       await assertNoDependents(
         [
-          tx.section.count({ where: { termId: id } }),
-          tx.studentEnrollment.count({ where: { termId: id } }),
-          tx.teachingAssignment.count({ where: { termId: id } }),
-          tx.classSchedule.count({ where: { termId: id } }),
-          tx.syllabus.count({ where: { termId: id } }),
-          tx.exam.count({ where: { termId: id } }),
+          tx.section.count({ where: { semesterId: id } }),
+          tx.studentEnrollment.count({ where: { semesterId: id } }),
+          tx.teachingAssignment.count({ where: { semesterId: id } }),
+          tx.classSchedule.count({ where: { semesterId: id } }),
+          tx.syllabus.count({ where: { semesterId: id } }),
+          tx.feeStructure.count({ where: { semesterId: id } }),
+          tx.termExam.count({ where: { semesterId: id } }),
         ],
-        "term",
+        "semester",
       );
-      await tx.term.delete({ where: { id } });
+      await tx.semester.delete({ where: { id } });
       return { deleted: true };
     });
   }
 
-  private async loadTerm(tx: PrismaClient, organizationId: string, id: string) {
-    const term = await tx.term.findUnique({ where: { id } });
-    if (!term || term.organizationId !== organizationId) throw new NotFoundException("Term not found");
-    return term;
+  private async loadSemester(tx: PrismaClient, organizationId: string, id: string) {
+    const semester = await tx.semester.findUnique({ where: { id } });
+    if (!semester || semester.organizationId !== organizationId) throw new NotFoundException("Semester not found");
+    return semester;
+  }
+
+  listTermExams(organizationId: string, semesterId?: string) {
+    return this.prisma.withTenant(organizationId, (tx) =>
+      tx.termExam.findMany({ where: { organizationId, ...(semesterId ? { semesterId } : {}) } }),
+    );
+  }
+
+  async createTermExam(organizationId: string, dto: CreateTermExamDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const semester = await tx.semester.findUnique({ where: { id: dto.semesterId } });
+      if (!semester) {
+        throw new NotFoundException("Semester not found");
+      }
+      return tx.termExam.create({
+        data: {
+          organizationId,
+          semesterId: dto.semesterId,
+          name: dto.name,
+          code: dto.code,
+          sequence: dto.sequence,
+        },
+      });
+    });
+  }
+
+  async updateTermExam(organizationId: string, id: string, dto: UpdateTermExamDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadTermExam(tx, organizationId, id);
+      return tx.termExam.update({
+        where: { id },
+        data: {
+          name: dto.name,
+          code: dto.code,
+          sequence: dto.sequence,
+        },
+      });
+    });
+  }
+
+  async deleteTermExam(organizationId: string, id: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadTermExam(tx, organizationId, id);
+      await assertNoDependents([tx.exam.count({ where: { termExamId: id } })], "term exam");
+      await tx.termExam.delete({ where: { id } });
+      return { deleted: true };
+    });
+  }
+
+  private async loadTermExam(tx: PrismaClient, organizationId: string, id: string) {
+    const termExam = await tx.termExam.findUnique({ where: { id } });
+    if (!termExam || termExam.organizationId !== organizationId) throw new NotFoundException("Term exam not found");
+    return termExam;
   }
 
   listSections(organizationId: string) {
@@ -305,21 +361,21 @@ export class OrgStructureService {
 
   async createSection(organizationId: string, dto: CreateSectionDto) {
     return this.prisma.withTenant(organizationId, async (tx) => {
-      const [program, term] = await Promise.all([
+      const [program, semester] = await Promise.all([
         tx.program.findUnique({ where: { id: dto.programId } }),
-        tx.term.findUnique({ where: { id: dto.termId } }),
+        tx.semester.findUnique({ where: { id: dto.semesterId } }),
       ]);
       if (!program) {
         throw new NotFoundException("Program not found");
       }
-      if (!term) {
-        throw new NotFoundException("Term not found");
+      if (!semester) {
+        throw new NotFoundException("Semester not found");
       }
       return tx.section.create({
         data: {
           organizationId,
           programId: dto.programId,
-          termId: dto.termId,
+          semesterId: dto.semesterId,
           name: dto.name,
           code: dto.code,
           capacity: dto.capacity,

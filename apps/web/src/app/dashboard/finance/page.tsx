@@ -64,10 +64,10 @@ export default function FinancePage() {
   const [editFeeCategoryForm, setEditFeeCategoryForm] = useState({ name: "", code: "", description: "" });
 
   // ── Fee structures ──────────────────────────────────────────────────
-  const [structureForm, setStructureForm] = useState({ programId: "", termId: "", name: "" });
+  const [structureForm, setStructureForm] = useState({ programId: "", semesterId: "", name: "" });
   const [structureItems, setStructureItems] = useState([{ feeCategoryId: "", amount: "" }]);
   const programs = useSWR("programs", () => api.listPrograms());
-  const terms = useSWR("terms", () => api.listTerms());
+  const semesters = useSWR("semesters", () => api.listSemesters());
 
   const [assignForm, setAssignForm] = useState<Record<string, { studentId: string; dueDate: string }>>({});
   const [bulkDueDate, setBulkDueDate] = useState<Record<string, string>>({});
@@ -248,7 +248,7 @@ export default function FinancePage() {
                 <li key={s.id} className="space-y-2 py-3 text-sm">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span>
-                      <strong>{s.name}</strong> — {s.program.name} · {s.term.name}
+                      <strong>{s.name}</strong> — {s.program.name} · {s.semester.name}
                     </span>
                     <span className="text-muted-foreground">
                       Total: {formatMoney(s.items.reduce((sum, i) => sum + Number(i.amount), 0).toFixed(2))}
@@ -308,12 +308,12 @@ export default function FinancePage() {
                       <Label className="text-xs">Enrollment</Label>
                       <NativeSelect
                         className="h-8 w-40"
-                        placeholder="Select term"
+                        placeholder="Select semester"
                         value={selectedEnrollmentId}
                         onChange={setSelectedEnrollmentId}
                         options={studentEnrollments
-                          .filter((e) => e.programId === s.programId && e.termId === s.termId)
-                          .map((e) => ({ value: e.id, label: e.term.name }))}
+                          .filter((e) => e.programId === s.programId && e.semesterId === s.semesterId)
+                          .map((e) => ({ value: e.id, label: e.semester.name }))}
                       />
                     </div>
                     <div className="space-y-1">
@@ -368,14 +368,14 @@ export default function FinancePage() {
                 () =>
                   api.createFeeStructure({
                     programId: structureForm.programId,
-                    termId: structureForm.termId,
+                    semesterId: structureForm.semesterId,
                     name: structureForm.name,
                     items: structureItems
                       .filter((i) => i.feeCategoryId && i.amount)
                       .map((i) => ({ feeCategoryId: i.feeCategoryId, amount: Number(i.amount) })),
                   }),
                 () => {
-                  setStructureForm({ programId: "", termId: "", name: "" });
+                  setStructureForm({ programId: "", semesterId: "", name: "" });
                   setStructureItems([{ feeCategoryId: "", amount: "" }]);
                   feeStructures.mutate();
                 },
@@ -395,13 +395,13 @@ export default function FinancePage() {
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Term</Label>
+                <Label className="text-xs">Semester</Label>
                 <NativeSelect
                   className="w-40"
-                  placeholder="Select term"
-                  value={structureForm.termId}
-                  onChange={(v) => setStructureForm((f) => ({ ...f, termId: v }))}
-                  options={(terms.data ?? []).map((t) => ({ value: t.id, label: t.name }))}
+                  placeholder="Select semester"
+                  value={structureForm.semesterId}
+                  onChange={(v) => setStructureForm((f) => ({ ...f, semesterId: v }))}
+                  options={(semesters.data ?? []).map((t) => ({ value: t.id, label: t.name }))}
                 />
               </div>
               <div className="space-y-1">
@@ -466,7 +466,7 @@ export default function FinancePage() {
             <Button
               type="submit"
               size="sm"
-              disabled={!structureForm.programId || !structureForm.termId || !structureForm.name}
+              disabled={!structureForm.programId || !structureForm.semesterId || !structureForm.name}
             >
               Create fee structure
             </Button>

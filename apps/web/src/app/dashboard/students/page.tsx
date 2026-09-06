@@ -80,7 +80,7 @@ export default function StudentsPage() {
   const guardians = useSWR("guardians", () => api.listGuardians());
   const programs = useSWR("programs", () => api.listPrograms());
   const sections = useSWR("sections", () => api.listSections());
-  const terms = useSWR("terms", () => api.listTerms());
+  const semesters = useSWR("semesters", () => api.listSemesters());
   const editionStatus = useEditionStatus();
   const [editionLimitEdition, setEditionLimitEdition] = useState<Edition | null>(null);
   useHighlightFromSearch(Boolean(students.data && guardians.data));
@@ -131,19 +131,19 @@ export default function StudentsPage() {
     studentId: "",
     programId: "",
     sectionId: "",
-    termId: "",
+    semesterId: "",
     enrollmentDate: "",
   });
   // Real list view behind the Enrollment card (audit finding #09) —
   // was previously create-only, with no way to see who's enrolled or
   // spot a double-enrollment afterward.
   const [enrollmentsPage, setEnrollmentsPage] = useState(1);
-  const [enrollmentFilters, setEnrollmentFilters] = useState({ programId: "", termId: "", sectionId: "", status: "" });
+  const [enrollmentFilters, setEnrollmentFilters] = useState({ programId: "", semesterId: "", sectionId: "", status: "" });
   const enrollments = useSWR(["enrollments", enrollmentsPage, enrollmentFilters], () =>
     api.listAllEnrollments({
       page: enrollmentsPage,
       programId: enrollmentFilters.programId || undefined,
-      termId: enrollmentFilters.termId || undefined,
+      semesterId: enrollmentFilters.semesterId || undefined,
       sectionId: enrollmentFilters.sectionId || undefined,
       status: (enrollmentFilters.status || undefined) as EnrollmentStatus | undefined,
     }),
@@ -252,7 +252,7 @@ export default function StudentsPage() {
         <h1 className="text-2xl font-semibold">Students</h1>
         <p className="text-muted-foreground text-sm">
           Guardians are a shared catalog (siblings can share one). Enrollment links a student to
-          a program, section and term.
+          a program, section and semester.
         </p>
       </div>
 
@@ -861,13 +861,13 @@ export default function StudentsPage() {
           student: { firstName: string; lastName: string; studentCode: string };
           program: { name: string };
           section: { name: string };
-          term: { name: string };
+          semester: { name: string };
         }) => (
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span>
               {en.student.firstName} {en.student.lastName}{" "}
               <span className="text-muted-foreground">({en.student.studentCode})</span> — {en.program.name} ·{" "}
-              {en.section.name} · {en.term.name}
+              {en.section.name} · {en.semester.name}
             </span>
             <div className="flex items-center gap-2">
               <Badge variant={statusVariant(en.status)}>{en.status}</Badge>
@@ -923,16 +923,16 @@ export default function StudentsPage() {
             />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">Filter by term</Label>
+            <Label className="text-xs">Filter by semester</Label>
             <NativeSelect
               className="h-8 w-32"
-              placeholder="All terms"
-              value={enrollmentFilters.termId}
+              placeholder="All semesters"
+              value={enrollmentFilters.semesterId}
               onChange={(v) => {
-                setEnrollmentFilters((f) => ({ ...f, termId: v }));
+                setEnrollmentFilters((f) => ({ ...f, semesterId: v }));
                 setEnrollmentsPage(1);
               }}
-              options={(terms.data ?? []).map((t) => ({ value: t.id, label: t.name }))}
+              options={(semesters.data ?? []).map((t) => ({ value: t.id, label: t.name }))}
             />
           </div>
           <div className="space-y-1">
@@ -978,11 +978,11 @@ export default function StudentsPage() {
                 api.createEnrollment(enrollForm.studentId, {
                   programId: enrollForm.programId,
                   sectionId: enrollForm.sectionId,
-                  termId: enrollForm.termId,
+                  semesterId: enrollForm.semesterId,
                   enrollmentDate: enrollForm.enrollmentDate,
                 }),
               () => {
-                setEnrollForm((f) => ({ ...f, programId: "", sectionId: "", termId: "", enrollmentDate: "" }));
+                setEnrollForm((f) => ({ ...f, programId: "", sectionId: "", semesterId: "", enrollmentDate: "" }));
                 enrollments.mutate();
               },
             );
@@ -1012,13 +1012,13 @@ export default function StudentsPage() {
             />
           </div>
           <div className="space-y-2">
-            <Label>Term</Label>
+            <Label>Semester</Label>
             <NativeSelect
               className="w-40"
-              placeholder="Select term"
-              value={enrollForm.termId}
-              onChange={(v) => setEnrollForm((f) => ({ ...f, termId: v, sectionId: "" }))}
-              options={(terms.data ?? []).map((t) => ({ value: t.id, label: t.name }))}
+              placeholder="Select semester"
+              value={enrollForm.semesterId}
+              onChange={(v) => setEnrollForm((f) => ({ ...f, semesterId: v, sectionId: "" }))}
+              options={(semesters.data ?? []).map((t) => ({ value: t.id, label: t.name }))}
             />
           </div>
           <div className="space-y-2">
@@ -1028,14 +1028,14 @@ export default function StudentsPage() {
               placeholder="Select section"
               value={enrollForm.sectionId}
               onChange={(v) => setEnrollForm((f) => ({ ...f, sectionId: v }))}
-              // Filtered by the chosen Program/Term above — previously
+              // Filtered by the chosen Program/Semester above — previously
               // this listed every section in the org regardless of
               // what was picked (audit finding #09's own footnote).
               options={(sections.data ?? [])
                 .filter(
                   (s) =>
                     (!enrollForm.programId || s.programId === enrollForm.programId) &&
-                    (!enrollForm.termId || s.termId === enrollForm.termId),
+                    (!enrollForm.semesterId || s.semesterId === enrollForm.semesterId),
                 )
                 .map((s) => ({ value: s.id, label: s.name }))}
             />
@@ -1052,7 +1052,7 @@ export default function StudentsPage() {
           <Button
             type="submit"
             disabled={
-              !enrollForm.studentId || !enrollForm.programId || !enrollForm.sectionId || !enrollForm.termId
+              !enrollForm.studentId || !enrollForm.programId || !enrollForm.sectionId || !enrollForm.semesterId
             }
           >
             Enroll

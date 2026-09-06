@@ -130,7 +130,7 @@ export class TimetableService {
     return this.prisma.withTenant(organizationId, (tx) =>
       tx.teachingAssignment.findMany({
         where: { organizationId },
-        include: { employee: true, subject: true, section: true, term: true },
+        include: { employee: true, subject: true, section: true, semester: true },
         orderBy: [{ employee: { firstName: "asc" } }, { employee: { lastName: "asc" } }],
       }),
     );
@@ -138,29 +138,29 @@ export class TimetableService {
 
   async createTeachingAssignment(organizationId: string, dto: CreateTeachingAssignmentDto) {
     return this.prisma.withTenant(organizationId, async (tx) => {
-      const [employee, subject, section, term] = await Promise.all([
+      const [employee, subject, section, semester] = await Promise.all([
         tx.employee.findUnique({ where: { id: dto.employeeId } }),
         tx.subject.findUnique({ where: { id: dto.subjectId } }),
         tx.section.findUnique({ where: { id: dto.sectionId } }),
-        tx.term.findUnique({ where: { id: dto.termId } }),
+        tx.semester.findUnique({ where: { id: dto.semesterId } }),
       ]);
       if (!employee) throw new NotFoundException("Employee not found");
       if (!subject) throw new NotFoundException("Subject not found");
       if (!section) throw new NotFoundException("Section not found");
-      if (!term) throw new NotFoundException("Term not found");
+      if (!semester) throw new NotFoundException("Semester not found");
 
       const existing = await tx.teachingAssignment.findUnique({
         where: {
-          sectionId_subjectId_termId: {
+          sectionId_subjectId_semesterId: {
             sectionId: dto.sectionId,
             subjectId: dto.subjectId,
-            termId: dto.termId,
+            semesterId: dto.semesterId,
           },
         },
       });
       if (existing) {
         throw new ConflictException(
-          "This section already has a teacher assigned for this subject and term",
+          "This section already has a teacher assigned for this subject and semester",
         );
       }
 
@@ -170,7 +170,7 @@ export class TimetableService {
           employeeId: dto.employeeId,
           subjectId: dto.subjectId,
           sectionId: dto.sectionId,
-          termId: dto.termId,
+          semesterId: dto.semesterId,
         },
       });
     });
@@ -185,38 +185,38 @@ export class TimetableService {
   async updateTeachingAssignment(organizationId: string, id: string, dto: UpdateTeachingAssignmentDto) {
     return this.prisma.withTenant(organizationId, async (tx) => {
       const current = await this.loadTeachingAssignment(tx, organizationId, id);
-      const [employee, subject, section, term] = await Promise.all([
+      const [employee, subject, section, semester] = await Promise.all([
         dto.employeeId ? tx.employee.findUnique({ where: { id: dto.employeeId } }) : null,
         dto.subjectId ? tx.subject.findUnique({ where: { id: dto.subjectId } }) : null,
         dto.sectionId ? tx.section.findUnique({ where: { id: dto.sectionId } }) : null,
-        dto.termId ? tx.term.findUnique({ where: { id: dto.termId } }) : null,
+        dto.semesterId ? tx.semester.findUnique({ where: { id: dto.semesterId } }) : null,
       ]);
       if (dto.employeeId && !employee) throw new NotFoundException("Employee not found");
       if (dto.subjectId && !subject) throw new NotFoundException("Subject not found");
       if (dto.sectionId && !section) throw new NotFoundException("Section not found");
-      if (dto.termId && !term) throw new NotFoundException("Term not found");
+      if (dto.semesterId && !semester) throw new NotFoundException("Semester not found");
 
       const sectionId = dto.sectionId ?? current.sectionId;
       const subjectId = dto.subjectId ?? current.subjectId;
-      const termId = dto.termId ?? current.termId;
-      if (sectionId !== current.sectionId || subjectId !== current.subjectId || termId !== current.termId) {
+      const semesterId = dto.semesterId ?? current.semesterId;
+      if (sectionId !== current.sectionId || subjectId !== current.subjectId || semesterId !== current.semesterId) {
         const conflict = await tx.teachingAssignment.findUnique({
-          where: { sectionId_subjectId_termId: { sectionId, subjectId, termId } },
+          where: { sectionId_subjectId_semesterId: { sectionId, subjectId, semesterId } },
         });
         if (conflict && conflict.id !== id) {
-          throw new ConflictException("This section already has a teacher assigned for this subject and term");
+          throw new ConflictException("This section already has a teacher assigned for this subject and semester");
         }
       }
 
       return tx.teachingAssignment.update({
         where: { id },
-        data: { employeeId: dto.employeeId, subjectId: dto.subjectId, sectionId: dto.sectionId, termId: dto.termId },
-        include: { employee: true, subject: true, section: true, term: true },
+        data: { employeeId: dto.employeeId, subjectId: dto.subjectId, sectionId: dto.sectionId, semesterId: dto.semesterId },
+        include: { employee: true, subject: true, section: true, semester: true },
       });
     });
   }
 
-  // A teaching assignment sits under a lot of real content once a term
+  // A teaching assignment sits under a lot of real content once a semester
   // is underway (lesson plans, assignments, knowledge checks, course
   // modules, announcements, discussion topics), on top of the class
   // schedule entries built from it — every one of those gets checked,
@@ -268,17 +268,17 @@ export class TimetableService {
       if (!room) throw new NotFoundException("Room not found");
       if (!period) throw new NotFoundException("Period not found");
 
-      const { termId, sectionId, employeeId: teacherId } = teachingAssignment;
+      const { semesterId, sectionId, employeeId: teacherId } = teachingAssignment;
 
       const [roomConflict, sectionConflict, teacherConflict] = await Promise.all([
         tx.classSchedule.findFirst({
-          where: { termId, roomId: dto.roomId, dayOfWeek: dto.dayOfWeek, periodId: dto.periodId },
+          where: { semesterId, roomId: dto.roomId, dayOfWeek: dto.dayOfWeek, periodId: dto.periodId },
         }),
         tx.classSchedule.findFirst({
-          where: { termId, sectionId, dayOfWeek: dto.dayOfWeek, periodId: dto.periodId },
+          where: { semesterId, sectionId, dayOfWeek: dto.dayOfWeek, periodId: dto.periodId },
         }),
         tx.classSchedule.findFirst({
-          where: { termId, teacherId, dayOfWeek: dto.dayOfWeek, periodId: dto.periodId },
+          where: { semesterId, teacherId, dayOfWeek: dto.dayOfWeek, periodId: dto.periodId },
         }),
       ]);
       if (roomConflict) throw new ConflictException("Room is already booked for this day and period");
@@ -288,7 +288,7 @@ export class TimetableService {
       return tx.classSchedule.create({
         data: {
           organizationId,
-          termId,
+          semesterId,
           teachingAssignmentId: dto.teachingAssignmentId,
           sectionId,
           teacherId,
@@ -306,7 +306,7 @@ export class TimetableService {
     return schedule;
   }
 
-  // Re-derives termId/sectionId/teacherId from the (possibly new)
+  // Re-derives semesterId/sectionId/teacherId from the (possibly new)
   // teaching assignment, same as createClassSchedule, and re-runs the
   // identical three double-booking checks — excluding this row's own
   // id, since updating a schedule entry in place isn't a conflict
@@ -326,15 +326,15 @@ export class TimetableService {
       if (dto.roomId && !room) throw new NotFoundException("Room not found");
       if (dto.periodId && !period) throw new NotFoundException("Period not found");
 
-      const { termId, sectionId, employeeId: teacherId } = teachingAssignment;
+      const { semesterId, sectionId, employeeId: teacherId } = teachingAssignment;
       const roomId = dto.roomId ?? current.roomId;
       const periodId = dto.periodId ?? current.periodId;
       const dayOfWeek = dto.dayOfWeek ?? current.dayOfWeek;
 
       const [roomConflict, sectionConflict, teacherConflict] = await Promise.all([
-        tx.classSchedule.findFirst({ where: { termId, roomId, dayOfWeek, periodId } }),
-        tx.classSchedule.findFirst({ where: { termId, sectionId, dayOfWeek, periodId } }),
-        tx.classSchedule.findFirst({ where: { termId, teacherId, dayOfWeek, periodId } }),
+        tx.classSchedule.findFirst({ where: { semesterId, roomId, dayOfWeek, periodId } }),
+        tx.classSchedule.findFirst({ where: { semesterId, sectionId, dayOfWeek, periodId } }),
+        tx.classSchedule.findFirst({ where: { semesterId, teacherId, dayOfWeek, periodId } }),
       ]);
       if (roomConflict && roomConflict.id !== id) throw new ConflictException("Room is already booked for this day and period");
       if (sectionConflict && sectionConflict.id !== id) {
@@ -347,7 +347,7 @@ export class TimetableService {
       return tx.classSchedule.update({
         where: { id },
         data: {
-          termId,
+          semesterId,
           teachingAssignmentId: dto.teachingAssignmentId,
           sectionId,
           teacherId,
