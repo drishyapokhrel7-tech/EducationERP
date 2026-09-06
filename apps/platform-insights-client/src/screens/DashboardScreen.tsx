@@ -2,13 +2,15 @@ import { useState } from "react";
 import type { InsightsSnapshot } from "../../electron/preload/types";
 import { RegistrationsTab } from "../components/RegistrationsTab";
 import { ModuleAdoptionTab } from "../components/ModuleAdoptionTab";
+import { LeadsTab } from "../components/LeadsTab";
 import { RecommendationsTab } from "../components/RecommendationsTab";
 
-type Tab = "registrations" | "adoption" | "recommendations";
+type Tab = "registrations" | "adoption" | "leads" | "recommendations";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "registrations", label: "Registrations" },
   { id: "adoption", label: "Module adoption" },
+  { id: "leads", label: "Leads & feedback" },
   { id: "recommendations", label: "Recommendations" },
 ];
 
@@ -50,6 +52,7 @@ export function DashboardScreen({
       <main className="dashboard-content">
         {tab === "registrations" ? <RegistrationsTab snapshot={snapshot} /> : null}
         {tab === "adoption" ? <ModuleAdoptionTab snapshot={snapshot} /> : null}
+        {tab === "leads" ? <LeadsTab snapshot={snapshot} /> : null}
         {tab === "recommendations" ? <RecommendationsTab /> : null}
       </main>
     </div>

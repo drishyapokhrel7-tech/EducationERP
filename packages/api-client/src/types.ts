@@ -2358,6 +2358,30 @@ export interface AssignRoleInput {
   campusId?: string;
 }
 
+export interface InviteUserInput {
+  email: string;
+  firstName: string;
+  lastName: string;
+  roleId: string;
+}
+
+// The bare created row (no userRoles include, unlike UserSummary —
+// refetch listOrgUsers() to see the new user in that shape).
+// tempPassword is shown exactly once, in this one response — never
+// re-fetchable afterward.
+export interface InviteUserResult {
+  user: {
+    id: string;
+    email: string;
+    username: string | null;
+    firstName: string;
+    lastName: string;
+    status: UserStatus;
+    createdAt: string;
+  };
+  tempPassword: string;
+}
+
 export interface AuditLogRecord {
   id: string;
   organizationId: string;

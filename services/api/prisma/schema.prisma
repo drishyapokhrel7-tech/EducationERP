@@ -4495,3 +4495,24 @@ model Captcha {
 
   @@map("captchas")
 }
+
+// Contact/demo/feedback enquiries submitted through the public
+// marketing sites (website/site = ovexatechnology.com, website/school
+// = school.ovexa.com) — platform-owner-facing, not tenant data, same
+// reasoning as PlatformAdmin having no organizationId/RLS. `source`
+// disambiguates which site an enquiry came from since both post to
+// this same endpoint. Surfaced in the platform-insights-client
+// Electron app via export-insights-snapshot.ts's `leads` array —
+// this table has no other reader.
+model LeadSubmission {
+  id        String   @id @default(uuid())
+  source    String
+  name      String
+  email     String
+  company   String?
+  message   String
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("lead_submissions")
+}

@@ -72,6 +72,16 @@ interface OrgSnapshot {
   moduleUsage: Record<ModuleKey, number>;
 }
 
+interface LeadSnapshot {
+  id: string;
+  source: string;
+  name: string;
+  email: string;
+  company: string | null;
+  message: string;
+  createdAt: string;
+}
+
 function parseOutPath(): string {
   const flagIndex = process.argv.indexOf("--out");
   if (flagIndex !== -1 && process.argv[flagIndex + 1]) return process.argv[flagIndex + 1];
@@ -131,11 +141,28 @@ async function main() {
     console.log(`  ...${Math.min(i + BATCH_SIZE, organizations.length)} / ${organizations.length} organizations`);
   }
 
-  const snapshot = { generatedAt: new Date().toISOString(), organizations: results };
+  // Contact/demo/feedback enquiries from the public marketing sites
+  // (website/site, website/school) — platform-owner-facing, not
+  // per-organization, so this is a flat list alongside `organizations`
+  // rather than folded into any one org's data.
+  const leadRows = await withP2028Retry(() =>
+    prisma.leadSubmission.findMany({ orderBy: { createdAt: "desc" } }),
+  );
+  const leads: LeadSnapshot[] = leadRows.map((lead) => ({
+    id: lead.id,
+    source: lead.source,
+    name: lead.name,
+    email: lead.email,
+    company: lead.company,
+    message: lead.message,
+    createdAt: lead.createdAt.toISOString(),
+  }));
+
+  const snapshot = { generatedAt: new Date().toISOString(), organizations: results, leads };
   const outPath = parseOutPath();
   writeFileSync(outPath, JSON.stringify(snapshot, null, 2));
   // eslint-disable-next-line no-console
-  console.log(`Wrote snapshot for ${results.length} organizations to ${outPath}`);
+  console.log(`Wrote snapshot for ${results.length} organizations and ${leads.length} leads to ${outPath}`);
 }
 
 main()

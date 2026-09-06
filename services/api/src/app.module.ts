@@ -46,6 +46,7 @@ import { SearchModule } from "./modules/search/search.module";
 import { PlatformAuthModule } from "./modules/platform-auth/platform-auth.module";
 import { PlatformOrganizationsModule } from "./modules/platform-organizations/platform-organizations.module";
 import { HealthWatchdogModule } from "./modules/health-watchdog/health-watchdog.module";
+import { LeadsModule } from "./modules/leads/leads.module";
 import { QueueModule } from "./queue/queue.module";
 import { HealthController } from "./common/health.controller";
 
@@ -118,6 +119,7 @@ const queueModuleImports = process.env.REDIS_URL ? [QueueModule] : [];
     PlatformOrganizationsModule,
     HealthWatchdogModule,
     DeviceGatewayModule,
+    LeadsModule,
     ...queueModuleImports,
   ],
   controllers: [HealthController],
