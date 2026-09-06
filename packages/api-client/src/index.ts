@@ -355,6 +355,8 @@ import type {
   UserSummary,
   UserRoleAssignment,
   AssignRoleInput,
+  InviteUserInput,
+  InviteUserResult,
   AuditLogRecord,
   LeaveRequestStatus,
   LeaveTypeRecord,
@@ -1252,6 +1254,8 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
     deleteRole: (id: string) => request<{ deleted: true }>(`/organizations/me/roles/${id}`, { method: "DELETE" }),
     listPermissions: () => request<PermissionRecord[]>("/organizations/me/permissions"),
     listOrgUsers: () => request<UserSummary[]>("/organizations/me/users"),
+    inviteUser: (input: InviteUserInput) =>
+      request<InviteUserResult>("/organizations/me/users/invite", { method: "POST", body: JSON.stringify(input) }),
     assignRole: (userId: string, input: AssignRoleInput) =>
       request<UserRoleAssignment>(`/organizations/me/users/${userId}/roles`, {
         method: "POST",

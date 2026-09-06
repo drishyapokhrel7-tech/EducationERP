@@ -60,6 +60,18 @@ export default function DashboardPage() {
   const enrollmentsQuery = useSWR("enrollments-count", () => api.listAllEnrollments({ pageSize: 1 }));
   const feeCategoriesQuery = useSWR("fee-categories", () => api.listFeeCategories());
   const feeStructuresQuery = useSWR("fee-structures", () => api.listFeeStructures());
+  // "Your first week" — usage nudges shown only once the setup
+  // checklist above is fully done (see OnboardingChecklist). Same
+  // cache-key-reuse principle as the setup steps: the first two reuse
+  // the Attendance/Communication pages' own SWR keys, so a session
+  // that's visited either dedupes instead of double-fetching. The
+  // third is a genuinely new read — the audit-log signal
+  // AnalyticsController now writes on every report export.
+  const attendanceSessionsQuery = useSWR("attendance-sessions", () => api.listAttendanceSessions());
+  const messagesQuery = useSWR("messages", () => api.listMessages());
+  const reportExportsQuery = useSWR("audit-logs-analytics-export", () =>
+    api.listAuditLogs({ resource: "analytics", action: "analytics.report_exported", limit: 1 }),
+  );
 
   const onboardingDataLoaded = [
     campusesQuery.data,
@@ -76,6 +88,9 @@ export default function DashboardPage() {
     enrollmentsQuery.data,
     feeCategoriesQuery.data,
     feeStructuresQuery.data,
+    attendanceSessionsQuery.data,
+    messagesQuery.data,
+    reportExportsQuery.data,
   ].every((d) => d !== undefined);
 
   const onboardingSteps: OnboardingStep[] = [
@@ -117,6 +132,11 @@ export default function DashboardPage() {
       done: (feeStructuresQuery.data ?? []).length > 0,
       href: "/dashboard/finance#fee-structures",
     },
+  ];
+  const firstWeekSteps: OnboardingStep[] = [
+    { label: "Take attendance once", done: (attendanceSessionsQuery.data ?? []).length > 0, href: "/dashboard/attendance" },
+    { label: "Send one message", done: (messagesQuery.data ?? []).length > 0, href: "/dashboard/communication" },
+    { label: "Run one report", done: (reportExportsQuery.data ?? []).length > 0, href: "/dashboard/analytics" },
   ];
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({ name: "", code: "" });
@@ -250,7 +270,9 @@ export default function DashboardPage() {
         />
       </div>
 
-      {onboardingDataLoaded ? <OnboardingChecklist steps={onboardingSteps} /> : null}
+      {onboardingDataLoaded ? (
+        <OnboardingChecklist steps={onboardingSteps} firstWeekSteps={firstWeekSteps} />
+      ) : null}
 
       <Card>
         <CardHeader>

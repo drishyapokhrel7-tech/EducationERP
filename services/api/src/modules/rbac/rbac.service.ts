@@ -1,9 +1,29 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
+import * as argon2 from "argon2";
+import { randomInt } from "crypto";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateRoleDto } from "./dto/create-role.dto";
 import { UpdateRoleDto } from "./dto/update-role.dto";
 import { AssignRoleDto } from "./dto/assign-role.dto";
+import { InviteUserDto } from "./dto/invite-user.dto";
+
+// Excludes visually-ambiguous characters (0/O, 1/I/l) — this is typed
+// once, by hand, by whoever the admin relays it to.
+const PASSWORD_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+
+// A readable, segmented temp password (e.g. "Xk4p-9mQr-2Ltn") — never
+// stored or logged in the clear, and returned from inviteUser() below
+// exactly once. Unlike createLogin's admin-typed password (never
+// echoed back, per the "never expose a password in a response" rule),
+// there is no admin-typed password here to begin with — the server
+// has to generate one somewhere, and returning it once, on the one
+// response that creates it, is the only way the inviting admin can
+// ever learn it at all.
+function generateTempPassword(): string {
+  const segment = () => Array.from({ length: 4 }, () => PASSWORD_ALPHABET[randomInt(PASSWORD_ALPHABET.length)]).join("");
+  return `${segment()}-${segment()}-${segment()}`;
+}
 
 /**
  * Roles & Permissions admin — "role" and "user" have been reserved
@@ -149,6 +169,55 @@ export class RbacService {
         orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
       }),
     );
+  }
+
+  // Creates a brand-new teammate with a real email and a system-
+  // generated temp password, no email delivery attempted at all (this
+  // project's Gmail sending is currently unreliable — rather than
+  // depending on it like PasswordResetService now does, this follows
+  // EmailVerificationService's more robust precedent of showing the
+  // credential on-screen regardless of whether email could ever work).
+  // Used both by the post-signup "invite your team" onboarding step
+  // and this page's own permanent "Invite user" form — same endpoint,
+  // two entry points.
+  async inviteUser(organizationId: string, actorUserId: string, dto: InviteUserDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const existing = await tx.user.findUnique({ where: { email: dto.email } });
+      if (existing) throw new ConflictException("Email already registered");
+
+      const role = await tx.role.findUnique({ where: { id: dto.roleId } });
+      if (!role || (!role.isSystem && role.organizationId !== organizationId)) {
+        throw new NotFoundException("Role not found");
+      }
+
+      const tempPassword = generateTempPassword();
+      const passwordHash = await argon2.hash(tempPassword);
+
+      const user = await tx.user.create({
+        data: {
+          organizationId,
+          email: dto.email,
+          passwordHash,
+          firstName: dto.firstName,
+          lastName: dto.lastName,
+          status: "ACTIVE",
+          userRoles: { create: { roleId: dto.roleId } },
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          organizationId,
+          userId: actorUserId,
+          action: "user.invited",
+          resource: "user",
+          resourceId: user.id,
+          metadata: { email: dto.email, roleId: dto.roleId, roleName: role.name },
+        },
+      });
+
+      const { passwordHash: _passwordHash, ...safeUser } = user;
+      return { user: safeUser, tempPassword };
+    });
   }
 
   async assignRole(organizationId: string, actorUserId: string, targetUserId: string, dto: AssignRoleDto) {

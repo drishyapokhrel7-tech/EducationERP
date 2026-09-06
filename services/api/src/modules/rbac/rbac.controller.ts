@@ -3,6 +3,7 @@ import { RbacService } from "./rbac.service";
 import { CreateRoleDto } from "./dto/create-role.dto";
 import { UpdateRoleDto } from "./dto/update-role.dto";
 import { AssignRoleDto } from "./dto/assign-role.dto";
+import { InviteUserDto } from "./dto/invite-user.dto";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
@@ -52,6 +53,18 @@ export class RbacController {
   @RequirePermissions("user:view")
   listUsers(@CurrentUser() user: JwtPayload) {
     return this.rbac.listUsers(user.organizationId);
+  }
+
+  // Creates a brand-new teammate + assigns a role in one step (no
+  // separate "create user" endpoint exists — every prior User row was
+  // created only via registration or the student/employee "create
+  // login" flows, neither of which fits a colleague being invited by
+  // name/email). Used by both the post-signup onboarding flow and
+  // this page's own "Invite user" form.
+  @Post("users/invite")
+  @RequirePermissions("user:create")
+  inviteUser(@CurrentUser() user: JwtPayload, @Body() dto: InviteUserDto) {
+    return this.rbac.inviteUser(user.organizationId, user.sub, dto);
   }
 
   @Post("users/:id/roles")

@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { InviteTeamStep } from "./InviteTeamStep";
+import { PlansStep } from "./PlansStep";
 
 function errorMessage(err: unknown, fallback: string): string {
   return err instanceof ApiError ? ((err.body as { message?: string })?.message ?? fallback) : fallback;
@@ -35,6 +37,10 @@ export default function RegisterPage() {
   const [verification, setVerification] = useState<EmailVerificationChallenge | null>(null);
   const [codeInput, setCodeInput] = useState("");
   const [verifying, setVerifying] = useState(false);
+  // Post-verification onboarding, before landing on the dashboard —
+  // both steps are skippable; "invite-team" and "plans" never block
+  // reaching /dashboard, they're a nudge in front of it, not a gate.
+  const [step, setStep] = useState<"invite-team" | "plans" | null>(null);
 
   function update<K extends keyof typeof form>(key: K, value: string) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -61,7 +67,7 @@ export default function RegisterPage() {
     try {
       await api.verifyEmail({ codeId: verification.codeId, code: codeInput });
       toast.success("Email verified");
-      router.push("/dashboard");
+      setStep("invite-team");
     } catch (err) {
       toast.error(errorMessage(err, "Incorrect code"));
       // Single-use, same as this project's CAPTCHA — a wrong attempt
@@ -83,6 +89,14 @@ export default function RegisterPage() {
     } catch {
       toast.error("Could not generate a new code");
     }
+  }
+
+  if (step === "invite-team") {
+    return <InviteTeamStep onNext={() => setStep("plans")} />;
+  }
+
+  if (step === "plans") {
+    return <PlansStep onNext={() => router.push("/dashboard")} />;
   }
 
   if (verification) {

@@ -11,8 +11,9 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { api } from "@/lib/api";
-import { submitAction, submitDelete } from "@/lib/submit-action";
-import type { RoleRecord } from "@education-erp/api-client";
+import { errorMessage, submitAction, submitDelete } from "@/lib/submit-action";
+import { toast } from "sonner";
+import type { InviteUserResult, RoleRecord } from "@education-erp/api-client";
 
 const ACTIONS = ["VIEW", "CREATE", "UPDATE", "DELETE", "APPROVE", "EXPORT", "PRINT", "MANAGE", "ADMINISTER"] as const;
 const ACTION_LABELS: Record<(typeof ACTIONS)[number], string> = {
@@ -414,7 +415,15 @@ export default function RolesPermissionsPage() {
         <CardHeader>
           <CardTitle>Users</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          <InviteUserForm
+            roles={roles.data ?? []}
+            onInvited={() => {
+              users.mutate();
+              auditLogs.mutate();
+            }}
+          />
+          <Separator />
           {!users.data || users.data.length === 0 ? (
             <p className="text-muted-foreground text-sm">No users yet.</p>
           ) : (
@@ -495,6 +504,97 @@ export default function RolesPermissionsPage() {
           });
         }}
       />
+    </div>
+  );
+}
+
+// A brand-new teammate, created with a real email and a system-
+// generated temp password — no email is sent (this project's Gmail
+// delivery is currently unreliable), so the password is shown here
+// once, inline, for the admin to relay manually. Same endpoint the
+// post-signup "invite your team" onboarding step uses.
+function InviteUserForm({ roles, onInvited }: { roles: RoleRecord[]; onInvited: () => void }) {
+  const [form, setForm] = useState({ firstName: "", lastName: "", email: "", roleId: "" });
+  const [submitting, setSubmitting] = useState(false);
+  const [invited, setInvited] = useState<InviteUserResult | null>(null);
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const result = await api.inviteUser(form);
+      setInvited(result);
+      setForm({ firstName: "", lastName: "", email: "", roleId: "" });
+      onInvited();
+      toast.success(`Invited ${result.user.firstName} ${result.user.lastName}`);
+    } catch (err) {
+      toast.error(errorMessage(err, "Couldn't send that invite"));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm font-medium">Invite a teammate</p>
+      <form className="flex flex-wrap items-end gap-3" onSubmit={handleSubmit}>
+        <div className="space-y-1">
+          <Label className="text-xs">First name</Label>
+          <Input
+            className="w-32"
+            value={form.firstName}
+            onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))}
+            required
+          />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Last name</Label>
+          <Input
+            className="w-32"
+            value={form.lastName}
+            onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))}
+            required
+          />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Email</Label>
+          <Input
+            className="w-56"
+            type="email"
+            value={form.email}
+            onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+            required
+          />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Role</Label>
+          <NativeSelect
+            className="w-48"
+            placeholder="Select a role"
+            value={form.roleId}
+            onChange={(v) => setForm((f) => ({ ...f, roleId: v }))}
+            options={roles.map((r) => ({ value: r.id, label: r.name }))}
+          />
+        </div>
+        <Button type="submit" size="sm" disabled={submitting || !form.roleId}>
+          {submitting ? "Inviting…" : "Invite"}
+        </Button>
+      </form>
+      {invited ? (
+        <div className="rounded border bg-amber-50 p-3 text-sm">
+          <p>
+            <strong>
+              {invited.user.firstName} {invited.user.lastName}
+            </strong>{" "}
+            can sign in with <strong>{invited.user.email}</strong> and this temporary password — share it with
+            them now, it won&apos;t be shown again:
+          </p>
+          <p className="mt-1 font-mono text-base font-semibold">{invited.tempPassword}</p>
+          <Button type="button" size="sm" variant="outline" className="mt-2" onClick={() => setInvited(null)}>
+            Dismiss
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }
