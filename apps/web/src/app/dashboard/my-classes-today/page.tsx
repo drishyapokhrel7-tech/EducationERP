@@ -82,7 +82,10 @@ export default function MyClassesTodayPage() {
                 <li key={entry.classSchedule.id} className="flex items-center justify-between gap-3 py-2 text-sm">
                   <span>
                     {DAYS[entry.classSchedule.dayOfWeek]} · {entry.classSchedule.period.name} —{" "}
-                    {entry.classSchedule.teachingAssignment.subject.name} for {entry.classSchedule.section.name}{" "}
+                    {entry.classSchedule.teachingAssignment.subject.name} for{" "}
+                    {entry.classSchedule.section
+                      ? entry.classSchedule.section.name
+                      : entry.classSchedule.teachingAssignment.program.name}{" "}
                     <span className="text-muted-foreground">
                       ({entry.classSchedule.teachingAssignment.employee.firstName}{" "}
                       {entry.classSchedule.teachingAssignment.employee.lastName} · {entry.classSchedule.room.name})

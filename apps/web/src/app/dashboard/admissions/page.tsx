@@ -126,7 +126,11 @@ export default function AdmissionsPage() {
                         onSubmit={(e: FormEvent) => {
                           e.preventDefault();
                           submitAction(
-                            () => api.enrollApplication(app.id, enrollForm),
+                            () =>
+                              api.enrollApplication(app.id, {
+                                ...enrollForm,
+                                sectionId: enrollForm.sectionId || undefined,
+                              }),
                             () => {
                               setEnrollForms((f) => ({ ...f, [app.id]: { sectionId: "", semesterId: "", enrollmentDate: "" } }));
                               applications.mutate();
@@ -136,7 +140,7 @@ export default function AdmissionsPage() {
                       >
                         <NativeSelect
                           className="w-32"
-                          placeholder="Section"
+                          placeholder="Section (optional)"
                           value={enrollForm.sectionId}
                           onChange={(v) =>
                             setEnrollForms((f) => ({ ...f, [app.id]: { ...enrollForm, sectionId: v } }))
@@ -163,11 +167,7 @@ export default function AdmissionsPage() {
                             }))
                           }
                         />
-                        <Button
-                          type="submit"
-                          size="sm"
-                          disabled={!enrollForm.sectionId || !enrollForm.semesterId}
-                        >
+                        <Button type="submit" size="sm" disabled={!enrollForm.semesterId}>
                           Enroll
                         </Button>
                       </form>

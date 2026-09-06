@@ -33,7 +33,10 @@ export class AttendanceService {
 
   async createSession(organizationId: string, dto: CreateAttendanceSessionDto) {
     return this.prisma.withTenant(organizationId, async (tx) => {
-      const classSchedule = await tx.classSchedule.findUnique({ where: { id: dto.classScheduleId } });
+      const classSchedule = await tx.classSchedule.findUnique({
+        where: { id: dto.classScheduleId },
+        include: { teachingAssignment: true },
+      });
       if (!classSchedule) throw new NotFoundException("Class schedule not found");
 
       const existing = await tx.attendanceSession.findFirst({
@@ -52,8 +55,18 @@ export class AttendanceService {
         },
         include: { section: true },
       });
+      // Scoped by programId + semesterId, not sectionId alone —
+      // sectionId is optional, and without programId two different
+      // section-less programs running in the same semester would
+      // otherwise look like one merged cohort here.
       const roster = await tx.studentEnrollment.findMany({
-        where: { organizationId, sectionId: classSchedule.sectionId, status: "ACTIVE" },
+        where: {
+          organizationId,
+          programId: classSchedule.teachingAssignment.programId,
+          semesterId: classSchedule.semesterId,
+          sectionId: classSchedule.sectionId,
+          status: "ACTIVE",
+        },
         include: { student: true },
       });
       // A freshly-created session has no marks yet — studentAttendance is
@@ -66,11 +79,22 @@ export class AttendanceService {
     return this.prisma.withTenant(organizationId, async (tx) => {
       const session = await tx.attendanceSession.findUnique({
         where: { id: sessionId },
-        include: { section: true, studentAttendance: { include: { student: true } } },
+        include: {
+          section: true,
+          studentAttendance: { include: { student: true } },
+          classSchedule: { include: { teachingAssignment: true } },
+        },
       });
       if (!session) throw new NotFoundException("Attendance session not found");
+      // Same programId + semesterId + sectionId scoping as createSession.
       const roster = await tx.studentEnrollment.findMany({
-        where: { organizationId, sectionId: session.sectionId, status: "ACTIVE" },
+        where: {
+          organizationId,
+          programId: session.classSchedule.teachingAssignment.programId,
+          semesterId: session.classSchedule.semesterId,
+          sectionId: session.sectionId,
+          status: "ACTIVE",
+        },
         include: { student: true },
       });
       return { ...session, roster: roster.map((e) => e.student) };
@@ -79,11 +103,22 @@ export class AttendanceService {
 
   async markAttendance(organizationId: string, sessionId: string, dto: MarkAttendanceDto) {
     return this.prisma.withTenant(organizationId, async (tx) => {
-      const session = await tx.attendanceSession.findUnique({ where: { id: sessionId } });
+      const session = await tx.attendanceSession.findUnique({
+        where: { id: sessionId },
+        include: { classSchedule: { include: { teachingAssignment: true } } },
+      });
       if (!session) throw new NotFoundException("Attendance session not found");
 
+      // Same programId + semesterId + sectionId scoping as
+      // createSession/getSession's own roster queries.
       const roster = await tx.studentEnrollment.findMany({
-        where: { organizationId, sectionId: session.sectionId, status: "ACTIVE" },
+        where: {
+          organizationId,
+          programId: session.classSchedule.teachingAssignment.programId,
+          semesterId: session.classSchedule.semesterId,
+          sectionId: session.sectionId,
+          status: "ACTIVE",
+        },
       });
       const rosterIds = new Set(roster.map((e) => e.studentId));
       const invalid = dto.entries.filter((e) => !rosterIds.has(e.studentId));

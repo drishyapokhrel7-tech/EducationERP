@@ -220,7 +220,7 @@ export class StudentPortalService {
       const enrollment = await tx.studentEnrollment.findFirst({ where: { organizationId, studentId: student.id, status: "ACTIVE" } });
       if (!enrollment) return [];
       return tx.teachingAssignment.findMany({
-        where: { organizationId, sectionId: enrollment.sectionId, semesterId: enrollment.semesterId },
+        where: { organizationId, programId: enrollment.programId, sectionId: enrollment.sectionId, semesterId: enrollment.semesterId },
         include: { subject: true, employee: true, section: true, semester: true },
       });
     });
@@ -282,7 +282,7 @@ export class StudentPortalService {
       if (!enrollment) return [];
 
       const teachingAssignments = await tx.teachingAssignment.findMany({
-        where: { organizationId, sectionId: enrollment.sectionId, semesterId: enrollment.semesterId },
+        where: { organizationId, programId: enrollment.programId, sectionId: enrollment.sectionId, semesterId: enrollment.semesterId },
       });
       const list = await tx.assignment.findMany({
         where: { organizationId, isPublished: true, teachingAssignmentId: { in: teachingAssignments.map((t) => t.id) } },
@@ -339,7 +339,7 @@ export class StudentPortalService {
       if (!enrollment) return [];
 
       const teachingAssignments = await tx.teachingAssignment.findMany({
-        where: { organizationId, sectionId: enrollment.sectionId, semesterId: enrollment.semesterId },
+        where: { organizationId, programId: enrollment.programId, sectionId: enrollment.sectionId, semesterId: enrollment.semesterId },
       });
       return tx.announcement.findMany({
         where: { organizationId, isPublished: true, teachingAssignmentId: { in: teachingAssignments.map((t) => t.id) } },
@@ -367,7 +367,7 @@ export class StudentPortalService {
       if (!enrollment) return [];
 
       const teachingAssignments = await tx.teachingAssignment.findMany({
-        where: { organizationId, sectionId: enrollment.sectionId, semesterId: enrollment.semesterId },
+        where: { organizationId, programId: enrollment.programId, sectionId: enrollment.sectionId, semesterId: enrollment.semesterId },
       });
       return tx.discussionTopic.findMany({
         where: { organizationId, isPublished: true, teachingAssignmentId: { in: teachingAssignments.map((t) => t.id) } },
@@ -412,7 +412,7 @@ export class StudentPortalService {
       if (!enrollment) return [];
 
       const teachingAssignments = await tx.teachingAssignment.findMany({
-        where: { organizationId, sectionId: enrollment.sectionId, semesterId: enrollment.semesterId },
+        where: { organizationId, programId: enrollment.programId, sectionId: enrollment.sectionId, semesterId: enrollment.semesterId },
       });
       const list = await tx.knowledgeCheck.findMany({
         where: { organizationId, status: "PUBLISHED", teachingAssignmentId: { in: teachingAssignments.map((t) => t.id) } },
@@ -483,7 +483,7 @@ export class StudentPortalService {
     const ta = await tx.teachingAssignment.findUnique({ where: { id: teachingAssignmentId } });
     if (!ta) throw new NotFoundException("Course not found");
     const enrollment = await tx.studentEnrollment.findFirst({
-      where: { organizationId, studentId, sectionId: ta.sectionId, semesterId: ta.semesterId, status: "ACTIVE" },
+      where: { organizationId, studentId, programId: ta.programId, sectionId: ta.sectionId, semesterId: ta.semesterId, status: "ACTIVE" },
     });
     if (!enrollment) throw new NotFoundException("Course not found");
     return ta;

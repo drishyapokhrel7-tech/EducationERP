@@ -620,18 +620,20 @@ export interface StudentEnrollment {
   id: string;
   studentId: string;
   programId: string;
-  sectionId: string;
+  sectionId: string | null;
   semesterId: string;
   enrollmentDate: string;
   status: EnrollmentStatus;
   program: Program;
-  section: Section;
+  section: Section | null;
   semester: Semester;
 }
 
 export interface CreateEnrollmentInput {
   programId: string;
-  sectionId: string;
+  // Optional — some institutions don't subdivide a program+semester
+  // into sections at all.
+  sectionId?: string;
   semesterId: string;
   enrollmentDate: string;
 }
@@ -732,7 +734,7 @@ export interface UpdateAdmissionStatusInput {
 export interface EnrollApplicationInput {
   // studentCode is deliberately absent — generated server-side, same
   // as the direct Students-page create path.
-  sectionId: string;
+  sectionId?: string;
   semesterId: string;
   enrollmentDate: string;
 }
@@ -805,18 +807,28 @@ export interface TeachingAssignment {
   organizationId: string;
   employeeId: string;
   subjectId: string;
-  sectionId: string;
+  // Optional — some institutions don't subdivide a program+semester
+  // into sections at all. programId (always present) is what keeps
+  // this assignment tied to a real program either way.
+  sectionId: string | null;
+  programId: string;
   semesterId: string;
   employee: Employee;
   subject: Subject;
-  section: Section;
+  section: Section | null;
+  program: Program;
   semester: Semester;
 }
 
 export interface CreateTeachingAssignmentInput {
   employeeId: string;
   subjectId: string;
-  sectionId: string;
+  // Optional — some institutions don't subdivide a program+semester
+  // into sections at all. When omitted, programId is required
+  // instead, so this assignment still resolves to exactly one
+  // program either way.
+  sectionId?: string;
+  programId?: string;
   semesterId: string;
 }
 
@@ -824,6 +836,7 @@ export interface UpdateTeachingAssignmentInput {
   employeeId?: string;
   subjectId?: string;
   sectionId?: string;
+  programId?: string;
   semesterId?: string;
 }
 
@@ -832,14 +845,16 @@ export interface ClassSchedule {
   organizationId: string;
   semesterId: string;
   teachingAssignmentId: string;
-  sectionId: string;
+  // Nullable, following teachingAssignment.sectionId's own
+  // nullability — some institutions don't use sections at all.
+  sectionId: string | null;
   teacherId: string;
   roomId: string;
   periodId: string;
   dayOfWeek: number;
   room: Room;
   period: Period;
-  section: Section;
+  section: Section | null;
   teacher: Employee;
   teachingAssignment: TeachingAssignment & { subject: Subject };
 }
@@ -864,9 +879,11 @@ export interface AttendanceSession {
   id: string;
   organizationId: string;
   classScheduleId: string;
-  sectionId: string;
+  // Nullable, following classSchedule.sectionId's own nullability —
+  // some institutions don't use sections at all.
+  sectionId: string | null;
   date: string;
-  section: Section;
+  section: Section | null;
   classSchedule: ClassSchedule;
   studentAttendance: StudentAttendance[];
 }
@@ -1026,7 +1043,9 @@ export interface ClassSession {
   id: string;
   organizationId: string;
   classScheduleId: string;
-  sectionId: string;
+  // Nullable, following classSchedule.sectionId's own nullability —
+  // some institutions don't use sections at all.
+  sectionId: string | null;
   date: string;
   lessonPlanId: string | null;
   actualSyllabusNodeId: string | null;
@@ -1034,7 +1053,7 @@ export interface ClassSession {
   status: ClassSessionStatus;
   completedAt: string | null;
   classSchedule: ClassSchedule;
-  section: Section;
+  section: Section | null;
   lessonPlan: LessonPlan | null;
   actualSyllabusNode: SyllabusNode | null;
   materials: ClassMaterial[];

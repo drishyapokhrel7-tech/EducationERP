@@ -124,7 +124,7 @@ export default function AssignmentsPage() {
               onChange={(v) => setForm((f) => ({ ...f, teachingAssignmentId: v }))}
               options={(teachingAssignments.data ?? []).map((a) => ({
                 value: a.id,
-                label: `${a.subject.name} · ${a.section.name} · ${a.employee.firstName} ${a.employee.lastName}`,
+                label: `${a.subject.name} · ${a.section ? a.section.name : a.program.name} · ${a.employee.firstName} ${a.employee.lastName}`,
               }))}
             />
           </div>

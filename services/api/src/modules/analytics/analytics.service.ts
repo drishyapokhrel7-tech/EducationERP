@@ -64,7 +64,9 @@ export class AnalyticsService {
       const bySection = new Map<string, number>();
       for (const e of enrollments) {
         byProgram.set(e.program.name, (byProgram.get(e.program.name) ?? 0) + 1);
-        bySection.set(e.section.name, (bySection.get(e.section.name) ?? 0) + 1);
+        // Section is optional — some institutions don't use it at all.
+        const sectionName = e.section?.name ?? "No section";
+        bySection.set(sectionName, (bySection.get(sectionName) ?? 0) + 1);
       }
 
       const resolvedExamId = examId ?? (await this.mostRecentGradedExamId(tx, organizationId));
@@ -110,7 +112,8 @@ export class AnalyticsService {
 
       const bySection = new Map<string, { present: number; total: number }>();
       for (const r of records) {
-        const key = r.session.section.name;
+        // Section is optional — some institutions don't use it at all.
+        const key = r.session.section?.name ?? "No section";
         const bucket = bySection.get(key) ?? { present: 0, total: 0 };
         bucket.total += 1;
         if (r.status === "PRESENT" || r.status === "LATE") bucket.present += 1;

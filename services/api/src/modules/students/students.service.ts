@@ -381,11 +381,11 @@ export class StudentsService {
     return this.prisma.withTenant(organizationId, async (tx) => {
       const [program, section, semester] = await Promise.all([
         tx.program.findUnique({ where: { id: dto.programId } }),
-        tx.section.findUnique({ where: { id: dto.sectionId } }),
+        dto.sectionId ? tx.section.findUnique({ where: { id: dto.sectionId } }) : null,
         tx.semester.findUnique({ where: { id: dto.semesterId } }),
       ]);
       if (!program) throw new NotFoundException("Program not found");
-      if (!section) throw new NotFoundException("Section not found");
+      if (dto.sectionId && !section) throw new NotFoundException("Section not found");
       if (!semester) throw new NotFoundException("Semester not found");
 
       return tx.studentEnrollment.create({

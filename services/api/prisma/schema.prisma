@@ -297,6 +297,7 @@ model Program {
   studentEnrollments    StudentEnrollment[]
   admissionApplications AdmissionApplication[]
   feeStructures         FeeStructure[]
+  teachingAssignments   TeachingAssignment[]
 
   @@unique([departmentId, code])
   @@index([organizationId])
@@ -1020,7 +1021,13 @@ model StudentEnrollment {
   organizationId String
   studentId      String
   programId      String
-  sectionId      String
+  // Optional — some institutions don't subdivide a program+semester
+  // into sections at all. programId (above) is what keeps this
+  // enrollment tied to a real program either way; every roster-style
+  // query elsewhere in the schema that used to key on sectionId alone
+  // now also filters by programId, since a null section no longer
+  // uniquely (transitively) identifies one program.
+  sectionId      String?
   semesterId     String
   enrollmentDate DateTime
   status         EnrollmentStatus @default(ACTIVE)
@@ -1030,7 +1037,7 @@ model StudentEnrollment {
   organization        Organization                @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   student             Student                     @relation(fields: [studentId], references: [id])
   program             Program                     @relation(fields: [programId], references: [id])
-  section             Section                     @relation(fields: [sectionId], references: [id])
+  section             Section?                    @relation(fields: [sectionId], references: [id])
   semester            Semester                    @relation(fields: [semesterId], references: [id])
   invoices            Invoice[]
   feeAssignments      StudentFeeAssignment[]
@@ -1191,14 +1198,27 @@ model TeachingAssignment {
   organizationId String
   employeeId     String
   subjectId      String
-  sectionId      String
+  // Optional — some institutions don't subdivide a program+semester
+  // into sections. programId (below) is what keeps this assignment
+  // tied to a real program either way.
+  sectionId      String?
+  // The one genuinely new column this table gains to support a null
+  // sectionId: previously Section was the *only* thing tying an
+  // assignment back to a Program (via section.programId) — always
+  // populated, either derived from the chosen Section or supplied
+  // directly by the caller when there isn't one. Every roster-style
+  // query elsewhere that used to key on sectionId (+semesterId) alone
+  // now also filters by this, since a null section no longer uniquely
+  // (transitively) identifies one program.
+  programId      String
   semesterId     String
   createdAt      DateTime @default(now())
 
   organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   employee         Employee          @relation(fields: [employeeId], references: [id])
   subject          Subject           @relation(fields: [subjectId], references: [id])
-  section          Section           @relation(fields: [sectionId], references: [id])
+  section          Section?          @relation(fields: [sectionId], references: [id])
+  program          Program           @relation(fields: [programId], references: [id])
   semester         Semester          @relation(fields: [semesterId], references: [id])
   classSchedules   ClassSchedule[]
   lessonPlans      LessonPlan[]
@@ -1209,7 +1229,13 @@ model TeachingAssignment {
   discussionTopics DiscussionTopic[]
 
   // One teacher per subject+section+semester — re-assigning means
-  // changing this row, not stacking a second one alongside it.
+  // changing this row, not stacking a second one alongside it. Only
+  // covers the has-section case: Postgres treats every NULL in a
+  // unique index as distinct, so this doesn't block duplicate
+  // section-less assignments for the same subject+semester — that
+  // case gets its own explicit application-level check
+  // (TimetableService.createTeachingAssignment), keyed on programId
+  // instead since there's no section to key on.
   @@unique([sectionId, subjectId, semesterId])
   @@index([organizationId])
   @@map("teaching_assignments")
@@ -1224,8 +1250,12 @@ model ClassSchedule {
   // (not just a convenience) — Postgres unique constraints need real
   // columns to enforce "no double-booking" at the database level, not
   // just in application code, the same reasoning every prior slice
-  // applied to FK-vs-RLS parent guards.
-  sectionId            String
+  // applied to FK-vs-RLS parent guards. sectionId is nullable, following
+  // teachingAssignment.sectionId's own nullability — program-scoping
+  // for the null-section case goes through teachingAssignment.programId
+  // (a relation filter) rather than a physical column here, since
+  // nothing on this model needs programId for a uniqueness constraint.
+  sectionId            String?
   teacherId            String
   roomId               String
   periodId             String
@@ -1238,7 +1268,7 @@ model ClassSchedule {
   organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   semester           Semester            @relation(fields: [semesterId], references: [id])
   teachingAssignment TeachingAssignment  @relation(fields: [teachingAssignmentId], references: [id])
-  section            Section             @relation(fields: [sectionId], references: [id])
+  section            Section?            @relation(fields: [sectionId], references: [id])
   teacher            Employee            @relation(fields: [teacherId], references: [id])
   room               Room                @relation(fields: [roomId], references: [id])
   period             Period              @relation(fields: [periodId], references: [id])
@@ -1265,15 +1295,16 @@ model AttendanceSession {
   classScheduleId String
   // Denormalized off classSchedule — same reasoning as ClassSchedule's own
   // sectionId/teacherId: the roster query and the one-session-per-slot-
-  // per-day uniqueness both need a real column, not a join.
-  sectionId       String
+  // per-day uniqueness both need a real column, not a join. Nullable,
+  // following classSchedule.sectionId's own nullability.
+  sectionId       String?
   date            DateTime
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   organization      Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   classSchedule     ClassSchedule       @relation(fields: [classScheduleId], references: [id])
-  section           Section             @relation(fields: [sectionId], references: [id])
+  section           Section?            @relation(fields: [sectionId], references: [id])
   studentAttendance StudentAttendance[]
 
   @@unique([classScheduleId, date])
@@ -1818,8 +1849,9 @@ model ClassSession {
   // Denormalized off classSchedule, same reasoning as every prior
   // slice's session-shaped models (AttendanceSession, ClassSchedule
   // itself) — needed directly for the unique constraint and for
-  // listing/filtering without a join.
-  sectionId            String
+  // listing/filtering without a join. Nullable, following
+  // classSchedule.sectionId's own nullability.
+  sectionId            String?
   date                 DateTime
   lessonPlanId         String?
   // What was actually covered — may differ from the lesson plan's
@@ -1834,7 +1866,7 @@ model ClassSession {
 
   organization       Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   classSchedule      ClassSchedule   @relation(fields: [classScheduleId], references: [id])
-  section            Section         @relation(fields: [sectionId], references: [id])
+  section            Section?        @relation(fields: [sectionId], references: [id])
   lessonPlan         LessonPlan?     @relation(fields: [lessonPlanId], references: [id])
   actualSyllabusNode SyllabusNode?   @relation(fields: [actualSyllabusNodeId], references: [id])
   materials          ClassMaterial[]

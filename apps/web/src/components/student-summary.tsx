@@ -14,7 +14,8 @@ export function StudentSummary({ data }: { data: StudentDashboard }) {
         <p className="font-medium">Active enrollment</p>
         {data.activeEnrollment ? (
           <p className="text-muted-foreground">
-            {data.activeEnrollment.program.name} · {data.activeEnrollment.section.name} ·{" "}
+            {data.activeEnrollment.program.name}
+            {data.activeEnrollment.section ? ` · ${data.activeEnrollment.section.name}` : ""} ·{" "}
             {data.activeEnrollment.semester.name}
           </p>
         ) : (

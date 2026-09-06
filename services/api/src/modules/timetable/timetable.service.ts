@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateRoomDto } from "./dto/create-room.dto";
@@ -130,7 +130,7 @@ export class TimetableService {
     return this.prisma.withTenant(organizationId, (tx) =>
       tx.teachingAssignment.findMany({
         where: { organizationId },
-        include: { employee: true, subject: true, section: true, semester: true },
+        include: { employee: true, subject: true, section: true, program: true, semester: true },
         orderBy: [{ employee: { firstName: "asc" } }, { employee: { lastName: "asc" } }],
       }),
     );
@@ -141,26 +141,51 @@ export class TimetableService {
       const [employee, subject, section, semester] = await Promise.all([
         tx.employee.findUnique({ where: { id: dto.employeeId } }),
         tx.subject.findUnique({ where: { id: dto.subjectId } }),
-        tx.section.findUnique({ where: { id: dto.sectionId } }),
+        dto.sectionId ? tx.section.findUnique({ where: { id: dto.sectionId } }) : null,
         tx.semester.findUnique({ where: { id: dto.semesterId } }),
       ]);
       if (!employee) throw new NotFoundException("Employee not found");
       if (!subject) throw new NotFoundException("Subject not found");
-      if (!section) throw new NotFoundException("Section not found");
+      if (dto.sectionId && !section) throw new NotFoundException("Section not found");
       if (!semester) throw new NotFoundException("Semester not found");
 
-      const existing = await tx.teachingAssignment.findUnique({
-        where: {
-          sectionId_subjectId_semesterId: {
-            sectionId: dto.sectionId,
-            subjectId: dto.subjectId,
-            semesterId: dto.semesterId,
-          },
-        },
-      });
+      // Section, when given, is authoritative for which program this
+      // assignment belongs to — programId is only ever taken from the
+      // request when there's no section to derive it from.
+      let programId: string;
+      if (section) {
+        programId = section.programId;
+      } else {
+        if (!dto.programId) throw new BadRequestException("programId is required when no sectionId is given");
+        const program = await tx.program.findUnique({ where: { id: dto.programId } });
+        if (!program || program.organizationId !== organizationId) throw new NotFoundException("Program not found");
+        programId = dto.programId;
+      }
+
+      // "One teacher per subject+semester" — enforced by a real unique
+      // index when there's a section (sectionId_subjectId_semesterId);
+      // Postgres treats every NULL sectionId as distinct from every
+      // other, so that index doesn't apply between section-less rows —
+      // this manual check covers exactly that case instead, keyed on
+      // programId since there's no section to key on.
+      const existing = dto.sectionId
+        ? await tx.teachingAssignment.findUnique({
+            where: {
+              sectionId_subjectId_semesterId: {
+                sectionId: dto.sectionId,
+                subjectId: dto.subjectId,
+                semesterId: dto.semesterId,
+              },
+            },
+          })
+        : await tx.teachingAssignment.findFirst({
+            where: { sectionId: null, programId, subjectId: dto.subjectId, semesterId: dto.semesterId },
+          });
       if (existing) {
         throw new ConflictException(
-          "This section already has a teacher assigned for this subject and semester",
+          dto.sectionId
+            ? "This section already has a teacher assigned for this subject and semester"
+            : "This program already has a teacher assigned for this subject and semester",
         );
       }
 
@@ -170,6 +195,7 @@ export class TimetableService {
           employeeId: dto.employeeId,
           subjectId: dto.subjectId,
           sectionId: dto.sectionId,
+          programId,
           semesterId: dto.semesterId,
         },
       });
@@ -199,19 +225,39 @@ export class TimetableService {
       const sectionId = dto.sectionId ?? current.sectionId;
       const subjectId = dto.subjectId ?? current.subjectId;
       const semesterId = dto.semesterId ?? current.semesterId;
+      // A newly-given section is authoritative for programId, same as
+      // create; otherwise keep whatever program this assignment
+      // already has (there's no "clear back to section-less" path via
+      // update, same as every other field here).
+      const programId = section ? section.programId : (dto.programId ?? current.programId);
+
       if (sectionId !== current.sectionId || subjectId !== current.subjectId || semesterId !== current.semesterId) {
-        const conflict = await tx.teachingAssignment.findUnique({
-          where: { sectionId_subjectId_semesterId: { sectionId, subjectId, semesterId } },
-        });
+        const conflict = sectionId
+          ? await tx.teachingAssignment.findUnique({
+              where: { sectionId_subjectId_semesterId: { sectionId, subjectId, semesterId } },
+            })
+          : await tx.teachingAssignment.findFirst({
+              where: { sectionId: null, programId, subjectId, semesterId },
+            });
         if (conflict && conflict.id !== id) {
-          throw new ConflictException("This section already has a teacher assigned for this subject and semester");
+          throw new ConflictException(
+            sectionId
+              ? "This section already has a teacher assigned for this subject and semester"
+              : "This program already has a teacher assigned for this subject and semester",
+          );
         }
       }
 
       return tx.teachingAssignment.update({
         where: { id },
-        data: { employeeId: dto.employeeId, subjectId: dto.subjectId, sectionId: dto.sectionId, semesterId: dto.semesterId },
-        include: { employee: true, subject: true, section: true, semester: true },
+        data: {
+          employeeId: dto.employeeId,
+          subjectId: dto.subjectId,
+          sectionId: dto.sectionId,
+          programId,
+          semesterId: dto.semesterId,
+        },
+        include: { employee: true, subject: true, section: true, program: true, semester: true },
       });
     });
   }
@@ -250,7 +296,7 @@ export class TimetableService {
           period: true,
           section: true,
           teacher: true,
-          teachingAssignment: { include: { subject: true } },
+          teachingAssignment: { include: { subject: true, program: true } },
         },
         orderBy: [{ dayOfWeek: "asc" }, { period: { sequence: "asc" } }],
       }),
@@ -268,21 +314,39 @@ export class TimetableService {
       if (!room) throw new NotFoundException("Room not found");
       if (!period) throw new NotFoundException("Period not found");
 
-      const { semesterId, sectionId, employeeId: teacherId } = teachingAssignment;
+      const { semesterId, sectionId, programId, employeeId: teacherId } = teachingAssignment;
 
+      // The section-slot check is keyed on programId instead when
+      // there's no section — a section-less program's one cohort
+      // still can't be double-booked, it's just not expressible as
+      // "the same section" when there isn't one.
       const [roomConflict, sectionConflict, teacherConflict] = await Promise.all([
         tx.classSchedule.findFirst({
           where: { semesterId, roomId: dto.roomId, dayOfWeek: dto.dayOfWeek, periodId: dto.periodId },
         }),
-        tx.classSchedule.findFirst({
-          where: { semesterId, sectionId, dayOfWeek: dto.dayOfWeek, periodId: dto.periodId },
-        }),
+        sectionId
+          ? tx.classSchedule.findFirst({
+              where: { semesterId, sectionId, dayOfWeek: dto.dayOfWeek, periodId: dto.periodId },
+            })
+          : tx.classSchedule.findFirst({
+              where: {
+                semesterId,
+                sectionId: null,
+                dayOfWeek: dto.dayOfWeek,
+                periodId: dto.periodId,
+                teachingAssignment: { programId },
+              },
+            }),
         tx.classSchedule.findFirst({
           where: { semesterId, teacherId, dayOfWeek: dto.dayOfWeek, periodId: dto.periodId },
         }),
       ]);
       if (roomConflict) throw new ConflictException("Room is already booked for this day and period");
-      if (sectionConflict) throw new ConflictException("Section already has a class in this day and period");
+      if (sectionConflict) {
+        throw new ConflictException(
+          sectionId ? "Section already has a class in this day and period" : "Program already has a class in this day and period",
+        );
+      }
       if (teacherConflict) throw new ConflictException("Teacher is already teaching another class in this day and period");
 
       return tx.classSchedule.create({
@@ -326,19 +390,25 @@ export class TimetableService {
       if (dto.roomId && !room) throw new NotFoundException("Room not found");
       if (dto.periodId && !period) throw new NotFoundException("Period not found");
 
-      const { semesterId, sectionId, employeeId: teacherId } = teachingAssignment;
+      const { semesterId, sectionId, programId, employeeId: teacherId } = teachingAssignment;
       const roomId = dto.roomId ?? current.roomId;
       const periodId = dto.periodId ?? current.periodId;
       const dayOfWeek = dto.dayOfWeek ?? current.dayOfWeek;
 
       const [roomConflict, sectionConflict, teacherConflict] = await Promise.all([
         tx.classSchedule.findFirst({ where: { semesterId, roomId, dayOfWeek, periodId } }),
-        tx.classSchedule.findFirst({ where: { semesterId, sectionId, dayOfWeek, periodId } }),
+        sectionId
+          ? tx.classSchedule.findFirst({ where: { semesterId, sectionId, dayOfWeek, periodId } })
+          : tx.classSchedule.findFirst({
+              where: { semesterId, sectionId: null, dayOfWeek, periodId, teachingAssignment: { programId } },
+            }),
         tx.classSchedule.findFirst({ where: { semesterId, teacherId, dayOfWeek, periodId } }),
       ]);
       if (roomConflict && roomConflict.id !== id) throw new ConflictException("Room is already booked for this day and period");
       if (sectionConflict && sectionConflict.id !== id) {
-        throw new ConflictException("Section already has a class in this day and period");
+        throw new ConflictException(
+          sectionId ? "Section already has a class in this day and period" : "Program already has a class in this day and period",
+        );
       }
       if (teacherConflict && teacherConflict.id !== id) {
         throw new ConflictException("Teacher is already teaching another class in this day and period");

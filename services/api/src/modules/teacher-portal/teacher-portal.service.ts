@@ -582,8 +582,11 @@ export class TeacherPortalService {
     const employee = await this.getOwnEmployee(organizationId, userId);
     return this.prisma.withTenant(organizationId, async (tx) => {
       const ta = await this.assertOwnsTeachingAssignment(tx, employee.id, teachingAssignmentId);
+      // Scoped by programId too, not just sectionId+semesterId —
+      // sectionId is optional, and without programId two different
+      // section-less programs would otherwise look like one cohort.
       const enrollments = await tx.studentEnrollment.findMany({
-        where: { organizationId, sectionId: ta.sectionId, semesterId: ta.semesterId, status: "ACTIVE" },
+        where: { organizationId, programId: ta.programId, sectionId: ta.sectionId, semesterId: ta.semesterId, status: "ACTIVE" },
         include: { student: true },
         orderBy: { student: { firstName: "asc" } },
       });

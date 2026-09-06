@@ -91,10 +91,10 @@ export class AdmissionsService {
 
     return this.prisma.withTenant(organizationId, async (tx) => {
       const [section, semester] = await Promise.all([
-        tx.section.findUnique({ where: { id: dto.sectionId } }),
+        dto.sectionId ? tx.section.findUnique({ where: { id: dto.sectionId } }) : null,
         tx.semester.findUnique({ where: { id: dto.semesterId } }),
       ]);
-      if (!section) throw new NotFoundException("Section not found");
+      if (dto.sectionId && !section) throw new NotFoundException("Section not found");
       if (!semester) throw new NotFoundException("Semester not found");
 
       // Same generated-code rule and collision-retry as the direct

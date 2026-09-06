@@ -43,8 +43,11 @@ export class NotificationsService {
       const ta = await tx.teachingAssignment.findUnique({ where: { id: teachingAssignmentId } });
       if (!ta) return;
 
+      // Scoped by programId too, not just sectionId+semesterId —
+      // sectionId is optional, and without programId two different
+      // section-less programs would otherwise look like one cohort.
       const enrollments = await tx.studentEnrollment.findMany({
-        where: { organizationId, sectionId: ta.sectionId, semesterId: ta.semesterId, status: "ACTIVE" },
+        where: { organizationId, programId: ta.programId, sectionId: ta.sectionId, semesterId: ta.semesterId, status: "ACTIVE" },
         include: { student: true },
       });
       const recipientUserIds = [...new Set(enrollments.map((e) => e.student.userId).filter((id): id is string => !!id))].filter(

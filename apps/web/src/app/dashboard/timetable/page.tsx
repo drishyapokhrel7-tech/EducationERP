@@ -32,6 +32,7 @@ export default function TimetablePage() {
   // performance-optimization slice).
   const employees = useSWR("employees-picker", () => api.listEmployeesPicker());
   const subjects = useSWR("subjects", () => api.listSubjects());
+  const programs = useSWR("programs", () => api.listPrograms());
   const sections = useSWR("sections", () => api.listSections());
   const semesters = useSWR("semesters", () => api.listSemesters());
   const rooms = useSWR("rooms", () => api.listRooms());
@@ -54,6 +55,10 @@ export default function TimetablePage() {
     employeeId: "",
     subjectId: "",
     sectionId: "",
+    // Only required/sent when sectionId is left blank — a section,
+    // when chosen, is authoritative for which program the assignment
+    // belongs to.
+    programId: "",
     semesterId: "",
   });
   const [scheduleForm, setScheduleForm] = useState({
@@ -67,6 +72,7 @@ export default function TimetablePage() {
     employeeId: "",
     subjectId: "",
     sectionId: "",
+    programId: "",
     semesterId: "",
   });
   const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
@@ -486,17 +492,20 @@ export default function TimetablePage() {
           id: string;
           employeeId: string;
           subjectId: string;
-          sectionId: string;
+          sectionId: string | null;
+          programId: string;
           semesterId: string;
           employee: { firstName: string; lastName: string };
           subject: { name: string };
-          section: { name: string };
+          section: { name: string } | null;
+          program: { name: string };
           semester: { name: string };
         }) => (
           <div className="flex items-center justify-between gap-2">
             <span>
               {a.employee.firstName} {a.employee.lastName} teaches {a.subject.name} to{" "}
-              {a.section.name} <span className="text-muted-foreground">({a.semester.name})</span>
+              {a.section ? a.section.name : a.program.name}{" "}
+              <span className="text-muted-foreground">({a.semester.name})</span>
             </span>
             <div className="flex items-center gap-2">
               <Button
@@ -508,7 +517,8 @@ export default function TimetablePage() {
                   setEditAssignmentForm({
                     employeeId: a.employeeId,
                     subjectId: a.subjectId,
-                    sectionId: a.sectionId,
+                    sectionId: a.sectionId ?? "",
+                    programId: a.programId,
                     semesterId: a.semesterId,
                   });
                 }}
@@ -533,7 +543,12 @@ export default function TimetablePage() {
               onSubmit={(e: FormEvent) => {
                 e.preventDefault();
                 submitAction(
-                  () => api.updateTeachingAssignment(editingAssignmentId, editAssignmentForm),
+                  () =>
+                    api.updateTeachingAssignment(editingAssignmentId, {
+                      ...editAssignmentForm,
+                      sectionId: editAssignmentForm.sectionId || undefined,
+                      programId: editAssignmentForm.sectionId ? undefined : editAssignmentForm.programId || undefined,
+                    }),
                   () => {
                     setEditingAssignmentId(null);
                     teachingAssignments.mutate();
@@ -562,15 +577,29 @@ export default function TimetablePage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label className="text-xs">Section</Label>
+                <Label className="text-xs">Section (optional)</Label>
                 <NativeSelect
                   className="w-36"
-                  placeholder="Select section"
+                  placeholder="None"
                   value={editAssignmentForm.sectionId}
-                  onChange={(v) => setEditAssignmentForm((f) => ({ ...f, sectionId: v }))}
+                  onChange={(v) =>
+                    setEditAssignmentForm((f) => ({ ...f, sectionId: v, programId: v ? "" : f.programId }))
+                  }
                   options={(sections.data ?? []).map((s) => ({ value: s.id, label: s.name }))}
                 />
               </div>
+              {!editAssignmentForm.sectionId ? (
+                <div className="space-y-2">
+                  <Label className="text-xs">Program</Label>
+                  <NativeSelect
+                    className="w-36"
+                    placeholder="Select program"
+                    value={editAssignmentForm.programId}
+                    onChange={(v) => setEditAssignmentForm((f) => ({ ...f, programId: v }))}
+                    options={(programs.data ?? []).map((p) => ({ value: p.id, label: p.name }))}
+                  />
+                </div>
+              ) : null}
               <div className="space-y-2">
                 <Label className="text-xs">Semester</Label>
                 <NativeSelect
@@ -596,9 +625,14 @@ export default function TimetablePage() {
           onSubmit={(e: FormEvent) => {
             e.preventDefault();
             submitAction(
-              () => api.createTeachingAssignment(assignmentForm),
+              () =>
+                api.createTeachingAssignment({
+                  ...assignmentForm,
+                  sectionId: assignmentForm.sectionId || undefined,
+                  programId: assignmentForm.sectionId ? undefined : assignmentForm.programId || undefined,
+                }),
               () => {
-                setAssignmentForm({ employeeId: "", subjectId: "", sectionId: "", semesterId: "" });
+                setAssignmentForm({ employeeId: "", subjectId: "", sectionId: "", programId: "", semesterId: "" });
                 teachingAssignments.mutate();
               },
             );
@@ -628,15 +662,27 @@ export default function TimetablePage() {
             />
           </div>
           <div className="space-y-2">
-            <Label>Section</Label>
+            <Label>Section (optional)</Label>
             <NativeSelect
               className="w-36"
-              placeholder="Select section"
+              placeholder="None"
               value={assignmentForm.sectionId}
-              onChange={(v) => setAssignmentForm((f) => ({ ...f, sectionId: v }))}
+              onChange={(v) => setAssignmentForm((f) => ({ ...f, sectionId: v, programId: v ? "" : f.programId }))}
               options={(sections.data ?? []).map((s) => ({ value: s.id, label: s.name }))}
             />
           </div>
+          {!assignmentForm.sectionId ? (
+            <div className="space-y-2">
+              <Label>Program</Label>
+              <NativeSelect
+                className="w-36"
+                placeholder="Select program"
+                value={assignmentForm.programId}
+                onChange={(v) => setAssignmentForm((f) => ({ ...f, programId: v }))}
+                options={(programs.data ?? []).map((p) => ({ value: p.id, label: p.name }))}
+              />
+            </div>
+          ) : null}
           <div className="space-y-2">
             <Label>Semester</Label>
             <NativeSelect
@@ -652,8 +698,8 @@ export default function TimetablePage() {
             disabled={
               !assignmentForm.employeeId ||
               !assignmentForm.subjectId ||
-              !assignmentForm.sectionId ||
-              !assignmentForm.semesterId
+              !assignmentForm.semesterId ||
+              (!assignmentForm.sectionId && !assignmentForm.programId)
             }
           >
             Add
@@ -667,22 +713,23 @@ export default function TimetablePage() {
         items={classSchedules.data}
         renderItem={(c: {
           id: string;
-          sectionId: string;
+          sectionId: string | null;
           roomId: string;
           periodId: string;
           teachingAssignmentId: string;
           dayOfWeek: number;
           period: { name: string; startTime: string; endTime: string };
           room: { name: string };
-          section: { name: string };
+          section: { name: string } | null;
           teacher: { firstName: string; lastName: string };
-          teachingAssignment: { subject: { name: string } };
+          teachingAssignment: { subject: { name: string }; program: { name: string } };
         }) => (
           <div className="flex items-center justify-between gap-2">
             <span>
               {DAYS.find((d) => d.value === c.dayOfWeek)?.label} · {c.period.name} (
               {c.period.startTime}–{c.period.endTime}) — {c.teachingAssignment.subject.name} for{" "}
-              {c.section.name} with {c.teacher.firstName} {c.teacher.lastName} in {c.room.name}
+              {c.section ? c.section.name : c.teachingAssignment.program.name} with {c.teacher.firstName}{" "}
+              {c.teacher.lastName} in {c.room.name}
             </span>
             <div className="flex items-center gap-2">
               <Button
@@ -742,7 +789,7 @@ export default function TimetablePage() {
                   onChange={(v) => setEditScheduleForm((f) => ({ ...f, teachingAssignmentId: v }))}
                   options={(teachingAssignments.data ?? []).map((a) => ({
                     value: a.id,
-                    label: `${a.subject.name} · ${a.section.name} · ${a.employee.firstName} ${a.employee.lastName}`,
+                    label: `${a.subject.name} · ${a.section ? a.section.name : a.program.name} · ${a.employee.firstName} ${a.employee.lastName}`,
                   }))}
                 />
               </div>
@@ -900,7 +947,7 @@ export default function TimetablePage() {
               onChange={(v) => setScheduleForm((f) => ({ ...f, teachingAssignmentId: v }))}
               options={(teachingAssignments.data ?? []).map((a) => ({
                 value: a.id,
-                label: `${a.subject.name} · ${a.section.name} · ${a.employee.firstName} ${a.employee.lastName}`,
+                label: `${a.subject.name} · ${a.section ? a.section.name : a.program.name} · ${a.employee.firstName} ${a.employee.lastName}`,
               }))}
             />
           </div>

@@ -66,8 +66,18 @@ export class DashboardsService {
 
     const fetchWeeklyTimetable = async (): Promise<unknown[]> => {
       if (!activeEnrollment) return [];
+      // Scoped by programId too (via the teachingAssignment relation,
+      // since ClassSchedule has no programId column of its own) —
+      // sectionId is optional, and without program-scoping two
+      // different section-less programs would otherwise look like the
+      // same timetable here.
       return tx.classSchedule.findMany({
-        where: { organizationId, sectionId: activeEnrollment.sectionId, semesterId: activeEnrollment.semesterId },
+        where: {
+          organizationId,
+          sectionId: activeEnrollment.sectionId,
+          semesterId: activeEnrollment.semesterId,
+          teachingAssignment: { programId: activeEnrollment.programId },
+        },
         include: { period: true, room: true, teachingAssignment: { include: { subject: true, employee: true } } },
         orderBy: [{ dayOfWeek: "asc" }, { period: { sequence: "asc" } }],
       });

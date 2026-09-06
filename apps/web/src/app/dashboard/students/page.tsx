@@ -860,14 +860,14 @@ export default function StudentsPage() {
           status: EnrollmentStatus;
           student: { firstName: string; lastName: string; studentCode: string };
           program: { name: string };
-          section: { name: string };
+          section: { name: string } | null;
           semester: { name: string };
         }) => (
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span>
               {en.student.firstName} {en.student.lastName}{" "}
-              <span className="text-muted-foreground">({en.student.studentCode})</span> — {en.program.name} ·{" "}
-              {en.section.name} · {en.semester.name}
+              <span className="text-muted-foreground">({en.student.studentCode})</span> — {en.program.name}
+              {en.section ? ` · ${en.section.name}` : ""} · {en.semester.name}
             </span>
             <div className="flex items-center gap-2">
               <Badge variant={statusVariant(en.status)}>{en.status}</Badge>
@@ -977,7 +977,7 @@ export default function StudentsPage() {
               () =>
                 api.createEnrollment(enrollForm.studentId, {
                   programId: enrollForm.programId,
-                  sectionId: enrollForm.sectionId,
+                  sectionId: enrollForm.sectionId || undefined,
                   semesterId: enrollForm.semesterId,
                   enrollmentDate: enrollForm.enrollmentDate,
                 }),
@@ -1022,10 +1022,10 @@ export default function StudentsPage() {
             />
           </div>
           <div className="space-y-2">
-            <Label>Section</Label>
+            <Label>Section (optional)</Label>
             <NativeSelect
               className="w-40"
-              placeholder="Select section"
+              placeholder="None"
               value={enrollForm.sectionId}
               onChange={(v) => setEnrollForm((f) => ({ ...f, sectionId: v }))}
               // Filtered by the chosen Program/Semester above — previously
@@ -1051,9 +1051,7 @@ export default function StudentsPage() {
           </div>
           <Button
             type="submit"
-            disabled={
-              !enrollForm.studentId || !enrollForm.programId || !enrollForm.sectionId || !enrollForm.semesterId
-            }
+            disabled={!enrollForm.studentId || !enrollForm.programId || !enrollForm.semesterId}
           >
             Enroll
           </Button>

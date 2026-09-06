@@ -121,7 +121,7 @@ export default function AttendancePage() {
               onChange={(v) => setSessionForm((f) => ({ ...f, classScheduleId: v }))}
               options={(classSchedules.data ?? []).map((c) => ({
                 value: c.id,
-                label: `${DAYS[c.dayOfWeek]} ${c.period.name} · ${c.teachingAssignment.subject.name} · ${c.section.name}`,
+                label: `${DAYS[c.dayOfWeek]} ${c.period.name} · ${c.teachingAssignment.subject.name} · ${c.section ? c.section.name : c.teachingAssignment.program.name}`,
               }))}
             />
           </div>
@@ -148,7 +148,9 @@ export default function AttendancePage() {
               {activeSession.data ? (
                 <span className="text-muted-foreground ml-2 text-sm font-normal">
                   {new Date(activeSession.data.date).toLocaleDateString()} ·{" "}
-                  {activeSession.data.section.name}
+                  {activeSession.data.section
+                    ? activeSession.data.section.name
+                    : activeSession.data.classSchedule.teachingAssignment.program.name}
                 </span>
               ) : null}
             </CardTitle>

@@ -117,8 +117,19 @@ export class AttendanceReconciliationService {
 
     const dayOfWeek = isoWeekday(capturedAt);
     const time = toHms(capturedAt);
+    // Scoped by programId (via the teachingAssignment relation, since
+    // ClassSchedule has no programId column of its own) too, not just
+    // sectionId+semesterId — sectionId is optional, and without
+    // program-scoping two different section-less programs running the
+    // same semester/day would otherwise look like the same class here.
     const candidates = await tx.classSchedule.findMany({
-      where: { organizationId, sectionId: enrollment.sectionId, semesterId: enrollment.semesterId, dayOfWeek },
+      where: {
+        organizationId,
+        sectionId: enrollment.sectionId,
+        semesterId: enrollment.semesterId,
+        dayOfWeek,
+        teachingAssignment: { programId: enrollment.programId },
+      },
       include: { period: true },
     });
     const classSchedule = candidates.find((c) => c.period.startTime <= time && time <= c.period.endTime);
