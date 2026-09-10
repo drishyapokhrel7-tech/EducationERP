@@ -17,3 +17,8 @@ __pycache__/
 .venv/
 .vercel
 .env*
+
+# Platform Insights export dumps (services/api/prisma/export-insights-
+# snapshot.ts) — a local, real-data export artifact for the owner-
+# facing Electron app, never source, never meant to be committed.
+insights-snapshot-*.json
