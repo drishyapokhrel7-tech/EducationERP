@@ -1,5 +1,25 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
-import { PrismaClient } from "@prisma/client";
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
+import { Prisma, PrismaClient } from "@prisma/client";
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+// This project's Neon endpoint has well-documented ambient flakiness:
+// P2028 ("unable to start a transaction in the given time"), P1001
+// ("can't reach database server") and P2024 ("timed out fetching a
+// connection from the pool") all show up transiently and clear on a
+// retry a few hundred ms later — see the withP2028Retry helpers that
+// grew up ad hoc in finance.service / platform-organizations.service.
+// Centralising the retry in withTenant covers every tenant-scoped
+// read and write at once instead of per-call-site. A withTenant body
+// is a single atomic $transaction: if it throws it never committed,
+// so replaying it is safe.
+const RETRYABLE_CODES = new Set(["P2028", "P1001", "P2024", "P2034"]);
+function isTransientDbError(err: unknown): boolean {
+  if (err instanceof Prisma.PrismaClientKnownRequestError && RETRYABLE_CODES.has(err.code)) return true;
+  if (err instanceof Prisma.PrismaClientInitializationError) return true;
+  const msg = err instanceof Error ? err.message : "";
+  return /transaction already closed|unable to start a transaction|connection pool|Can't reach database/i.test(msg);
+}
 
 // Prisma's own default connection_limit, when a connection string
 // doesn't set one explicitly, is `num_physical_cpus * 2 + 1` — on a
@@ -27,6 +47,8 @@ function withConnectionLimit(url: string | undefined, limit: number): string | u
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(PrismaService.name);
+
   constructor() {
     // Runtime traffic connects as app_runtime (no BYPASSRLS) so the RLS
     // policies in migration 20260817234200 are real enforcement, not a
@@ -51,6 +73,23 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
    * outside this wrapper.
    */
   async withTenant<T>(organizationId: string, fn: (tx: PrismaClient) => Promise<T>): Promise<T> {
+    const MAX_ATTEMPTS = 3;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await this.runTenantTransaction(organizationId, fn);
+      } catch (err) {
+        if (attempt >= MAX_ATTEMPTS || !isTransientDbError(err)) throw err;
+        this.logger.warn(
+          `withTenant transient DB error (attempt ${attempt}/${MAX_ATTEMPTS}), retrying: ${
+            err instanceof Error ? err.message.split("\n")[0] : String(err)
+          }`,
+        );
+        await sleep(200 * attempt);
+      }
+    }
+  }
+
+  private runTenantTransaction<T>(organizationId: string, fn: (tx: PrismaClient) => Promise<T>): Promise<T> {
     return this.$transaction(
       async (tx) => {
         await tx.$executeRawUnsafe(

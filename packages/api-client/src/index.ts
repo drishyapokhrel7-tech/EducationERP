@@ -445,9 +445,57 @@ function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number = RE
 export interface ApiClientOptions {
   baseUrl: string;
   getAccessToken?: () => string | null | undefined;
+  // Silent access-token renewal: when a request comes back 401 and
+  // these are supplied, the client posts the refresh token to
+  // /auth/refresh once, hands the fresh token set to
+  // onTokensRefreshed, and replays the original request — so a
+  // 15-minute access-token expiry mid-session no longer surfaces as a
+  // hard 401 (and, with the dashboard error boundary, a blank page).
+  // Concurrent 401s share a single refresh. If the refresh itself
+  // fails, onAuthLost fires and the original 401 propagates.
+  getRefreshToken?: () => string | null | undefined;
+  onTokensRefreshed?: (tokens: AuthTokens) => void;
+  onAuthLost?: () => void;
 }
 
-export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
+export function createApiClient({
+  baseUrl,
+  getAccessToken,
+  getRefreshToken,
+  onTokensRefreshed,
+  onAuthLost,
+}: ApiClientOptions) {
+  let refreshInFlight: Promise<string | null> | null = null;
+
+  async function tryRefresh(): Promise<string | null> {
+    if (!getRefreshToken || !onTokensRefreshed) return null;
+    const refreshToken = getRefreshToken();
+    if (!refreshToken) return null;
+    if (!refreshInFlight) {
+      refreshInFlight = (async () => {
+        try {
+          const res = await fetchWithTimeout(`${baseUrl}/auth/refresh`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ refreshToken }),
+          });
+          if (!res.ok) {
+            onAuthLost?.();
+            return null;
+          }
+          const tokens = (await res.json()) as AuthTokens;
+          onTokensRefreshed(tokens);
+          return tokens.accessToken;
+        } catch {
+          return null;
+        } finally {
+          refreshInFlight = null;
+        }
+      })();
+    }
+    return refreshInFlight;
+  }
+
   // timeoutMs is a rare per-call override, not a general knob — only
   // for the handful of calls known to scale with real data volume
   // rather than being a fixed-cost request (platformListOrganizations
@@ -455,7 +503,7 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
   // own comment explains why it scans every org sequentially rather
   // than in parallel, so its real-world duration grows with however
   // many orgs this environment has accumulated).
-  async function request<T>(path: string, init: RequestInit = {}, timeoutMs?: number): Promise<T> {
+  async function request<T>(path: string, init: RequestInit = {}, timeoutMs?: number, allowRefresh = true): Promise<T> {
     const token = getAccessToken?.();
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -466,6 +514,10 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
     }
 
     const res = await fetchWithTimeout(`${baseUrl}${path}`, { ...init, headers }, timeoutMs);
+    if (res.status === 401 && allowRefresh && !path.startsWith("/auth/")) {
+      const fresh = await tryRefresh();
+      if (fresh) return request<T>(path, init, timeoutMs, false);
+    }
     const body = res.status === 204 ? undefined : await res.json().catch(() => undefined);
     if (!res.ok) {
       throw new ApiError(res.status, body);
@@ -476,11 +528,15 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
   // Multipart upload: no Content-Type set manually — the browser adds
   // the multipart boundary itself when the body is a FormData instance,
   // and setting it by hand breaks that.
-  async function requestForm<T>(path: string, form: FormData): Promise<T> {
+  async function requestForm<T>(path: string, form: FormData, allowRefresh = true): Promise<T> {
     const token = getAccessToken?.();
     const headers: Record<string, string> = {};
     if (token) headers.Authorization = `Bearer ${token}`;
     const res = await fetchWithTimeout(`${baseUrl}${path}`, { method: "POST", body: form, headers });
+    if (res.status === 401 && allowRefresh) {
+      const fresh = await tryRefresh();
+      if (fresh) return requestForm<T>(path, form, false);
+    }
     const body = await res.json().catch(() => undefined);
     if (!res.ok) throw new ApiError(res.status, body);
     return body as T;
@@ -498,11 +554,15 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
 
   // The response is a raw CSV file, not JSON — fetched as a Blob so the
   // caller can trigger a normal browser download.
-  async function requestBlob(path: string): Promise<Blob> {
+  async function requestBlob(path: string, allowRefresh = true): Promise<Blob> {
     const token = getAccessToken?.();
     const headers: Record<string, string> = {};
     if (token) headers.Authorization = `Bearer ${token}`;
     const res = await fetchWithTimeout(`${baseUrl}${path}`, { headers });
+    if (res.status === 401 && allowRefresh && !path.startsWith("/auth/")) {
+      const fresh = await tryRefresh();
+      if (fresh) return requestBlob(path, false);
+    }
     if (!res.ok) {
       const body = await res.json().catch(() => undefined);
       throw new ApiError(res.status, body);

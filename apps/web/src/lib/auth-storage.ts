@@ -27,6 +27,19 @@ export function getAccessToken(): string | null {
   return getStoredSession()?.tokens.accessToken ?? null;
 }
 
+export function getRefreshToken(): string | null {
+  return getStoredSession()?.tokens.refreshToken ?? null;
+}
+
+// Called by the api-client after a silent /auth/refresh — the refresh
+// token is rotated server-side, so persist the whole new token set,
+// keeping the existing user.
+export function applyRefreshedTokens(tokens: AuthTokens) {
+  const current = getStoredSession();
+  if (!current) return;
+  setStoredSession({ ...current, tokens });
+}
+
 // useSyncExternalStore plumbing: localStorage is external state, so
 // React reads it through a cached snapshot + subscription rather than
 // a useEffect-triggered setState (which the react-hooks lint rule
