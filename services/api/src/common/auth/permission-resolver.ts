@@ -1,5 +1,8 @@
 import { Injectable } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 // Resolves a user's effective `resource:action` permission set from
 // their roles, with a short in-memory cache.
@@ -43,10 +46,27 @@ export class PermissionResolver {
   }
 
   private async load(userId: string): Promise<Set<string>> {
-    const userRoles = await this.prisma.userRole.findMany({
-      where: { userId },
-      include: { role: { include: { rolePermissions: { include: { permission: true } } } } },
-    });
+    // This query is now on the auth hot path (every permission-gated
+    // request whose cache entry has expired), so it gets the same
+    // transient-error tolerance as PrismaService.withTenant — a
+    // flaky-Neon blip here would otherwise 500 an otherwise-valid
+    // request.
+    let userRoles;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        userRoles = await this.prisma.userRole.findMany({
+          where: { userId },
+          include: { role: { include: { rolePermissions: { include: { permission: true } } } } },
+        });
+        break;
+      } catch (err) {
+        const transient =
+          (err instanceof Prisma.PrismaClientKnownRequestError && ["P1001", "P2024", "P2028"].includes(err.code)) ||
+          err instanceof Prisma.PrismaClientInitializationError;
+        if (attempt >= 3 || !transient) throw err;
+        await sleep(200 * attempt);
+      }
+    }
     const perms = new Set<string>();
     for (const userRole of userRoles) {
       for (const rolePermission of userRole.role.rolePermissions) {
