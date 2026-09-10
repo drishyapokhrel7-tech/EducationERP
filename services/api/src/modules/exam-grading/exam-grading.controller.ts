@@ -1,5 +1,7 @@
-import { Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
+import { Controller, Get, Param, Post, Res, UseGuards } from "@nestjs/common";
+import type { Response } from "express";
 import { ExamGradingService } from "./exam-grading.service";
+import { buildReportCardPdf } from "./report-card-document";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
@@ -35,5 +37,23 @@ export class ExamGradingController {
     @Param("studentId") studentId: string,
   ) {
     return this.examGrading.getReportCard(user.organizationId, examId, studentId);
+  }
+
+  // Printable report card — org letterhead, per-subject marks/grades
+  // table, totals + overall grade/GPA, teacher remarks. @Res() because
+  // a Buffer return is corrupted by Nest's JSON serializer.
+  @Get("exams/:examId/students/:studentId/report-card/pdf")
+  @RequirePermissions("report_card:view")
+  async getReportCardPdf(
+    @CurrentUser() user: JwtPayload,
+    @Param("examId") examId: string,
+    @Param("studentId") studentId: string,
+    @Res() res: Response,
+  ) {
+    const data = await this.examGrading.getReportCardDocument(user.organizationId, examId, studentId);
+    const pdf = await buildReportCardPdf(data.org, data);
+    res.set("Content-Type", "application/pdf");
+    res.set("Content-Disposition", `inline; filename="report-card-${data.student.studentCode}.pdf"`);
+    res.send(pdf);
   }
 }

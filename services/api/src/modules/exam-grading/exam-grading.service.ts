@@ -103,4 +103,37 @@ export class ExamGradingService {
       return { ...reportCard, subjects: attempts.filter((a) => a.marks && a.grade) };
     });
   }
+
+  // The org letterhead + student + exam name + the report-card graph,
+  // for the printable PDF. Letterhead read outside withTenant, same as
+  // FinanceService.getInvoiceDocument.
+  async getReportCardDocument(organizationId: string, examId: string, studentId: string) {
+    const [org, base] = await Promise.all([
+      this.prisma.organization.findUniqueOrThrow({
+        where: { id: organizationId },
+        select: { name: true, address: true, phone: true, email: true, website: true, logoUrl: true },
+      }),
+      this.prisma.withTenant(organizationId, async (tx) => {
+        const reportCard = await tx.reportCard.findUnique({
+          where: { examId_studentId: { examId, studentId } },
+          include: { exam: { select: { name: true } } },
+        });
+        if (!reportCard) throw new NotFoundException("Report card not found");
+        const student = await tx.student.findUniqueOrThrow({
+          where: { id: studentId },
+          select: { firstName: true, lastName: true, studentCode: true },
+        });
+        const attempts = await tx.examAttempt.findMany({
+          where: { organizationId, studentId, examSubject: { examId } },
+          include: {
+            examSubject: { include: { curriculumSubject: { include: { subject: true } } } },
+            marks: true,
+            grade: true,
+          },
+        });
+        return { reportCard, student, subjects: attempts.filter((a) => a.marks && a.grade) };
+      }),
+    ]);
+    return { org, ...base };
+  }
 }

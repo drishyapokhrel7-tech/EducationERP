@@ -13,6 +13,7 @@ import { PersonPicker, studentToPersonOption } from "@/components/person-picker"
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
+import { downloadBlob } from "@/lib/download";
 import { useHighlightFromSearch } from "@/lib/use-highlight-from-search";
 import type { AttendanceStatus, StudentPicker } from "@education-erp/api-client";
 
@@ -221,17 +222,33 @@ function ReportCardSection({ examId, students }: { examId: string; students: Stu
             />
           </div>
           {studentId ? (
-            <Button
-              type="button"
-              onClick={() =>
-                submitAction(
-                  () => api.generateReportCard(examId, studentId),
-                  () => reportCard.mutate(),
-                )
-              }
-            >
-              {reportCard.data ? "Regenerate" : "Generate"} report card
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                onClick={() =>
+                  submitAction(
+                    () => api.generateReportCard(examId, studentId),
+                    () => reportCard.mutate(),
+                  )
+                }
+              >
+                {reportCard.data ? "Regenerate" : "Generate"} report card
+              </Button>
+              {reportCard.data ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() =>
+                    downloadBlob(
+                      () => api.getReportCardPdf(examId, studentId),
+                      `report-card-${studentId}.pdf`,
+                    )
+                  }
+                >
+                  Download PDF
+                </Button>
+              ) : null}
+            </div>
           ) : null}
         </div>
 

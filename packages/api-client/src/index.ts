@@ -1148,6 +1148,10 @@ export function createApiClient({
       }),
     getReportCard: (examId: string, studentId: string) =>
       request<ReportCard>(`/organizations/me/exams/${examId}/students/${studentId}/report-card`),
+    // Formatted PDF (org letterhead + per-subject table + totals) — a
+    // Blob, for download or inline browser print.
+    getReportCardPdf: (examId: string, studentId: string) =>
+      requestBlob(`/organizations/me/exams/${examId}/students/${studentId}/report-card/pdf`),
 
     // No studentId param — the server derives it from the caller's own
     // linked Student row. See StudentPortalService.
