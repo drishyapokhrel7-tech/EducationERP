@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
+import { PersonPicker, employeeToPersonOption } from "@/components/person-picker";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
@@ -243,12 +244,12 @@ export default function LeavePage() {
           <CardTitle>Balances</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <NativeSelect
+          <PersonPicker
             className="w-56"
             placeholder="Select employee"
             value={balanceEmployeeId}
             onChange={setBalanceEmployeeId}
-            options={(employees.data ?? []).map((e) => ({ value: e.id, label: `${e.firstName} ${e.lastName} (${e.employeeCode})` }))}
+            options={(employees.data ?? []).map(employeeToPersonOption)}
           />
           {balanceEmployeeId ? (
             <>
@@ -413,12 +414,12 @@ export default function LeavePage() {
           >
             <div className="space-y-1">
               <Label className="text-xs">Employee</Label>
-              <NativeSelect
-                className="w-48"
+              <PersonPicker
+                className="w-56"
                 placeholder="Select employee"
                 value={requestForm.employeeId}
                 onChange={(v) => setRequestForm((f) => ({ ...f, employeeId: v }))}
-                options={(employees.data ?? []).map((e) => ({ value: e.id, label: `${e.firstName} ${e.lastName} (${e.employeeCode})` }))}
+                options={(employees.data ?? []).map(employeeToPersonOption)}
               />
             </div>
             <div className="space-y-1">

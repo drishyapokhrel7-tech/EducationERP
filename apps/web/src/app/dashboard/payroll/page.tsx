@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
+import { PersonPicker, employeeToPersonOption } from "@/components/person-picker";
 import { Separator } from "@/components/ui/separator";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { api } from "@/lib/api";
@@ -254,12 +255,12 @@ export default function PayrollPage() {
             <p className="w-full text-sm font-medium">Assign to employee</p>
             <div className="space-y-1">
               <Label className="text-xs">Employee</Label>
-              <NativeSelect
+              <PersonPicker
                 className="w-56"
                 placeholder="Select employee"
                 value={assignEmployeeId}
                 onChange={setAssignEmployeeId}
-                options={(employees.data ?? []).map((e) => ({ value: e.id, label: `${e.firstName} ${e.lastName} (${e.employeeCode})` }))}
+                options={(employees.data ?? []).map(employeeToPersonOption)}
               />
             </div>
             <div className="space-y-1">

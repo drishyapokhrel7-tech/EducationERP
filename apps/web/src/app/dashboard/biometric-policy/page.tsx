@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { NativeSelect } from "@/components/ui/native-select";
+import { PersonPicker, studentToPersonOption, employeeToPersonOption } from "@/components/person-picker";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
 
@@ -204,19 +204,21 @@ export default function BiometricPolicyPage() {
           >
             <div className="space-y-2">
               <Label className="text-xs">Student or staff</Label>
-              <NativeSelect
-                className="w-56"
+              <PersonPicker
+                className="w-64"
                 placeholder="Select person"
                 value={enrollForm.personKey}
                 onChange={(v) => setEnrollForm((f) => ({ ...f, personKey: v }))}
                 options={[
                   ...(students.data ?? []).map((s) => ({
-                    value: `student:${s.id}`,
-                    label: `${s.firstName} ${s.lastName} (student)`,
+                    ...studentToPersonOption(s),
+                    id: `student:${s.id}`,
+                    detail: ["student", studentToPersonOption(s).detail].filter(Boolean).join(" · "),
                   })),
-                  ...(staff.data ?? []).map((s) => ({
-                    value: `staff:${s.id}`,
-                    label: `${s.firstName} ${s.lastName} (staff)`,
+                  ...(staff.data ?? []).map((e) => ({
+                    ...employeeToPersonOption(e),
+                    id: `staff:${e.id}`,
+                    detail: ["staff", employeeToPersonOption(e).detail].filter(Boolean).join(" · "),
                   })),
                 ]}
               />

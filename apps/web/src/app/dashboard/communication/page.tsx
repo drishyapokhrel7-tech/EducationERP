@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
+import { PersonPicker, employeeToPersonOption } from "@/components/person-picker";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -348,14 +349,14 @@ export default function CommunicationPage() {
             {messageForm.audience === "SPECIFIC_USER" ? (
               <div className="space-y-1">
                 <Label className="text-xs">Recipient (staff)</Label>
-                <NativeSelect
-                  className="w-40"
+                <PersonPicker
+                  className="w-56"
                   placeholder="Select employee"
                   value={messageForm.recipientUserId}
                   onChange={(v) => setMessageForm((f) => ({ ...f, recipientUserId: v }))}
                   options={(users.data ?? [])
                     .filter((u) => !!u.userId)
-                    .map((u) => ({ value: u.userId as string, label: `${u.firstName} ${u.lastName}` }))}
+                    .map((u) => ({ ...employeeToPersonOption(u), id: u.userId as string }))}
                 />
               </div>
             ) : null}

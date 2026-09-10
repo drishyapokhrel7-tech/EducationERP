@@ -172,12 +172,14 @@ export class StaffService {
 
   // Deliberately unbounded, deliberately narrow — same reasoning as
   // StudentsService.listStudentsPicker: every "pick a staff member"
-  // dropdown across the app needs the whole roster, not one page, but
-  // none of them need the joined staffType/designation/department
-  // rows. Phase 8 performance-optimization slice.
+  // dropdown across the app needs the whole roster, not one page.
+  // Carries photoUrl + designation/staff-type name so those dropdowns
+  // can render an avatar + identity line rather than a bare name;
+  // that's two lightweight name-only joins, not the full
+  // staffType/designation/department graph.
   listEmployeesPicker(organizationId: string) {
-    return this.prisma.withTenant(organizationId, (tx) =>
-      tx.employee.findMany({
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const employees = await tx.employee.findMany({
         where: { organizationId, deletedAt: null },
         select: {
           id: true,
@@ -187,10 +189,18 @@ export class StaffService {
           lastName: true,
           employeeCode: true,
           status: true,
+          photoUrl: true,
+          designation: { select: { name: true } },
+          staffType: { select: { name: true } },
         },
         orderBy: [{ firstName: "asc" }, { middleName: "asc" }, { lastName: "asc" }],
-      }),
-    );
+      });
+      return employees.map(({ designation, staffType, ...e }) => ({
+        ...e,
+        designationName: designation.name,
+        staffTypeName: staffType.name,
+      }));
+    });
   }
 
   // Paginated (Phase 8 performance-optimization slice) — same

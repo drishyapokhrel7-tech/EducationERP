@@ -9,6 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
+import { PersonPicker, studentToPersonOption } from "@/components/person-picker";
+import { Avatar } from "@/components/avatar";
 import { Separator } from "@/components/ui/separator";
 import { EntityCard } from "@/components/dashboard/entity-card";
 import { ListPager } from "@/components/dashboard/list-pager";
@@ -409,8 +411,8 @@ export default function FinancePage() {
                   <div className="flex flex-wrap items-end gap-2">
                     <div className="space-y-1">
                       <Label className="text-xs">Student</Label>
-                      <NativeSelect
-                        className="h-8 w-48"
+                      <PersonPicker
+                        className="w-56"
                         placeholder="Select student"
                         value={assignForm[s.id]?.studentId ?? ""}
                         onChange={(v) => {
@@ -418,10 +420,7 @@ export default function FinancePage() {
                           setSelectedEnrollmentId("");
                           if (v) api.listEnrollments(v).then(setStudentEnrollments);
                         }}
-                        options={(students.data ?? []).map((st) => ({
-                          value: st.id,
-                          label: `${st.firstName} ${st.lastName} (${st.studentCode})`,
-                        }))}
+                        options={(students.data ?? []).map(studentToPersonOption)}
                       />
                     </div>
                     <div className="space-y-1">
@@ -755,15 +754,12 @@ export default function FinancePage() {
           >
             <div className="space-y-1">
               <Label className="text-xs">Student</Label>
-              <NativeSelect
-                className="w-48"
+              <PersonPicker
+                className="w-56"
                 placeholder="Select student"
                 value={scholarshipAssign.studentId}
                 onChange={(v) => setScholarshipAssign((f) => ({ ...f, studentId: v }))}
-                options={(students.data ?? []).map((s) => ({
-                  value: s.id,
-                  label: `${s.firstName} ${s.lastName} (${s.studentCode})`,
-                }))}
+                options={(students.data ?? []).map(studentToPersonOption)}
               />
             </div>
             <div className="space-y-1">
@@ -830,6 +826,45 @@ export default function FinancePage() {
                 </p>
                 <Badge variant={statusVariant(activeInvoice.data.status)}>{INVOICE_STATUS_LABELS[activeInvoice.data.status]}</Badge>
               </div>
+
+              {/* Who this payment is for — face-level confirmation at the
+                  counter: the student's photo, and their guardians'
+                  photos so a cash payment can't quietly land on the
+                  wrong family's account. */}
+              <div className="bg-background flex flex-wrap items-center gap-4 rounded-md border p-3">
+                <div className="flex items-center gap-2">
+                  <Avatar src={activeInvoice.data.student.photoUrl} size="lg" alt="" />
+                  <div className="text-xs">
+                    <p className="text-sm font-medium">
+                      {activeInvoice.data.student.firstName} {activeInvoice.data.student.lastName}
+                    </p>
+                    <p className="text-muted-foreground">{activeInvoice.data.student.studentCode}</p>
+                  </div>
+                </div>
+                {activeInvoice.data.student.guardians.length > 0 ? (
+                  <div className="flex flex-wrap gap-3 border-l pl-4">
+                    {activeInvoice.data.student.guardians.map((g) => (
+                      <div key={g.id} className="flex items-center gap-2">
+                        <Avatar src={g.guardian.photoUrl} size="lg" alt="" />
+                        <div className="text-xs">
+                          <p className="font-medium">
+                            {g.guardian.firstName} {g.guardian.lastName}
+                            {g.isPrimaryContact ? (
+                              <span className="text-muted-foreground font-normal"> · primary</span>
+                            ) : null}
+                          </p>
+                          <p className="text-muted-foreground">
+                            {g.relationship} · {g.guardian.phone}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground border-l pl-4 text-xs">No guardians on file</p>
+                )}
+              </div>
+
               <ul className="text-muted-foreground pl-4 text-xs">
                 {activeInvoice.data.items.map((i) => (
                   <li key={i.id}>

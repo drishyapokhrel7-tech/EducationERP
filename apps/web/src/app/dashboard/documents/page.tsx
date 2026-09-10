@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { NativeSelect } from "@/components/ui/native-select";
+import { PersonPicker, studentToPersonOption, employeeToPersonOption } from "@/components/person-picker";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
@@ -159,12 +159,12 @@ export default function DocumentsPage() {
               );
             }}
           >
-            <NativeSelect
-              className="w-40"
+            <PersonPicker
+              className="w-52"
               placeholder="Student"
               value={studentDocForm.studentId}
               onChange={(v) => setStudentDocForm((f) => ({ ...f, studentId: v }))}
-              options={(students.data ?? []).map((s) => ({ value: s.id, label: `${s.firstName} ${s.lastName}` }))}
+              options={(students.data ?? []).map(studentToPersonOption)}
             />
             <Input
               className="w-40"
@@ -250,12 +250,12 @@ export default function DocumentsPage() {
               );
             }}
           >
-            <NativeSelect
-              className="w-40"
+            <PersonPicker
+              className="w-52"
               placeholder="Employee"
               value={staffDocForm.employeeId}
               onChange={(v) => setStaffDocForm((f) => ({ ...f, employeeId: v }))}
-              options={(employees.data ?? []).map((e) => ({ value: e.id, label: `${e.firstName} ${e.lastName}` }))}
+              options={(employees.data ?? []).map(employeeToPersonOption)}
             />
             <Input
               className="w-40"
@@ -345,12 +345,12 @@ export default function DocumentsPage() {
               );
             }}
           >
-            <NativeSelect
-              className="w-40"
+            <PersonPicker
+              className="w-52"
               placeholder="Student"
               value={certificateForm.studentId}
               onChange={(v) => setCertificateForm((f) => ({ ...f, studentId: v }))}
-              options={(students.data ?? []).map((s) => ({ value: s.id, label: `${s.firstName} ${s.lastName}` }))}
+              options={(students.data ?? []).map(studentToPersonOption)}
             />
             <Input
               className="w-48"

@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
+import { PersonPicker, studentToPersonOption, employeeToPersonOption } from "@/components/person-picker";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
@@ -48,12 +49,12 @@ export default function LearningDashboardsPage() {
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label>Teacher</Label>
-            <NativeSelect
+            <PersonPicker
               className="w-56"
               placeholder="Select teacher"
               value={teacherId}
               onChange={setTeacherId}
-              options={(employees.data ?? []).map((e) => ({ value: e.id, label: `${e.firstName} ${e.lastName}` }))}
+              options={(employees.data ?? []).map(employeeToPersonOption)}
             />
           </div>
           {teacherId ? (
@@ -143,12 +144,12 @@ export default function LearningDashboardsPage() {
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label>Student</Label>
-            <NativeSelect
+            <PersonPicker
               className="w-56"
               placeholder="Select student"
               value={studentId}
               onChange={setStudentId}
-              options={(students.data ?? []).map((s) => ({ value: s.id, label: `${s.firstName} ${s.lastName}` }))}
+              options={(students.data ?? []).map(studentToPersonOption)}
             />
           </div>
           {studentId ? (

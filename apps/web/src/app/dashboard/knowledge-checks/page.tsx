@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
+import { PersonPicker, studentToPersonOption } from "@/components/person-picker";
 import { Separator } from "@/components/ui/separator";
 import { EntityCard } from "@/components/dashboard/entity-card";
 import { api } from "@/lib/api";
@@ -266,12 +267,12 @@ export default function KnowledgeChecksPage() {
                     <div className="flex flex-wrap items-end gap-3">
                       <div className="space-y-2">
                         <Label>Student</Label>
-                        <NativeSelect
-                          className="w-40"
+                        <PersonPicker
+                          className="w-52"
                           placeholder="Select student"
                           value={attemptStudentId}
                           onChange={setAttemptStudentId}
-                          options={(students.data ?? []).map((s) => ({ value: s.id, label: `${s.firstName} ${s.lastName}` }))}
+                          options={(students.data ?? []).map(studentToPersonOption)}
                         />
                       </div>
                     </div>

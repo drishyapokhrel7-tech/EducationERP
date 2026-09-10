@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
+import { PersonPicker, studentToPersonOption } from "@/components/person-picker";
 import { Separator } from "@/components/ui/separator";
 import { PageSubNav } from "@/components/dashboard/page-subnav";
 import { api } from "@/lib/api";
@@ -562,8 +563,8 @@ export default function HostelPage() {
           >
             <div className="space-y-1">
               <Label className="text-xs">Student</Label>
-              <NativeSelect
-                className="w-48"
+              <PersonPicker
+                className="w-56"
                 placeholder="Select student"
                 value={allocStudentId}
                 onChange={(v) => {
@@ -571,7 +572,7 @@ export default function HostelPage() {
                   setAllocForm((f) => ({ ...f, studentEnrollmentId: "" }));
                   if (v) api.listEnrollments(v).then(setStudentEnrollments);
                 }}
-                options={(students.data ?? []).map((s) => ({ value: s.id, label: `${s.firstName} ${s.lastName} (${s.studentCode})` }))}
+                options={(students.data ?? []).map(studentToPersonOption)}
               />
             </div>
             <div className="space-y-1">

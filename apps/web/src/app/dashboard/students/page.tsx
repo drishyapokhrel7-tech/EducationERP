@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
+import { PersonPicker, studentToPersonOption } from "@/components/person-picker";
 import { Separator } from "@/components/ui/separator";
 import { EntityCard } from "@/components/dashboard/entity-card";
 import { ListPager } from "@/components/dashboard/list-pager";
@@ -792,15 +793,12 @@ export default function StudentsPage() {
           <p className="w-full text-sm font-medium">Link guardian to student</p>
           <div className="space-y-2">
             <Label>Student</Label>
-            <NativeSelect
-              className="w-40"
+            <PersonPicker
+              className="w-56"
               placeholder="Select student"
               value={linkForm.studentId}
               onChange={(v) => setLinkForm((f) => ({ ...f, studentId: v }))}
-              options={(studentsPicker.data ?? []).map((s) => ({
-                value: s.id,
-                label: `${s.firstName} ${s.lastName}`,
-              }))}
+              options={(studentsPicker.data ?? []).map(studentToPersonOption)}
             />
           </div>
           <div className="space-y-2">
@@ -990,15 +988,12 @@ export default function StudentsPage() {
         >
           <div className="space-y-2">
             <Label>Student</Label>
-            <NativeSelect
-              className="w-40"
+            <PersonPicker
+              className="w-56"
               placeholder="Select student"
               value={enrollForm.studentId}
               onChange={(v) => setEnrollForm((f) => ({ ...f, studentId: v }))}
-              options={(studentsPicker.data ?? []).map((s) => ({
-                value: s.id,
-                label: `${s.firstName} ${s.lastName}`,
-              }))}
+              options={(studentsPicker.data ?? []).map(studentToPersonOption)}
             />
           </div>
           <div className="space-y-2">

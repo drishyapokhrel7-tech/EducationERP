@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
+import { PersonPicker, studentToPersonOption } from "@/components/person-picker";
 import { Separator } from "@/components/ui/separator";
 import { PageSubNav } from "@/components/dashboard/page-subnav";
 import { api } from "@/lib/api";
@@ -185,12 +186,12 @@ export default function AlumniPage() {
           >
             <div className="space-y-1">
               <Label className="text-xs">Graduated student</Label>
-              <NativeSelect
-                className="w-48"
+              <PersonPicker
+                className="w-56"
                 placeholder="Select student"
                 value={profileForm.studentId}
                 onChange={(v) => setProfileForm((f) => ({ ...f, studentId: v }))}
-                options={graduatedStudents.map((s) => ({ value: s.id, label: `${s.firstName} ${s.lastName}` }))}
+                options={graduatedStudents.map(studentToPersonOption)}
               />
             </div>
             <div className="space-y-1">
@@ -737,12 +738,12 @@ export default function AlumniPage() {
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Mentee (student)</Label>
-              <NativeSelect
-                className="w-48"
+              <PersonPicker
+                className="w-56"
                 placeholder="Select student"
                 value={mentorshipForm.menteeStudentId}
                 onChange={(v) => setMentorshipForm((f) => ({ ...f, menteeStudentId: v }))}
-                options={(students.data ?? []).map((s) => ({ value: s.id, label: `${s.firstName} ${s.lastName}` }))}
+                options={(students.data ?? []).map(studentToPersonOption)}
               />
             </div>
             <div className="space-y-1">

@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
+import { PersonPicker, employeeToPersonOption } from "@/components/person-picker";
 import { EntityCard } from "@/components/dashboard/entity-card";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
@@ -303,15 +304,12 @@ export default function AttendancePage() {
         >
           <div className="space-y-2">
             <Label>Employee</Label>
-            <NativeSelect
-              className="w-40"
+            <PersonPicker
+              className="w-52"
               placeholder="Select employee"
               value={staffForm.employeeId}
               onChange={(v) => setStaffForm((f) => ({ ...f, employeeId: v }))}
-              options={(employees.data ?? []).map((e) => ({
-                value: e.id,
-                label: `${e.firstName} ${e.lastName}`,
-              }))}
+              options={(employees.data ?? []).map(employeeToPersonOption)}
             />
           </div>
           <div className="space-y-2">

@@ -9,6 +9,7 @@ import { PageSubNav } from "@/components/dashboard/page-subnav";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
+import { PersonPicker, employeeToPersonOption } from "@/components/person-picker";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
@@ -842,12 +843,12 @@ export default function InventoryPage() {
               onChange={(v) => setAssignForm((f) => ({ ...f, assetId: v }))}
               options={(assets.data ?? []).filter((a) => a.status === "AVAILABLE").map((a) => ({ value: a.id, label: `${a.name} (${a.assetTag})` }))}
             />
-            <NativeSelect
-              className="w-40"
+            <PersonPicker
+              className="w-52"
               placeholder="Employee"
               value={assignForm.employeeId}
               onChange={(v) => setAssignForm((f) => ({ ...f, employeeId: v }))}
-              options={(employees.data ?? []).map((e) => ({ value: e.id, label: `${e.firstName} ${e.lastName}` }))}
+              options={(employees.data ?? []).map(employeeToPersonOption)}
             />
             <Button type="submit" size="sm" disabled={!assignForm.assetId || !assignForm.employeeId}>
               Assign

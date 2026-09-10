@@ -439,7 +439,18 @@ export class FinanceService {
       const invoice = await tx.invoice.findUnique({
         where: { id },
         include: {
-          student: true,
+          // guardians ride along so the payment screen can show the
+          // student's photo next to their guardians' photos — a
+          // cashier taking a cash payment over the counter confirms
+          // "right family" by face, not just by a typed-in name.
+          student: {
+            include: {
+              guardians: {
+                include: { guardian: true },
+                orderBy: { isPrimaryContact: "desc" },
+              },
+            },
+          },
           items: { include: { feeCategory: true } },
           payments: true,
           discounts: true,

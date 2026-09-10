@@ -395,6 +395,11 @@ export interface EmployeePicker {
   lastName: string;
   employeeCode: string;
   status: EmployeeStatus;
+  // Identity extras for the person-picker dropdowns — avatar +
+  // "code · designation · staff type" line.
+  photoUrl: string | null;
+  designationName: string | null;
+  staffTypeName: string | null;
 }
 
 export interface CreateEmployeeInput {
@@ -603,6 +608,13 @@ export interface StudentPicker {
   lastName: string;
   studentCode: string;
   status: StudentStatus;
+  // Identity extras every person-picker dropdown renders (avatar +
+  // "code · program · section" line) so two same-named students are
+  // distinguishable. programName/sectionName come from the student's
+  // most recent enrollment; null when they have none yet.
+  photoUrl: string | null;
+  programName: string | null;
+  sectionName: string | null;
 }
 
 export interface CreateStudentInput {
@@ -2158,6 +2170,22 @@ export interface DiscountRecord {
   createdAt: string;
 }
 
+// The student as returned inside a full invoice — StudentSummary plus
+// the photo and guardians the payment screen shows for face-level
+// "right person / right family" confirmation at the counter.
+export interface InvoiceStudentGuardian {
+  id: string;
+  relationship: string;
+  isPrimaryContact: boolean;
+  guardian: Guardian;
+}
+
+export interface InvoiceStudent extends StudentSummary {
+  middleName: string | null;
+  photoUrl: string | null;
+  guardians: InvoiceStudentGuardian[];
+}
+
 export interface InvoiceRecord {
   id: string;
   organizationId: string;
@@ -2172,7 +2200,7 @@ export interface InvoiceRecord {
   status: InvoiceStatus;
   createdAt: string;
   updatedAt: string;
-  student: StudentSummary;
+  student: InvoiceStudent;
   items: InvoiceItemRecord[];
   payments: PaymentRecord[];
   discounts: DiscountRecord[];

@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
+import { PersonPicker, studentToPersonOption, employeeToPersonOption } from "@/components/person-picker";
 import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
 import { useHighlightFromSearch } from "@/lib/use-highlight-from-search";
@@ -355,15 +356,12 @@ export default function TransportPage() {
             >
               <div className="space-y-1">
                 <Label className="text-xs">Employee</Label>
-                <NativeSelect
-                  className="w-48"
+                <PersonPicker
+                  className="w-56"
                   placeholder="Select employee"
                   value={editDriverForm.employeeId}
                   onChange={(v) => setEditDriverForm((f) => ({ ...f, employeeId: v }))}
-                  options={(employees.data ?? []).map((e) => ({
-                    value: e.id,
-                    label: `${e.firstName} ${e.lastName} (${e.employeeCode})`,
-                  }))}
+                  options={(employees.data ?? []).map(employeeToPersonOption)}
                 />
               </div>
               <div className="space-y-1">
@@ -408,12 +406,12 @@ export default function TransportPage() {
           >
             <div className="space-y-1">
               <Label className="text-xs">Employee</Label>
-              <NativeSelect
-                className="w-48"
+              <PersonPicker
+                className="w-56"
                 placeholder="Select employee"
                 value={driverForm.employeeId}
                 onChange={(v) => setDriverForm((f) => ({ ...f, employeeId: v }))}
-                options={(employees.data ?? []).map((e) => ({ value: e.id, label: `${e.firstName} ${e.lastName} (${e.employeeCode})` }))}
+                options={(employees.data ?? []).map(employeeToPersonOption)}
               />
             </div>
             <div className="space-y-1">
@@ -662,8 +660,8 @@ export default function TransportPage() {
           >
             <div className="space-y-1">
               <Label className="text-xs">Student</Label>
-              <NativeSelect
-                className="w-48"
+              <PersonPicker
+                className="w-56"
                 placeholder="Select student"
                 value={assignStudentId}
                 onChange={(v) => {
@@ -671,7 +669,7 @@ export default function TransportPage() {
                   setAssignForm((f) => ({ ...f, studentEnrollmentId: "" }));
                   if (v) api.listEnrollments(v).then(setStudentEnrollments);
                 }}
-                options={(students.data ?? []).map((s) => ({ value: s.id, label: `${s.firstName} ${s.lastName} (${s.studentCode})` }))}
+                options={(students.data ?? []).map(studentToPersonOption)}
               />
             </div>
             <div className="space-y-1">

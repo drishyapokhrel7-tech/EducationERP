@@ -79,9 +79,16 @@ export class StudentsService {
   // categorically different from listStudents()'s original problem,
   // which was the heavy include on every row, not the row count alone.
   // Phase 8 performance-optimization slice.
+  // Returns photoUrl and the student's current program/section (their
+  // most recent enrollment) alongside the name/code — every "pick a
+  // student" dropdown in the app renders an avatar + identity line
+  // from this, not just a name, so a cashier/teacher can tell two
+  // same-named students apart. The extra photoUrl column and a
+  // single take:1 enrollment sub-select keep this well within the
+  // "one cheap query, no cap concern" budget the picker already had.
   listStudentsPicker(organizationId: string) {
-    return this.prisma.withTenant(organizationId, (tx) =>
-      tx.student.findMany({
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const students = await tx.student.findMany({
         where: { organizationId, deletedAt: null },
         select: {
           id: true,
@@ -91,10 +98,21 @@ export class StudentsService {
           lastName: true,
           studentCode: true,
           status: true,
+          photoUrl: true,
+          enrollments: {
+            select: { program: { select: { name: true } }, section: { select: { name: true } } },
+            orderBy: { enrollmentDate: "desc" },
+            take: 1,
+          },
         },
         orderBy: [{ firstName: "asc" }, { middleName: "asc" }, { lastName: "asc" }],
-      }),
-    );
+      });
+      return students.map(({ enrollments, ...s }) => ({
+        ...s,
+        programName: enrollments[0]?.program.name ?? null,
+        sectionName: enrollments[0]?.section?.name ?? null,
+      }));
+    });
   }
 
   // Paginated (Phase 8 performance-optimization slice) — this was an
