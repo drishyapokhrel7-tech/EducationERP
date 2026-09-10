@@ -17,6 +17,7 @@ import { ListPager } from "@/components/dashboard/list-pager";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
+import { downloadBlob, openBlobInNewTab } from "@/lib/download";
 import { submitEsewaForm } from "@/lib/esewa";
 import { submitAction, submitDelete, errorMessage } from "@/lib/submit-action";
 import type {
@@ -818,13 +819,38 @@ export default function FinancePage() {
 
           {activeInvoiceId && activeInvoice.data ? (
             <div className="bg-muted/40 space-y-3 rounded-lg border p-4 text-sm">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="font-medium">
                   {activeInvoice.data.invoiceNumber ? `${activeInvoice.data.invoiceNumber} — ` : ""}
                   {activeInvoice.data.student.firstName} {activeInvoice.data.student.lastName} —{" "}
                   {formatMoney(activeInvoice.data.totalAmount)}
                 </p>
-                <Badge variant={statusVariant(activeInvoice.data.status)}>{INVOICE_STATUS_LABELS[activeInvoice.data.status]}</Badge>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      downloadBlob(
+                        () => api.getInvoicePdf(activeInvoice.data!.id),
+                        `${activeInvoice.data!.invoiceNumber ?? "invoice"}.pdf`,
+                      )
+                    }
+                  >
+                    Download PDF
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => openBlobInNewTab(() => api.getInvoicePdf(activeInvoice.data!.id))}
+                  >
+                    Print
+                  </Button>
+                  <Badge variant={statusVariant(activeInvoice.data.status)}>
+                    {INVOICE_STATUS_LABELS[activeInvoice.data.status]}
+                  </Badge>
+                </div>
               </div>
 
               {/* Who this payment is for — face-level confirmation at the
@@ -889,6 +915,17 @@ export default function FinancePage() {
                         {p.receiptNumber ? `${p.receiptNumber} — ` : ""}Paid {formatMoney(p.amount)} via {p.method} on{" "}
                         {new Date(p.paidAt).toLocaleDateString()}
                       </span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8"
+                        onClick={() =>
+                          downloadBlob(() => api.getPaymentReceiptPdf(p.id), `${p.receiptNumber ?? "receipt"}.pdf`)
+                        }
+                      >
+                        Receipt
+                      </Button>
                       <Input
                         type="number"
                         className="h-8 w-20"

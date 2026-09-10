@@ -1,5 +1,7 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Res, UseGuards } from "@nestjs/common";
+import type { Response } from "express";
 import { FinanceService } from "./finance.service";
+import { buildInvoicePdf, buildReceiptPdf } from "./finance-documents";
 import { CreateFeeCategoryDto } from "./dto/create-fee-category.dto";
 import { UpdateFeeCategoryDto } from "./dto/update-fee-category.dto";
 import { CreateFeeStructureDto } from "./dto/create-fee-structure.dto";
@@ -99,6 +101,31 @@ export class FinanceController {
   @RequirePermissions("invoice:view")
   getInvoice(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
     return this.finance.getInvoice(user.organizationId, id);
+  }
+
+  // Printable Fee Invoice — a formatted PDF with the org letterhead,
+  // not the plain data table the analytics exports produce. Gated by
+  // invoice:view (printing a doc you can already open on screen isn't
+  // a separate privilege). A Buffer response MUST go through @Res() —
+  // a plain `return` corrupts it via Nest's JSON serializer.
+  @Get("invoices/:id/pdf")
+  @RequirePermissions("invoice:view")
+  async getInvoicePdf(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Res() res: Response) {
+    const { org, invoice } = await this.finance.getInvoiceDocument(user.organizationId, id);
+    const pdf = await buildInvoicePdf(org, invoice);
+    res.set("Content-Type", "application/pdf");
+    res.set("Content-Disposition", `inline; filename="${invoice.invoiceNumber ?? "invoice"}.pdf"`);
+    res.send(pdf);
+  }
+
+  @Get("payments/:id/receipt")
+  @RequirePermissions("invoice:view")
+  async getPaymentReceiptPdf(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Res() res: Response) {
+    const { org, invoice, payment } = await this.finance.getReceiptDocument(user.organizationId, id);
+    const pdf = await buildReceiptPdf(org, invoice, payment);
+    res.set("Content-Type", "application/pdf");
+    res.set("Content-Disposition", `inline; filename="${payment.receiptNumber ?? "receipt"}.pdf"`);
+    res.send(pdf);
   }
 
   @Post("invoices/:id/payments")

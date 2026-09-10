@@ -1191,6 +1191,11 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
     listInvoices: (pagination?: PaginationParams) =>
       request<PaginatedResult<InvoiceListItem>>(`/organizations/me/invoices${paginationQuery(pagination)}`),
     getInvoice: (id: string) => request<InvoiceRecord>(`/organizations/me/invoices/${id}`),
+    // Formatted PDF documents (org letterhead + billed-to + totals),
+    // not the plain analytics-style data table — returned as a Blob so
+    // the caller can download it or open it inline for browser print.
+    getInvoicePdf: (id: string) => requestBlob(`/organizations/me/invoices/${id}/pdf`),
+    getPaymentReceiptPdf: (id: string) => requestBlob(`/organizations/me/payments/${id}/receipt`),
     recordPayment: (invoiceId: string, input: RecordPaymentInput) =>
       request<PaymentRecord>(`/organizations/me/invoices/${invoiceId}/payments`, {
         method: "POST",

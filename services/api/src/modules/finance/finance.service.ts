@@ -461,6 +461,55 @@ export class FinanceService {
     });
   }
 
+  // Letterhead metadata for the printable Invoice/Receipt PDFs — set
+  // via Institutions > Branding, every field optional (the PDF falls
+  // back to just the name).
+  private orgLetterhead(organizationId: string) {
+    return this.prisma.organization.findUniqueOrThrow({
+      where: { id: organizationId },
+      select: { name: true, address: true, phone: true, email: true, website: true, logoUrl: true },
+    });
+  }
+
+  private invoiceForDocument(tx: PrismaClient, id: string) {
+    return tx.invoice.findUnique({
+      where: { id },
+      include: {
+        student: { select: { firstName: true, lastName: true, studentCode: true } },
+        items: { include: { feeCategory: { select: { name: true } } } },
+        payments: true,
+        discounts: true,
+      },
+    });
+  }
+
+  async getInvoiceDocument(organizationId: string, invoiceId: string) {
+    const [org, invoice] = await Promise.all([
+      this.orgLetterhead(organizationId),
+      this.prisma.withTenant(organizationId, (tx) => this.invoiceForDocument(tx, invoiceId)),
+    ]);
+    if (!invoice) throw new NotFoundException("Invoice not found");
+    return { org, invoice };
+  }
+
+  async getReceiptDocument(organizationId: string, paymentId: string) {
+    const { org, payment } = await this.prisma.withTenant(organizationId, async (tx) => {
+      const [orgRow, paymentRow] = await Promise.all([
+        this.orgLetterhead(organizationId),
+        tx.payment.findUnique({ where: { id: paymentId } }),
+      ]);
+      if (!paymentRow || paymentRow.organizationId !== organizationId) {
+        throw new NotFoundException("Payment not found");
+      }
+      return { org: orgRow, payment: paymentRow };
+    });
+    const invoice = await this.prisma.withTenant(organizationId, (tx) =>
+      this.invoiceForDocument(tx, payment.invoiceId),
+    );
+    if (!invoice) throw new NotFoundException("Invoice not found");
+    return { org, invoice, payment };
+  }
+
   async recordPayment(organizationId: string, invoiceId: string, userId: string, dto: RecordPaymentDto) {
     return this.prisma.withTenant(organizationId, async (tx) => {
       const invoice = await tx.invoice.findUnique({ where: { id: invoiceId } });
