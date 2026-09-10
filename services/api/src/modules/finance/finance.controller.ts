@@ -12,6 +12,9 @@ import { IssueRefundDto } from "./dto/issue-refund.dto";
 import { CreateScholarshipDto } from "./dto/create-scholarship.dto";
 import { UpdateScholarshipDto } from "./dto/update-scholarship.dto";
 import { AssignScholarshipDto } from "./dto/assign-scholarship.dto";
+import { CreateInstallmentPlanDto } from "./dto/create-installment-plan.dto";
+import { CreateFineRuleDto } from "./dto/create-fine-rule.dto";
+import { UpdateFineRuleDto } from "./dto/update-fine-rule.dto";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
@@ -129,6 +132,46 @@ export class FinanceController {
   @RequirePermissions("refund:create")
   issueRefund(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: IssueRefundDto) {
     return this.finance.issueRefund(user.organizationId, id, user.sub, dto);
+  }
+
+  // Folded under invoice:* rather than a new RBAC resource — an
+  // installment plan and a fine rule are both policies over/against
+  // an Invoice, not their own first-class entity, same reasoning
+  // already used for financial-transactions above.
+  @Post("invoices/:id/installments")
+  @RequirePermissions("invoice:update")
+  createInstallmentPlan(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: CreateInstallmentPlanDto) {
+    return this.finance.createInstallmentPlan(user.organizationId, id, dto);
+  }
+
+  @Get("invoices/:id/installments")
+  @RequirePermissions("invoice:view")
+  listInstallments(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.finance.listInstallments(user.organizationId, id);
+  }
+
+  @Post("fine-rules")
+  @RequirePermissions("invoice:create")
+  createFineRule(@CurrentUser() user: JwtPayload, @Body() dto: CreateFineRuleDto) {
+    return this.finance.createFineRule(user.organizationId, dto);
+  }
+
+  @Get("fine-rules")
+  @RequirePermissions("invoice:view")
+  listFineRules(@CurrentUser() user: JwtPayload) {
+    return this.finance.listFineRules(user.organizationId);
+  }
+
+  @Patch("fine-rules/:id")
+  @RequirePermissions("invoice:update")
+  updateFineRule(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: UpdateFineRuleDto) {
+    return this.finance.updateFineRule(user.organizationId, id, dto);
+  }
+
+  @Delete("fine-rules/:id")
+  @RequirePermissions("invoice:delete")
+  deleteFineRule(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.finance.deleteFineRule(user.organizationId, id);
   }
 
   // Folded under invoice:view rather than a new RBAC resource — the

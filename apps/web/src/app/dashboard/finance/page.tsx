@@ -19,6 +19,8 @@ import { submitEsewaForm } from "@/lib/esewa";
 import { submitAction, submitDelete, errorMessage } from "@/lib/submit-action";
 import type {
   AssignFeeStructureBulkPreview,
+  FineRuleType,
+  InstallmentStatus,
   InvoiceStatus,
   PaymentMethod,
   StudentEnrollment,
@@ -43,6 +45,19 @@ const INVOICE_STATUS_LABELS: Record<InvoiceStatus, string> = {
   PAID: "Paid",
   CANCELLED: "Cancelled",
 };
+
+const INSTALLMENT_STATUS_LABELS: Record<InstallmentStatus, string> = {
+  PAID: "Paid",
+  PARTIAL: "Partially paid",
+  PENDING: "Pending",
+  OVERDUE: "Overdue",
+};
+
+const FINE_RULE_TYPES: { value: FineRuleType; label: string }[] = [
+  { value: "FIXED", label: "Fixed amount" },
+  { value: "PERCENTAGE", label: "Percentage of outstanding" },
+  { value: "PER_DAY", label: "Per day overdue" },
+];
 
 export default function FinancePage() {
   const feeCategories = useSWR("fee-categories", () => api.listFeeCategories());
@@ -94,6 +109,22 @@ export default function FinancePage() {
     activeInvoiceId ? ["invoice", activeInvoiceId] : null,
     () => api.getInvoice(activeInvoiceId as string),
   );
+  const installments = useSWR(
+    activeInvoiceId ? ["installments", activeInvoiceId] : null,
+    () => api.listInstallments(activeInvoiceId as string),
+  );
+  // Starts at 2 rows (an installment "plan" of 1 is just the invoice
+  // itself) — same "repeatable row inputs, client-validates the sum"
+  // shape the plan called for, no server round-trip until submit.
+  const [installmentRows, setInstallmentRows] = useState([
+    { amount: "", dueDate: "" },
+    { amount: "", dueDate: "" },
+  ]);
+
+  // ── Fine rules ───────────────────────────────────────────────────────
+  const fineRules = useSWR("fine-rules", () => api.listFineRules());
+  const [fineRuleForm, setFineRuleForm] = useState({ feeCategoryId: "", type: "PER_DAY" as FineRuleType, amount: "" });
+
   const [paymentForm, setPaymentForm] = useState({ amount: "", method: "CASH" as PaymentMethod, reference: "" });
   const [discountForm, setDiscountForm] = useState({ amount: "", reason: "" });
   const [refundForm, setRefundForm] = useState<Record<string, { amount: string; reason: string }>>({});
@@ -231,6 +262,95 @@ export default function FinancePage() {
           </div>
           <Button type="submit" size="sm" disabled={!categoryForm.name || !categoryForm.code}>
             Add category
+          </Button>
+        </form>
+      </EntityCard>
+
+      <EntityCard
+        id="fine-rules"
+        title="Fine rules"
+        emptyLabel="No fine rules yet — overdue invoices are never charged automatically until one exists."
+        items={fineRules.data}
+        renderItem={(r: { id: string; type: FineRuleType; amount: string; active: boolean; feeCategory: { name: string } }) => (
+          <div className="flex items-center justify-between gap-2">
+            <span>
+              {FINE_RULE_TYPES.find((t) => t.value === r.type)?.label} —{" "}
+              {r.type === "PERCENTAGE" ? `${r.amount}%` : formatMoney(r.amount)}
+              {r.type === "PER_DAY" ? "/day" : ""} → <span className="text-muted-foreground">{r.feeCategory.name}</span>
+              {!r.active ? <span className="text-muted-foreground"> (inactive)</span> : null}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  submitAction(() => api.updateFineRule(r.id, { active: !r.active }), () => fineRules.mutate())
+                }
+              >
+                {r.active ? "Deactivate" : "Activate"}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                onClick={() => submitDelete(() => api.deleteFineRule(r.id), () => fineRules.mutate())}
+              >
+                Delete
+              </Button>
+            </div>
+          </div>
+        )}
+      >
+        <form
+          className="flex flex-wrap items-end gap-3"
+          onSubmit={(e: FormEvent) => {
+            e.preventDefault();
+            submitAction(
+              () =>
+                api.createFineRule({
+                  feeCategoryId: fineRuleForm.feeCategoryId,
+                  type: fineRuleForm.type,
+                  amount: Number(fineRuleForm.amount),
+                }),
+              () => {
+                setFineRuleForm({ feeCategoryId: "", type: "PER_DAY", amount: "" });
+                fineRules.mutate();
+              },
+            );
+          }}
+        >
+          <div className="space-y-2">
+            <Label className="text-xs">Charges to</Label>
+            <NativeSelect
+              className="h-8 w-40"
+              placeholder="Select category"
+              value={fineRuleForm.feeCategoryId}
+              onChange={(v) => setFineRuleForm((f) => ({ ...f, feeCategoryId: v }))}
+              options={(feeCategories.data ?? []).map((c) => ({ value: c.id, label: c.name }))}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-xs">Type</Label>
+            <NativeSelect
+              className="h-8 w-44"
+              placeholder="Select type"
+              value={fineRuleForm.type}
+              onChange={(v) => setFineRuleForm((f) => ({ ...f, type: v as FineRuleType }))}
+              options={FINE_RULE_TYPES}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-xs">{fineRuleForm.type === "PERCENTAGE" ? "Percentage" : "Amount"}</Label>
+            <Input
+              type="number"
+              className="h-8 w-28"
+              value={fineRuleForm.amount}
+              onChange={(e) => setFineRuleForm((f) => ({ ...f, amount: e.target.value }))}
+            />
+          </div>
+          <Button type="submit" size="sm" disabled={!fineRuleForm.feeCategoryId || !fineRuleForm.amount}>
+            Add fine rule
           </Button>
         </form>
       </EntityCard>
@@ -681,6 +801,7 @@ export default function FinancePage() {
                 {invoices.data.data.map((inv) => (
                   <li key={inv.id} className="flex items-center justify-between gap-2 py-2">
                     <button type="button" className="hover:text-primary text-left" onClick={() => setActiveInvoiceId(inv.id)}>
+                      {inv.invoiceNumber ? `${inv.invoiceNumber} — ` : ""}
                       {inv.student.firstName} {inv.student.lastName}{" "}
                       <span className="text-muted-foreground">
                         — {formatMoney(inv.totalAmount)} · due {new Date(inv.dueDate).toLocaleDateString()}
@@ -703,6 +824,7 @@ export default function FinancePage() {
             <div className="bg-muted/40 space-y-3 rounded-lg border p-4 text-sm">
               <div className="flex items-center justify-between">
                 <p className="font-medium">
+                  {activeInvoice.data.invoiceNumber ? `${activeInvoice.data.invoiceNumber} — ` : ""}
                   {activeInvoice.data.student.firstName} {activeInvoice.data.student.lastName} —{" "}
                   {formatMoney(activeInvoice.data.totalAmount)}
                 </p>
@@ -729,7 +851,8 @@ export default function FinancePage() {
                   {activeInvoice.data.payments.map((p) => (
                     <li key={p.id} className="flex flex-wrap items-center gap-2">
                       <span>
-                        Paid {formatMoney(p.amount)} via {p.method} on {new Date(p.paidAt).toLocaleDateString()}
+                        {p.receiptNumber ? `${p.receiptNumber} — ` : ""}Paid {formatMoney(p.amount)} via {p.method} on{" "}
+                        {new Date(p.paidAt).toLocaleDateString()}
                       </span>
                       <Input
                         type="number"
@@ -761,6 +884,102 @@ export default function FinancePage() {
                     </li>
                   ))}
                 </ul>
+              ) : null}
+
+              {installments.data && installments.data.length > 0 ? (
+                <div className="space-y-1 border-t pt-2">
+                  <p className="text-muted-foreground text-xs font-medium">Installment plan</p>
+                  <ul className="space-y-1 text-xs">
+                    {installments.data.map((i) => (
+                      <li key={i.id} className="flex items-center justify-between gap-2">
+                        <span>
+                          #{i.sequence} — {formatMoney(i.amount)} due {new Date(i.dueDate).toLocaleDateString()}
+                          {i.status === "PARTIAL" ? ` (${formatMoney(String(i.coveredAmount))} covered)` : ""}
+                        </span>
+                        <Badge variant={statusVariant(i.status)}>{INSTALLMENT_STATUS_LABELS[i.status]}</Badge>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : activeInvoice.data.status !== "CANCELLED" ? (
+                <div className="space-y-2 border-t pt-2">
+                  <p className="text-muted-foreground text-xs font-medium">
+                    Split into installments (optional — amounts must add up to {formatMoney(activeInvoice.data.totalAmount)})
+                  </p>
+                  {installmentRows.map((row, i) => (
+                    <div key={i} className="flex flex-wrap items-end gap-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Amount</Label>
+                        <Input
+                          type="number"
+                          className="h-8 w-28"
+                          value={row.amount}
+                          onChange={(e) =>
+                            setInstallmentRows((rows) =>
+                              rows.map((r, ri) => (ri === i ? { ...r, amount: e.target.value } : r)),
+                            )
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Due date</Label>
+                        <Input
+                          type="date"
+                          className="h-8 w-36"
+                          value={row.dueDate}
+                          onChange={(e) =>
+                            setInstallmentRows((rows) =>
+                              rows.map((r, ri) => (ri === i ? { ...r, dueDate: e.target.value } : r)),
+                            )
+                          }
+                        />
+                      </div>
+                      {installmentRows.length > 2 ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-8"
+                          onClick={() => setInstallmentRows((rows) => rows.filter((_, ri) => ri !== i))}
+                        >
+                          Remove
+                        </Button>
+                      ) : null}
+                    </div>
+                  ))}
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8"
+                      onClick={() => setInstallmentRows((rows) => [...rows, { amount: "", dueDate: "" }])}
+                    >
+                      Add installment
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-8"
+                      disabled={installmentRows.some((r) => !r.amount || !r.dueDate)}
+                      onClick={() => {
+                        if (!activeInvoiceId) return;
+                        submitAction(
+                          () =>
+                            api.createInstallmentPlan(activeInvoiceId, {
+                              installments: installmentRows.map((r) => ({ amount: Number(r.amount), dueDate: r.dueDate })),
+                            }),
+                          () => {
+                            setInstallmentRows([{ amount: "", dueDate: "" }, { amount: "", dueDate: "" }]);
+                            installments.mutate();
+                          },
+                        );
+                      }}
+                    >
+                      Create plan
+                    </Button>
+                  </div>
+                </div>
               ) : null}
 
               {activeInvoice.data.status !== "CANCELLED" ? (

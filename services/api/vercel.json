@@ -1,4 +1,7 @@
 {
   "rewrites": [{ "source": "/(.*)", "destination": "/api" }],
-  "crons": [{ "path": "/internal/health-watchdog", "schedule": "0 6 * * *" }]
+  "crons": [
+    { "path": "/internal/health-watchdog", "schedule": "0 6 * * *" },
+    { "path": "/internal/apply-late-fees", "schedule": "0 7 * * *" }
+  ]
 }

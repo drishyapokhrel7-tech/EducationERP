@@ -134,6 +134,8 @@ model Organization {
   studentFeeAssignments       StudentFeeAssignment[]
   invoices                    Invoice[]
   invoiceItems                InvoiceItem[]
+  installments                Installment[]
+  fineRules                   FineRule[]
   payments                    Payment[]
   scholarships                Scholarship[]
   studentScholarships         StudentScholarship[]
@@ -2474,6 +2476,7 @@ model FeeCategory {
   organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   feeStructureItems FeeStructureItem[]
   invoiceItems      InvoiceItem[]
+  fineRules         FineRule[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -2557,6 +2560,12 @@ model Invoice {
   organizationId      String
   studentId           String
   studentEnrollmentId String
+  // Human-readable, per-org sequential ("INV-000001") — generated the
+  // same collision-retry way as Student.studentCode
+  // (StudentsService.nextStudentCode). Nullable at the column level
+  // only because existing rows needed a backfill migration; every row
+  // has one in practice.
+  invoiceNumber       String?
   totalAmount         Decimal       @db.Decimal(12, 2)
   dueDate             DateTime
   status              InvoiceStatus @default(PENDING)
@@ -2572,12 +2581,70 @@ model Invoice {
   feeAssignment     StudentFeeAssignment?
   transactions      FinancialTransaction[]
   esewaTransactions EsewaTransaction[]
+  installments      Installment[]
 
+  @@unique([organizationId, invoiceNumber])
   @@index([organizationId])
   // Per-student invoice lookups filter on this directly — Phase 8
   // performance-optimization slice.
   @@index([studentId])
   @@map("invoices")
+}
+
+// A structured payment schedule for one invoice — an alternative to
+// the informal "just record partial Payments whenever" flow, for
+// institutions that want to commit a student to specific due dates up
+// front. No stored status, same "computed on read" precedent as
+// Invoice's own status: whether an installment is paid/partial/
+// pending/overdue is derived by FIFO-allocating the invoice's net
+// payments across installments in `sequence` order (see
+// FinanceService.listInstallments) rather than tracked here, so a
+// payment recorded the ordinary way still correctly satisfies
+// whichever installment(s) it covers.
+model Installment {
+  id             String   @id @default(uuid())
+  organizationId String
+  invoiceId      String
+  sequence       Int
+  amount         Decimal  @db.Decimal(12, 2)
+  dueDate        DateTime
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoice      Invoice      @relation(fields: [invoiceId], references: [id])
+
+  @@unique([invoiceId, sequence])
+  @@index([organizationId])
+  @@map("installments")
+}
+
+enum FineRuleType {
+  FIXED
+  PERCENTAGE
+  PER_DAY
+}
+
+// A configurable late-fee policy — the internal/apply-late-fees cron
+// (health-watchdog's sibling) charges every `active` rule against
+// every overdue, not-fully-paid invoice in the same org. Folded under
+// the existing invoice:* permissions rather than a new RBAC resource,
+// same reasoning as FinancialTransaction: this is a policy over
+// Invoice, not its own first-class entity.
+model FineRule {
+  id             String       @id @default(uuid())
+  organizationId String
+  feeCategoryId  String
+  type           FineRuleType
+  amount         Decimal      @db.Decimal(12, 2)
+  active         Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  feeCategory  FeeCategory  @relation(fields: [feeCategoryId], references: [id])
+
+  @@index([organizationId])
+  @@map("fine_rules")
 }
 
 model InvoiceItem {
@@ -2611,6 +2678,9 @@ model Payment {
   id             String        @id @default(uuid())
   organizationId String
   invoiceId      String
+  // Human-readable, per-org sequential ("RCT-000001") — same
+  // nullable-for-backfill reasoning as Invoice.invoiceNumber.
+  receiptNumber  String?
   amount         Decimal       @db.Decimal(12, 2)
   method         PaymentMethod
   // Cheque/bank-transfer reference number this slice; will carry the
@@ -2626,6 +2696,7 @@ model Payment {
   refunds      Refund[]
   transactions FinancialTransaction[]
 
+  @@unique([organizationId, receiptNumber])
   @@index([organizationId])
   @@index([invoiceId])
   @@map("payments")

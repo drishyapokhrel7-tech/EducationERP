@@ -341,6 +341,12 @@ import type {
   DiscountRecord,
   IssueRefundInput,
   RefundRecord,
+  InstallmentRecord,
+  CreateInstallmentPlanInput,
+  FineRuleRecord,
+  CreateFineRuleInput,
+  UpdateFineRuleInput,
+  ReceivableAging,
   InitiateEsewaPaymentInput,
   EsewaFormPayload,
   ConfirmEsewaPaymentResult,
@@ -1233,6 +1239,20 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       }),
     listFinancialTransactions: () =>
       request<FinancialTransactionRecord[]>("/organizations/me/financial-transactions"),
+    createInstallmentPlan: (invoiceId: string, input: CreateInstallmentPlanInput) =>
+      request<InstallmentRecord[]>(`/organizations/me/invoices/${invoiceId}/installments`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    listInstallments: (invoiceId: string) =>
+      request<InstallmentRecord[]>(`/organizations/me/invoices/${invoiceId}/installments`),
+    createFineRule: (input: CreateFineRuleInput) =>
+      request<FineRuleRecord>("/organizations/me/fine-rules", { method: "POST", body: JSON.stringify(input) }),
+    listFineRules: () => request<FineRuleRecord[]>("/organizations/me/fine-rules"),
+    updateFineRule: (id: string, input: UpdateFineRuleInput) =>
+      request<FineRuleRecord>(`/organizations/me/fine-rules/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    deleteFineRule: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/fine-rules/${id}`, { method: "DELETE" }),
     createScholarship: (input: CreateScholarshipInput) =>
       request<ScholarshipRecord>("/organizations/me/scholarships", { method: "POST", body: JSON.stringify(input) }),
     listScholarships: () => request<ScholarshipRecord[]>("/organizations/me/scholarships"),
@@ -2010,6 +2030,9 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       requestBlob(`/organizations/me/analytics/continuous-learning/export?format=${format}`),
     exportAlumniOutcomesAnalytics: (format: AnalyticsExportFormat) =>
       requestBlob(`/organizations/me/analytics/alumni-outcomes/export?format=${format}`),
+    getReceivableAging: () => request<ReceivableAging>("/organizations/me/analytics/receivable-aging"),
+    exportReceivableAging: (format: AnalyticsExportFormat) =>
+      requestBlob(`/organizations/me/analytics/receivable-aging/export?format=${format}`),
 
     // Global search (Phase 8, part 1 — people only)
     globalSearch: (q: string) => request<SearchResult>(`/organizations/me/search?q=${encodeURIComponent(q)}`),

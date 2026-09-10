@@ -65,6 +65,12 @@ export class AnalyticsController {
     return this.analytics.alumniOutcomes(user.organizationId);
   }
 
+  @Get("receivable-aging")
+  @RequirePermissions("analytics:view")
+  receivableAging(@CurrentUser() user: JwtPayload) {
+    return this.analytics.receivableAging(user.organizationId);
+  }
+
   // ── Export — a dynamic (csv vs xlsx vs pdf) content-type/filename
   // can't be expressed with NestJS's static @Header() decorator, so
   // these use @Res() directly (same pattern already established by
@@ -136,6 +142,13 @@ export class AnalyticsController {
   async exportAlumniOutcomes(@CurrentUser() user: JwtPayload, @Query("format") format: string, @Res() res: Response) {
     const table = await this.analytics.exportAlumniOutcomes(user.organizationId);
     await this.sendTable(res, table, "alumni-outcomes", "Alumni & Graduate Outcomes Analytics", format, user);
+  }
+
+  @Get("receivable-aging/export")
+  @RequirePermissions("analytics:export")
+  async exportReceivableAging(@CurrentUser() user: JwtPayload, @Query("format") format: string, @Res() res: Response) {
+    const table = await this.analytics.exportReceivableAging(user.organizationId);
+    await this.sendTable(res, table, "receivable-aging", "Receivable Aging", format, user);
   }
 
   // Also writes the "a report was exported" audit-log signal the

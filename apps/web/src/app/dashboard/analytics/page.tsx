@@ -57,6 +57,7 @@ export default function AnalyticsPage() {
     api.getAttendanceAnalytics(dateRange.from, dateRange.to),
   );
   const financial = useSWR("analytics-financial", () => api.getFinancialAnalytics());
+  const receivableAging = useSWR("analytics-receivable-aging", () => api.getReceivableAging());
   const examination = useSWR("analytics-examination", () => api.getExaminationAnalytics());
   const continuousLearning = useSWR("analytics-continuous-learning", () => api.getContinuousLearningAnalytics());
   const alumniOutcomes = useSWR("analytics-alumni-outcomes", () => api.getAlumniOutcomesAnalytics());
@@ -322,6 +323,64 @@ export default function AnalyticsPage() {
                   </div>
                 )}
               </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Receivable aging</CardTitle>
+          <ExportButtons
+            onCsv={() => downloadFile(() => api.exportReceivableAging("csv"), "receivable-aging.csv")}
+            onXlsx={() => downloadFile(() => api.exportReceivableAging("xlsx"), "receivable-aging.xlsx")}
+            onPdf={() => downloadFile(() => api.exportReceivableAging("pdf"), "receivable-aging.pdf")}
+          />
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {!receivableAging.data ? (
+            <p className="text-muted-foreground text-sm">Loading…</p>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+                <div>
+                  <p className="text-muted-foreground text-xs">Current</p>
+                  <p className="text-xl font-semibold">{NPR.format(receivableAging.data.buckets.current)}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs">1–30 days</p>
+                  <p className="text-xl font-semibold">{NPR.format(receivableAging.data.buckets.days1To30)}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs">31–60 days</p>
+                  <p className="text-xl font-semibold">{NPR.format(receivableAging.data.buckets.days31To60)}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs">61–90 days</p>
+                  <p className="text-xl font-semibold">{NPR.format(receivableAging.data.buckets.days61To90)}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs">90+ days</p>
+                  <p className="text-xl font-semibold">{NPR.format(receivableAging.data.buckets.days90Plus)}</p>
+                </div>
+              </div>
+              {receivableAging.data.rows.length === 0 ? (
+                <p className="text-muted-foreground text-sm">Nothing outstanding.</p>
+              ) : (
+                <ul className="divide-y text-sm">
+                  {receivableAging.data.rows.map((r) => (
+                    <li key={r.invoiceId} className="flex items-center justify-between gap-2 py-1.5">
+                      <span>
+                        {r.invoiceNumber ? `${r.invoiceNumber} — ` : ""}
+                        {r.studentName} <span className="text-muted-foreground">({r.studentCode})</span>
+                      </span>
+                      <span className="text-muted-foreground shrink-0 text-xs">
+                        {NPR.format(r.outstanding)} · {r.daysOverdue} day{r.daysOverdue === 1 ? "" : "s"} overdue
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </>
           )}
         </CardContent>

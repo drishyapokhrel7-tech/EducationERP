@@ -2135,6 +2135,10 @@ export interface PaymentRecord {
   id: string;
   organizationId: string;
   invoiceId: string;
+  // Human-readable, per-org sequential ("RCT-000001"). Nullable only
+  // for a pre-existing row that somehow never got backfilled — every
+  // row created going forward always has one.
+  receiptNumber: string | null;
   amount: string;
   method: PaymentMethod;
   reference: string | null;
@@ -2159,6 +2163,10 @@ export interface InvoiceRecord {
   organizationId: string;
   studentId: string;
   studentEnrollmentId: string;
+  // Human-readable, per-org sequential ("INV-000001"). Same
+  // nullable-only-for-a-stray-legacy-row reasoning as
+  // PaymentRecord.receiptNumber.
+  invoiceNumber: string | null;
   totalAmount: string;
   dueDate: string;
   status: InvoiceStatus;
@@ -2180,6 +2188,7 @@ export interface InvoiceListItem {
   organizationId: string;
   studentId: string;
   studentEnrollmentId: string;
+  invoiceNumber: string | null;
   totalAmount: string;
   dueDate: string;
   status: InvoiceStatus;
@@ -2213,6 +2222,75 @@ export interface RefundRecord {
   reason: string;
   processedBy: string | null;
   createdAt: string;
+}
+
+// A structured payment schedule for one invoice. No stored status —
+// PAID/PARTIAL/PENDING/OVERDUE is computed server-side (FIFO-
+// allocating the invoice's net payments across installments in
+// sequence order), never derived client-side from raw fields.
+export type InstallmentStatus = "PAID" | "PARTIAL" | "PENDING" | "OVERDUE";
+
+export interface InstallmentRecord {
+  id: string;
+  organizationId: string;
+  invoiceId: string;
+  sequence: number;
+  amount: string;
+  dueDate: string;
+  createdAt: string;
+  coveredAmount: number;
+  status: InstallmentStatus;
+}
+
+export interface CreateInstallmentPlanInput {
+  installments: { amount: number; dueDate: string }[];
+}
+
+export type FineRuleType = "FIXED" | "PERCENTAGE" | "PER_DAY";
+
+export interface FineRuleRecord {
+  id: string;
+  organizationId: string;
+  feeCategoryId: string;
+  type: FineRuleType;
+  amount: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+  feeCategory: FeeCategoryRecord;
+}
+
+export interface CreateFineRuleInput {
+  feeCategoryId: string;
+  type: FineRuleType;
+  amount: number;
+}
+
+export interface UpdateFineRuleInput {
+  amount?: number;
+  active?: boolean;
+}
+
+export interface ReceivableAgingRow {
+  invoiceId: string;
+  invoiceNumber: string | null;
+  studentName: string;
+  studentCode: string;
+  dueDate: string;
+  daysOverdue: number;
+  outstanding: number;
+  bucket: "current" | "days1To30" | "days31To60" | "days61To90" | "days90Plus";
+}
+
+export interface ReceivableAging {
+  buckets: {
+    current: number;
+    days1To30: number;
+    days31To60: number;
+    days61To90: number;
+    days90Plus: number;
+  };
+  rows: ReceivableAgingRow[];
 }
 
 // eSewa online payment (Phase 7 slice 7a-2).

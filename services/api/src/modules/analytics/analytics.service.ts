@@ -206,6 +206,75 @@ export class AnalyticsService {
     });
   }
 
+  // Same per-invoice outstanding formula as financial() above
+  // (totalAmount - discounts - net payments), bucketed by days past
+  // dueDate instead of summed into one org-wide total. Invoices with
+  // outstanding <= 0 (fully paid/discounted away) are dropped — an
+  // aging report is about what's still owed, not a full invoice list.
+  async receivableAging(organizationId: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const invoices = await tx.invoice.findMany({
+        where: { organizationId, status: { not: "CANCELLED" } },
+        include: {
+          student: { select: { firstName: true, lastName: true, studentCode: true } },
+          discounts: true,
+          payments: { include: { refunds: true } },
+        },
+      });
+
+      const now = Date.now();
+      const buckets = { current: 0, days1To30: 0, days31To60: 0, days61To90: 0, days90Plus: 0 };
+      const rows: {
+        invoiceId: string;
+        invoiceNumber: string | null;
+        studentName: string;
+        studentCode: string;
+        dueDate: string;
+        daysOverdue: number;
+        outstanding: number;
+        bucket: string;
+      }[] = [];
+
+      for (const invoice of invoices) {
+        const discounted = invoice.discounts.reduce((s, d) => s + toNumber(d.amount), 0);
+        const netPaid = invoice.payments.reduce((sum, p) => {
+          const refunded = p.refunds.reduce((rs, r) => rs + toNumber(r.amount), 0);
+          return sum + toNumber(p.amount) - refunded;
+        }, 0);
+        const outstanding = toNumber(invoice.totalAmount) - discounted - netPaid;
+        if (outstanding <= 0.01) continue;
+
+        const daysOverdue = Math.floor((now - invoice.dueDate.getTime()) / (24 * 60 * 60 * 1000));
+        let bucket: keyof typeof buckets;
+        if (daysOverdue <= 0) bucket = "current";
+        else if (daysOverdue <= 30) bucket = "days1To30";
+        else if (daysOverdue <= 60) bucket = "days31To60";
+        else if (daysOverdue <= 90) bucket = "days61To90";
+        else bucket = "days90Plus";
+
+        buckets[bucket] += outstanding;
+        rows.push({
+          invoiceId: invoice.id,
+          invoiceNumber: invoice.invoiceNumber,
+          studentName: `${invoice.student.firstName} ${invoice.student.lastName}`,
+          studentCode: invoice.student.studentCode,
+          dueDate: invoice.dueDate.toISOString().slice(0, 10),
+          daysOverdue: Math.max(daysOverdue, 0),
+          outstanding: Math.round(outstanding * 100) / 100,
+          bucket,
+        });
+      }
+
+      rows.sort((a, b) => b.daysOverdue - a.daysOverdue);
+      return {
+        buckets: Object.fromEntries(
+          Object.entries(buckets).map(([key, value]) => [key, Math.round(value * 100) / 100]),
+        ) as Record<keyof typeof buckets, number>,
+        rows,
+      };
+    });
+  }
+
   // ── Examination ────────────────────────────────────────────────────
 
   async examination(organizationId: string) {
@@ -337,6 +406,23 @@ export class AnalyticsService {
       ...data.collectionsByMethod.map((m) => [`Collected via ${m.method}`, m.amount]),
     ];
     return { headers: ["Metric", "Value"], rows };
+  }
+
+  async exportReceivableAging(organizationId: string) {
+    const data = await this.receivableAging(organizationId);
+    const rows: (string | number)[][] = data.rows.map((r) => [
+      r.invoiceNumber ?? r.invoiceId,
+      r.studentCode,
+      r.studentName,
+      r.dueDate,
+      r.daysOverdue,
+      r.outstanding,
+      r.bucket,
+    ]);
+    return {
+      headers: ["Invoice", "Student code", "Student", "Due date", "Days overdue", "Outstanding", "Bucket"],
+      rows,
+    };
   }
 
   async exportExamination(organizationId: string) {

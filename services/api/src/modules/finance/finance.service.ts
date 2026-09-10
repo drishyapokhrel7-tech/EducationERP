@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import {
   EsewaTransactionStatus,
   FinancialTransactionType,
+  FineRuleType,
   InvoiceStatus,
   PaymentMethod,
   Prisma,
@@ -20,11 +21,35 @@ import { IssueRefundDto } from "./dto/issue-refund.dto";
 import { CreateScholarshipDto } from "./dto/create-scholarship.dto";
 import { UpdateScholarshipDto } from "./dto/update-scholarship.dto";
 import { AssignScholarshipDto } from "./dto/assign-scholarship.dto";
+import { CreateInstallmentPlanDto } from "./dto/create-installment-plan.dto";
+import { CreateFineRuleDto } from "./dto/create-fine-rule.dto";
+import { UpdateFineRuleDto } from "./dto/update-fine-rule.dto";
 import { paginate } from "../../common/pagination";
 import { assertNoDependents } from "../../common/assert-no-dependents";
 
 function toNumber(value: Prisma.Decimal | number): number {
   return typeof value === "number" ? value : value.toNumber();
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Same P2028 ("unable to start a transaction in the given time")
+// retry precedent as PlatformOrganizationsService's own
+// withP2028Retry — this project's well-documented ambient Neon
+// connection-pool contention, surfaced whenever a sweep loops
+// withTenant across every organization the way applyLateFees does.
+async function withP2028Retry<T>(fn: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const isP2028 = err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2028";
+      if (!isP2028 || attempt >= 2) throw err;
+      await sleep(200 * (attempt + 1));
+    }
+  }
 }
 
 @Injectable()
@@ -188,6 +213,96 @@ export class FinanceService {
     });
   }
 
+  // Same collision-retry shape as StudentsService.nextStudentCode /
+  // createStudent — count-based, retried under a unique-index
+  // violation from a concurrent create rather than trusting the count
+  // alone.
+  private async nextInvoiceNumber(tx: PrismaClient, organizationId: string): Promise<string> {
+    const count = await tx.invoice.count({ where: { organizationId } });
+    return `INV-${String(count + 1).padStart(6, "0")}`;
+  }
+
+  private async nextReceiptNumber(tx: PrismaClient, organizationId: string): Promise<string> {
+    const count = await tx.payment.count({ where: { organizationId } });
+    return `RCT-${String(count + 1).padStart(6, "0")}`;
+  }
+
+  private async createInvoiceWithNumber(
+    tx: PrismaClient,
+    organizationId: string,
+    data: {
+      studentId: string;
+      studentEnrollmentId: string;
+      totalAmount: number;
+      dueDate: Date;
+      items: { feeCategoryId: string; amount: Prisma.Decimal | number }[];
+    },
+  ) {
+    const maxAttempts = 5;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const invoiceNumber = await this.nextInvoiceNumber(tx, organizationId);
+      try {
+        return await tx.invoice.create({
+          data: {
+            organizationId,
+            invoiceNumber,
+            studentId: data.studentId,
+            studentEnrollmentId: data.studentEnrollmentId,
+            totalAmount: data.totalAmount,
+            dueDate: data.dueDate,
+            items: {
+              create: data.items.map((item) => ({
+                organizationId,
+                feeCategoryId: item.feeCategoryId,
+                amount: item.amount,
+              })),
+            },
+          },
+        });
+      } catch (err) {
+        const isUniqueViolation = err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
+        if (!isUniqueViolation || attempt === maxAttempts) throw err;
+      }
+    }
+    throw new Error("Could not generate a unique invoice number — please try again");
+  }
+
+  private async createPaymentWithNumber(
+    tx: PrismaClient,
+    organizationId: string,
+    data: {
+      invoiceId: string;
+      amount: Prisma.Decimal | number;
+      method: PaymentMethod;
+      reference?: string | null;
+      recordedBy?: string | null;
+      paidAt: Date;
+    },
+  ) {
+    const maxAttempts = 5;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const receiptNumber = await this.nextReceiptNumber(tx, organizationId);
+      try {
+        return await tx.payment.create({
+          data: {
+            organizationId,
+            receiptNumber,
+            invoiceId: data.invoiceId,
+            amount: data.amount,
+            method: data.method,
+            reference: data.reference,
+            recordedBy: data.recordedBy,
+            paidAt: data.paidAt,
+          },
+        });
+      } catch (err) {
+        const isUniqueViolation = err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
+        if (!isUniqueViolation || attempt === maxAttempts) throw err;
+      }
+    }
+    throw new Error("Could not generate a unique receipt number — please try again");
+  }
+
   private async loadFeeStructure(tx: PrismaClient, feeStructureId: string) {
     const feeStructure = await tx.feeStructure.findUnique({
       where: { id: feeStructureId },
@@ -217,21 +332,15 @@ export class FinanceService {
 
     const totalAmount = feeStructure.items.reduce((sum, item) => sum + toNumber(item.amount), 0);
 
-    const invoice = await tx.invoice.create({
-      data: {
-        organizationId,
-        studentId: enrollment.studentId,
-        studentEnrollmentId: enrollment.id,
-        totalAmount,
-        dueDate: new Date(dueDate),
-        items: {
-          create: feeStructure.items.map((item) => ({
-            organizationId,
-            feeCategoryId: item.feeCategoryId,
-            amount: item.amount,
-          })),
-        },
-      },
+    const invoice = await this.createInvoiceWithNumber(tx, organizationId, {
+      studentId: enrollment.studentId,
+      studentEnrollmentId: enrollment.id,
+      totalAmount,
+      dueDate: new Date(dueDate),
+      items: feeStructure.items.map((item) => ({
+        feeCategoryId: item.feeCategoryId,
+        amount: item.amount,
+      })),
     });
     await tx.studentFeeAssignment.create({
       data: {
@@ -349,16 +458,13 @@ export class FinanceService {
         throw new BadRequestException("Cannot record a payment against a cancelled invoice");
       }
 
-      const payment = await tx.payment.create({
-        data: {
-          organizationId,
-          invoiceId,
-          amount: dto.amount,
-          method: dto.method,
-          reference: dto.reference,
-          recordedBy: userId,
-          paidAt: dto.paidAt ? new Date(dto.paidAt) : new Date(),
-        },
+      const payment = await this.createPaymentWithNumber(tx, organizationId, {
+        invoiceId,
+        amount: dto.amount,
+        method: dto.method,
+        reference: dto.reference,
+        recordedBy: userId,
+        paidAt: dto.paidAt ? new Date(dto.paidAt) : new Date(),
       });
       await tx.financialTransaction.create({
         data: { organizationId, type: FinancialTransactionType.PAYMENT_RECORDED, amount: dto.amount, invoiceId, paymentId: payment.id },
@@ -478,16 +584,13 @@ export class FinanceService {
         throw new BadRequestException(`Payment was not completed (eSewa status: ${result.status})`);
       }
 
-      const payment = await tx.payment.create({
-        data: {
-          organizationId,
-          invoiceId: esewaTx.invoiceId,
-          amount: esewaTx.amount,
-          method: PaymentMethod.ESEWA,
-          reference: esewaTx.transactionUuid,
-          recordedBy: null,
-          paidAt: new Date(),
-        },
+      const payment = await this.createPaymentWithNumber(tx, organizationId, {
+        invoiceId: esewaTx.invoiceId,
+        amount: esewaTx.amount,
+        method: PaymentMethod.ESEWA,
+        reference: esewaTx.transactionUuid,
+        recordedBy: null,
+        paidAt: new Date(),
       });
       await tx.financialTransaction.create({
         data: {
@@ -659,6 +762,221 @@ export class FinanceService {
         data: { organizationId, studentId, scholarshipId: dto.scholarshipId },
         include: { scholarship: true },
       });
+    });
+  }
+
+  // ── Installments ─────────────────────────────────────────────────────
+
+  async createInstallmentPlan(organizationId: string, invoiceId: string, dto: CreateInstallmentPlanDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const invoice = await tx.invoice.findUnique({ where: { id: invoiceId } });
+      if (!invoice) throw new NotFoundException("Invoice not found");
+
+      const existing = await tx.installment.count({ where: { invoiceId } });
+      if (existing > 0) {
+        throw new ConflictException("This invoice already has an installment plan");
+      }
+
+      const sum = dto.installments.reduce((s, i) => s + i.amount, 0);
+      // Small float-rounding tolerance, same reasoning as every other
+      // amount comparison in this service (discount/refund limits) —
+      // never exact-equality on a Decimal-derived sum.
+      if (Math.abs(sum - toNumber(invoice.totalAmount)) > 0.01) {
+        throw new BadRequestException(
+          `Installment amounts (${sum}) must add up to the invoice total (${toNumber(invoice.totalAmount)})`,
+        );
+      }
+
+      await tx.installment.createMany({
+        data: dto.installments.map((installment, index) => ({
+          organizationId,
+          invoiceId,
+          sequence: index + 1,
+          amount: installment.amount,
+          dueDate: new Date(installment.dueDate),
+        })),
+      });
+      // Computed against this same open transaction, not a fresh
+      // listInstallments() call — that opens its own withTenant
+      // transaction, which can't see the createMany above until this
+      // one commits.
+      return this.computeInstallments(tx, invoiceId);
+    });
+  }
+
+  // No stored status — see Installment's own schema comment. Payments
+  // are FIFO-allocated across installments in sequence order, same
+  // "oldest obligation first" logic real institutions actually use,
+  // regardless of which installment a cashier had in mind when they
+  // took the payment.
+  async listInstallments(organizationId: string, invoiceId: string) {
+    return this.prisma.withTenant(organizationId, (tx) => this.computeInstallments(tx, invoiceId));
+  }
+
+  private async computeInstallments(tx: PrismaClient, invoiceId: string) {
+    const invoice = await tx.invoice.findUnique({
+      where: { id: invoiceId },
+      include: { payments: { include: { refunds: true } } },
+    });
+    if (!invoice) throw new NotFoundException("Invoice not found");
+
+    const installments = await tx.installment.findMany({
+      where: { invoiceId },
+      orderBy: { sequence: "asc" },
+    });
+
+    let netPaid = invoice.payments.reduce((sum, p) => {
+      const refunded = p.refunds.reduce((rs, r) => rs + toNumber(r.amount), 0);
+      return sum + toNumber(p.amount) - refunded;
+    }, 0);
+
+    const now = new Date();
+    return installments.map((installment) => {
+      const amount = toNumber(installment.amount);
+      const covered = Math.min(Math.max(netPaid, 0), amount);
+      netPaid -= covered;
+
+      const status =
+        covered >= amount - 0.01
+          ? ("PAID" as const)
+          : covered > 0
+            ? ("PARTIAL" as const)
+            : installment.dueDate < now
+              ? ("OVERDUE" as const)
+              : ("PENDING" as const);
+
+      return { ...installment, coveredAmount: Math.round(covered * 100) / 100, status };
+    });
+  }
+
+  // ── Fine rules ───────────────────────────────────────────────────────
+
+  createFineRule(organizationId: string, dto: CreateFineRuleDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const category = await tx.feeCategory.findUnique({ where: { id: dto.feeCategoryId } });
+      if (!category || category.organizationId !== organizationId) {
+        throw new NotFoundException("Fee category not found");
+      }
+      return tx.fineRule.create({
+        data: { organizationId, feeCategoryId: dto.feeCategoryId, type: dto.type, amount: dto.amount },
+        include: { feeCategory: true },
+      });
+    });
+  }
+
+  listFineRules(organizationId: string) {
+    return this.prisma.withTenant(organizationId, (tx) =>
+      tx.fineRule.findMany({ where: { organizationId }, include: { feeCategory: true }, orderBy: { createdAt: "desc" } }),
+    );
+  }
+
+  async updateFineRule(organizationId: string, id: string, dto: UpdateFineRuleDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadFineRule(tx, organizationId, id);
+      return tx.fineRule.update({ where: { id }, data: dto, include: { feeCategory: true } });
+    });
+  }
+
+  async deleteFineRule(organizationId: string, id: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadFineRule(tx, organizationId, id);
+      await tx.fineRule.delete({ where: { id } });
+      return { deleted: true };
+    });
+  }
+
+  private async loadFineRule(tx: PrismaClient, organizationId: string, id: string) {
+    const rule = await tx.fineRule.findUnique({ where: { id } });
+    if (!rule || rule.organizationId !== organizationId) throw new NotFoundException("Fine rule not found");
+    return rule;
+  }
+
+  // ── Late-fee application (internal/apply-late-fees cron) ────────────
+
+  // Sweeps every organization, same batched-withTenant shape as
+  // PlatformOrganizationsService.listOrganizations — this environment
+  // has 140+ orgs, and a fully sequential loop over that many was
+  // already confirmed live to hang an endpoint (that method's own
+  // comment). FIXED/PERCENTAGE rules charge an overdue invoice once
+  // ever (checked by the presence of an InvoiceItem for that rule's
+  // feeCategoryId); PER_DAY rules charge once per elapsed calendar day
+  // (checked by an InvoiceItem description carrying today's date), so
+  // running this endpoint twice in the same day — or the cron retrying
+  // — never double-charges either shape.
+  async applyLateFees(): Promise<{ organizationsProcessed: number; invoicesCharged: number }> {
+    const organizations = await this.prisma.organization.findMany({ select: { id: true } });
+    const BATCH_SIZE = 8;
+    let invoicesCharged = 0;
+
+    for (let i = 0; i < organizations.length; i += BATCH_SIZE) {
+      const batch = organizations.slice(i, i + BATCH_SIZE);
+      const counts = await Promise.all(
+        batch.map((org) => withP2028Retry(() => this.applyLateFeesForOrg(org.id))),
+      );
+      invoicesCharged += counts.reduce((sum, c) => sum + c, 0);
+    }
+    return { organizationsProcessed: organizations.length, invoicesCharged };
+  }
+
+  private async applyLateFeesForOrg(organizationId: string): Promise<number> {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const rules = await tx.fineRule.findMany({ where: { organizationId, active: true } });
+      if (rules.length === 0) return 0;
+
+      const overdueInvoices = await tx.invoice.findMany({
+        where: {
+          organizationId,
+          status: { in: [InvoiceStatus.PENDING, InvoiceStatus.PARTIALLY_PAID] },
+          dueDate: { lt: new Date() },
+        },
+        include: { items: true, discounts: true, payments: { include: { refunds: true } } },
+      });
+
+      const todayLabel = new Date().toISOString().slice(0, 10);
+      let charged = 0;
+
+      for (const invoice of overdueInvoices) {
+        const netPayable =
+          toNumber(invoice.totalAmount) - invoice.discounts.reduce((sum, d) => sum + toNumber(d.amount), 0);
+        const netPaid = invoice.payments.reduce((sum, p) => {
+          const refunded = p.refunds.reduce((rs, r) => rs + toNumber(r.amount), 0);
+          return sum + toNumber(p.amount) - refunded;
+        }, 0);
+        if (netPaid >= netPayable) continue;
+
+        let invoiceCharged = false;
+        for (const rule of rules) {
+          const alreadyHasFixedOrPercentage =
+            rule.type !== FineRuleType.PER_DAY && invoice.items.some((item) => item.feeCategoryId === rule.feeCategoryId);
+          const alreadyChargedToday =
+            rule.type === FineRuleType.PER_DAY &&
+            invoice.items.some(
+              (item) => item.feeCategoryId === rule.feeCategoryId && item.description?.endsWith(todayLabel),
+            );
+          if (alreadyHasFixedOrPercentage || alreadyChargedToday) continue;
+
+          const fineAmount =
+            rule.type === FineRuleType.PERCENTAGE ? (netPayable * toNumber(rule.amount)) / 100 : toNumber(rule.amount);
+          if (fineAmount <= 0) continue;
+
+          await tx.invoiceItem.create({
+            data: {
+              organizationId,
+              invoiceId: invoice.id,
+              feeCategoryId: rule.feeCategoryId,
+              description: rule.type === FineRuleType.PER_DAY ? `Late fee — ${todayLabel}` : "Late fee",
+              amount: fineAmount,
+            },
+          });
+          await tx.invoice.update({
+            where: { id: invoice.id },
+            data: { totalAmount: toNumber(invoice.totalAmount) + fineAmount },
+          });
+          invoiceCharged = true;
+        }
+        if (invoiceCharged) charged++;
+      }
+      return charged;
     });
   }
 }
