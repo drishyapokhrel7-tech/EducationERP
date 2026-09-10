@@ -16,6 +16,6 @@ export class SearchController {
 
   @Get()
   globalSearch(@CurrentUser() user: JwtPayload, @Query("q") q: string) {
-    return this.search.search(user.organizationId, user.permissions, q ?? "");
+    return this.search.search(user.organizationId, user.sub, user.permissions, q ?? "");
   }
 }

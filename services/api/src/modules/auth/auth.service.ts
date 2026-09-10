@@ -194,9 +194,14 @@ export class AuthService {
     organizationId: string,
     meta: { ipAddress?: string; userAgent?: string } = {},
   ): Promise<AuthTokens> {
-    const { roles, permissions } = await this.loadRolesAndPermissions(userId);
+    // Only role names go in the token now — PermissionsGuard resolves
+    // `resource:action` from those via PermissionResolver. Embedding
+    // the full permission list inline pushed an admin's token past
+    // Node's default --max-http-header-size (16KB), 431'ing every
+    // authenticated request on runtimes that didn't raise it.
+    const { roles } = await this.loadRolesAndPermissions(userId);
 
-    const payload: JwtPayload = { sub: userId, organizationId, roles, permissions };
+    const payload: JwtPayload = { sub: userId, organizationId, roles };
     const accessTtlSeconds = Number(this.config.get<string>("JWT_ACCESS_TTL_SECONDS")) || 900;
     const accessToken = await this.jwt.signAsync(
       payload as unknown as Record<string, unknown>,

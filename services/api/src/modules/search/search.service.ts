@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
+import { PermissionResolver } from "../../common/auth/permission-resolver";
 
 const RESULT_LIMIT = 8;
 const MIN_QUERY_LENGTH = 2;
@@ -68,10 +69,23 @@ export interface SearchResult {
  */
 @Injectable()
 export class SearchService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly permissionResolver: PermissionResolver,
+  ) {}
 
-  async search(organizationId: string, permissions: string[], q: string): Promise<SearchResult> {
-    const granted = new Set(permissions);
+  // `tokenPermissions` is the (legacy) inline list from an old JWT;
+  // absent on current tokens, so resolve from the user's roles then.
+  async search(
+    organizationId: string,
+    userId: string,
+    tokenPermissions: string[] | undefined,
+    q: string,
+  ): Promise<SearchResult> {
+    const granted =
+      tokenPermissions && tokenPermissions.length > 0
+        ? new Set(tokenPermissions)
+        : await this.permissionResolver.getPermissions(userId);
     const term = q.trim();
     if (term.length < MIN_QUERY_LENGTH) {
       return { students: [], employees: [], guardians: [], vehicles: [], inventoryItems: [], exams: [] };

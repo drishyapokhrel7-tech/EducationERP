@@ -3,6 +3,7 @@ import { APP_GUARD } from "@nestjs/core";
 import { ConfigModule } from "@nestjs/config";
 import { ThrottlerModule, ThrottlerGuard } from "@nestjs/throttler";
 import { PrismaModule } from "./prisma/prisma.module";
+import { AuthCommonModule } from "./common/auth/auth-common.module";
 import { AuthModule } from "./modules/auth/auth.module";
 import { OrganizationsModule } from "./modules/organizations/organizations.module";
 import { OrgStructureModule } from "./modules/org-structure/org-structure.module";
@@ -76,6 +77,7 @@ const queueModuleImports = process.env.REDIS_URL ? [QueueModule] : [];
     // to silently pretend isn't there.
     ThrottlerModule.forRoot([{ name: "default", ttl: 60_000, limit: 300 }]),
     PrismaModule,
+    AuthCommonModule,
     AuthModule,
     OrganizationsModule,
     OrgStructureModule,
