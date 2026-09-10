@@ -1369,6 +1369,9 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       return request<PayrollRecord[]>(`/organizations/me/payroll${qs ? `?${qs}` : ""}`);
     },
     getPayroll: (id: string) => request<PayrollRecord>(`/organizations/me/payroll/${id}`),
+    // Formatted Payslip PDF (org letterhead + earnings/deductions +
+    // net pay) — a Blob, for download or inline browser print.
+    getPayslipPdf: (id: string) => requestBlob(`/organizations/me/payroll/${id}/payslip`),
     addPayrollItem: (id: string, input: AddPayrollItemInput) =>
       request(`/organizations/me/payroll/${id}/items`, { method: "POST", body: JSON.stringify(input) }),
     removePayrollItem: (id: string, itemId: string) =>

@@ -279,6 +279,29 @@ export class PayrollService {
     });
   }
 
+  // The org letterhead + the payroll graph, for the printable Payslip
+  // PDF. Letterhead read outside withTenant, same as
+  // OrganizationsService / FinanceService.getInvoiceDocument.
+  async getPayslipDocument(organizationId: string, id: string) {
+    const [org, payroll] = await Promise.all([
+      this.prisma.organization.findUniqueOrThrow({
+        where: { id: organizationId },
+        select: { name: true, address: true, phone: true, email: true, website: true, logoUrl: true },
+      }),
+      this.prisma.withTenant(organizationId, (tx) =>
+        tx.payroll.findUnique({
+          where: { id },
+          include: {
+            employee: { select: { firstName: true, lastName: true, employeeCode: true } },
+            items: true,
+          },
+        }),
+      ),
+    ]);
+    if (!payroll || payroll.organizationId !== organizationId) throw new NotFoundException("Payroll not found");
+    return { org, payroll };
+  }
+
   async addPayrollItem(organizationId: string, id: string, dto: AddPayrollItemDto) {
     return this.prisma.withTenant(organizationId, async (tx) => {
       await this.loadEditablePayroll(tx, organizationId, id);

@@ -1,53 +1,20 @@
-// Printable Fee Invoice and Payment Receipt PDFs. Same pdfkit +
-// stream-to-Buffer approach as analytics/export-helpers.ts's toPdf,
-// but these are formatted documents (letterhead, billed-to block,
-// totals) rather than a bare data table. The letterhead is driven by
-// the Organization fields (name/address/phone/email/website/logoUrl)
-// that the Institutions > Branding form edits.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-import PDFDocument = require("pdfkit");
+// Printable Fee Invoice and Payment Receipt PDFs. Shared letterhead /
+// party-block / footer / render helpers live in common/pdf.ts.
 import type { Prisma } from "@prisma/client";
+import {
+  type Doc,
+  type LetterheadOrg,
+  drawDocTitle,
+  drawFooter,
+  drawLetterhead,
+  drawPartyBlock,
+  formatDate,
+  money,
+  renderPdf,
+  toNumber,
+} from "../../common/pdf";
 
-// pdfkit loads its standard-font metric files (Helvetica etc.) with a
-// require() whose path it builds at runtime, so Vercel's file tracer
-// never bundled js/standard-fonts/*.cjs and doc.font("Helvetica")
-// threw "Cannot find module .../Helvetica.cjs" in production. These
-// string-literal require.resolve() calls ARE traceable, so nft
-// includes the files (also covered by includeFiles in vercel.json —
-// belt and suspenders). Wrapped in try/catch for non-bundled
-// environments (local dev, tests); the return value is never used.
-function pinPdfkitFonts(): void {
-  try {
-    require.resolve("pdfkit/js/standard-fonts/Helvetica.cjs");
-    require.resolve("pdfkit/js/standard-fonts/Helvetica-Bold.cjs");
-    require.resolve("pdfkit/js/standard-fonts/Helvetica-Oblique.cjs");
-    require.resolve("pdfkit/js/standard-fonts/Helvetica-BoldOblique.cjs");
-  } catch {
-    /* not bundled here — fine */
-  }
-}
-pinPdfkitFonts();
-
-function toNumber(value: Prisma.Decimal | number): number {
-  return typeof value === "number" ? value : value.toNumber();
-}
-
-function money(value: Prisma.Decimal | number): string {
-  return `NPR ${toNumber(value).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
-function formatDate(d: Date): string {
-  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-}
-
-export interface LetterheadOrg {
-  name: string;
-  address: string | null;
-  phone: string | null;
-  email: string | null;
-  website: string | null;
-  logoUrl: string | null;
-}
+export type { LetterheadOrg };
 
 // Minimal shapes — whatever FinanceService.getInvoice / the receipt
 // query actually return satisfies these structurally.
@@ -84,123 +51,11 @@ export interface DocInvoice {
   payments: DocPayment[];
 }
 
-type Doc = InstanceType<typeof PDFDocument>;
-
-// Best-effort — a letterhead logo is nice, never load-bearing. Any
-// failure (bad URL, slow host, non-image bytes) just falls through to
-// the text-only letterhead.
-async function fetchLogo(url: string): Promise<Buffer | null> {
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 4000);
-    const res = await fetch(url, { signal: controller.signal });
-    clearTimeout(timer);
-    if (!res.ok) return null;
-    const type = res.headers.get("content-type") ?? "";
-    if (!type.startsWith("image/")) return null;
-    const buf = Buffer.from(await res.arrayBuffer());
-    return buf.length > 0 && buf.length < 5 * 1024 * 1024 ? buf : null;
-  } catch {
-    return null;
-  }
-}
-
-async function drawLetterhead(doc: Doc, org: LetterheadOrg): Promise<void> {
-  const left = doc.page.margins.left;
-  const top = doc.page.margins.top;
-  const logo = org.logoUrl ? await fetchLogo(org.logoUrl) : null;
-  let textX = left;
-  if (logo) {
-    try {
-      doc.image(logo, left, top, { fit: [110, 55] });
-      textX = left + 125;
-    } catch {
-      textX = left;
-    }
-  }
-  doc.font("Helvetica-Bold").fontSize(16).fillColor("#111111").text(org.name, textX, top, { width: 340 });
-  doc.font("Helvetica").fontSize(9).fillColor("#444444");
-  const lines = [org.address, org.phone, org.email, org.website].filter((v): v is string => !!v && v.trim().length > 0);
-  for (const line of lines) doc.text(line, textX, doc.y, { width: 340 });
-
-  const dividerY = Math.max(doc.y, top + 60) + 8;
-  doc
-    .moveTo(left, dividerY)
-    .lineTo(doc.page.width - doc.page.margins.right, dividerY)
-    .strokeColor("#cccccc")
-    .lineWidth(1)
-    .stroke();
-  doc.fillColor("#000000");
-  doc.x = left;
-  doc.y = dividerY + 16;
-}
-
-function drawDocTitle(doc: Doc, title: string, ref: string | null, dateLabel: string, dateValue: string): void {
-  const left = doc.page.margins.left;
-  const right = doc.page.width - doc.page.margins.right;
-  const y = doc.y;
-  doc.font("Helvetica-Bold").fontSize(18).fillColor("#111111").text(title, left, y);
-  doc.font("Helvetica").fontSize(9).fillColor("#444444");
-  if (ref) doc.text(ref, left, y, { width: right - left, align: "right" });
-  doc.text(`${dateLabel}: ${dateValue}`, left, doc.y, { width: right - left, align: "right" });
-  doc.fillColor("#000000");
-  doc.x = left;
-  doc.moveDown(1);
-}
-
-function drawBilledTo(doc: Doc, heading: string, student: DocStudent): void {
-  const left = doc.page.margins.left;
-  doc.x = left;
-  doc.font("Helvetica-Bold").fontSize(9).fillColor("#444444").text(heading);
-  doc
-    .font("Helvetica")
-    .fontSize(11)
-    .fillColor("#000000")
-    .text(`${student.firstName} ${student.lastName}`)
-    .fontSize(9)
-    .fillColor("#444444")
-    .text(student.studentCode);
-  doc.fillColor("#000000");
-  doc.moveDown(1);
-}
-
-function drawFooter(doc: Doc): void {
-  const left = doc.page.margins.left;
-  const bottom = doc.page.height - doc.page.margins.bottom;
-  doc
-    .font("Helvetica")
-    .fontSize(8)
-    .fillColor("#999999")
-    .text("This is a computer-generated document and does not require a signature.", left, bottom - 14, {
-      width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
-      align: "center",
-    });
-  doc.fillColor("#000000");
-}
-
-function render(build: (doc: Doc) => Promise<void> | void): Promise<Buffer> {
-  return new Promise<Buffer>((resolve, reject) => {
-    const doc = new PDFDocument({ margin: 48, size: "A4" });
-    const chunks: Buffer[] = [];
-    doc.on("data", (c: Buffer) => chunks.push(c));
-    doc.on("end", () => resolve(Buffer.concat(chunks)));
-    doc.on("error", reject);
-    void (async () => {
-      try {
-        await build(doc);
-        doc.end();
-      } catch (err) {
-        reject(err instanceof Error ? err : new Error(String(err)));
-      }
-    })();
-  });
-}
-
 export function buildInvoicePdf(org: LetterheadOrg, invoice: DocInvoice): Promise<Buffer> {
-  return render(async (doc) => {
+  return renderPdf(async (doc: Doc) => {
     await drawLetterhead(doc, org);
     drawDocTitle(doc, "INVOICE", invoice.invoiceNumber, "Date", formatDate(invoice.createdAt));
-    drawBilledTo(doc, "BILLED TO", invoice.student);
+    drawPartyBlock(doc, "BILLED TO", [`${invoice.student.firstName} ${invoice.student.lastName}`, invoice.student.studentCode]);
 
     const left = doc.page.margins.left;
     const right = doc.page.width - doc.page.margins.right;
@@ -271,10 +126,13 @@ export function buildInvoicePdf(org: LetterheadOrg, invoice: DocInvoice): Promis
 }
 
 export function buildReceiptPdf(org: LetterheadOrg, invoice: DocInvoice, payment: DocPayment): Promise<Buffer> {
-  return render(async (doc) => {
+  return renderPdf(async (doc: Doc) => {
     await drawLetterhead(doc, org);
     drawDocTitle(doc, "PAYMENT RECEIPT", payment.receiptNumber, "Date", formatDate(payment.paidAt));
-    drawBilledTo(doc, "RECEIVED FROM", invoice.student);
+    drawPartyBlock(doc, "RECEIVED FROM", [
+      `${invoice.student.firstName} ${invoice.student.lastName}`,
+      invoice.student.studentCode,
+    ]);
 
     const left = doc.page.margins.left;
 

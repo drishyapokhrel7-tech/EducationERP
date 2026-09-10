@@ -14,6 +14,7 @@ import { Separator } from "@/components/ui/separator";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
+import { downloadBlob } from "@/lib/download";
 import { submitAction, errorMessage } from "@/lib/submit-action";
 import type { PayrollItemType, PayrollStatus, PaymentMethod } from "@education-erp/api-client";
 
@@ -377,11 +378,28 @@ export default function PayrollPage() {
                 const payroll = activePayroll.data;
                 return (
                   <div className="bg-muted/40 space-y-3 rounded-lg border p-4 text-sm">
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="font-medium">
                         {payroll.employee.firstName} {payroll.employee.lastName} — {monthYearLabel(payroll.periodMonth, payroll.periodYear)}
                       </p>
-                      <Badge variant={payrollStatusVariant(payroll.status)}>{payroll.status}</Badge>
+                      <div className="flex items-center gap-2">
+                        {payroll.status === "FINALIZED" || payroll.status === "PAID" ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              downloadBlob(
+                                () => api.getPayslipPdf(payroll.id),
+                                `payslip-${payroll.periodYear}-${String(payroll.periodMonth).padStart(2, "0")}.pdf`,
+                              )
+                            }
+                          >
+                            Payslip PDF
+                          </Button>
+                        ) : null}
+                        <Badge variant={payrollStatusVariant(payroll.status)}>{payroll.status}</Badge>
+                      </div>
                     </div>
                     <ul className="text-muted-foreground pl-4 text-xs">
                       {payroll.items.map((i) => (

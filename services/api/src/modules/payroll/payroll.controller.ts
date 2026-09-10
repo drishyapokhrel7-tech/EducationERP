@@ -1,6 +1,8 @@
-import { Body, Controller, Delete, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Post, Query, Res, UseGuards } from "@nestjs/common";
+import type { Response } from "express";
 import { PayrollStatus } from "@prisma/client";
 import { PayrollService } from "./payroll.service";
+import { buildPayslipPdf } from "./payroll-documents";
 import { CreateSalaryStructureDto } from "./dto/create-salary-structure.dto";
 import { AddSalaryStructureItemDto } from "./dto/add-salary-structure-item.dto";
 import { AssignSalaryStructureDto } from "./dto/assign-salary-structure.dto";
@@ -90,6 +92,20 @@ export class PayrollController {
   @RequirePermissions("payroll:view")
   getPayroll(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
     return this.payroll.getPayroll(user.organizationId, id);
+  }
+
+  // Printable payslip — org letterhead, earnings/deductions tables,
+  // net pay. Gated by payroll:view (same as opening the record on
+  // screen). @Res() because a Buffer return is corrupted by Nest's
+  // JSON serializer.
+  @Get("payroll/:id/payslip")
+  @RequirePermissions("payroll:view")
+  async getPayslipPdf(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Res() res: Response) {
+    const { org, payroll } = await this.payroll.getPayslipDocument(user.organizationId, id);
+    const pdf = await buildPayslipPdf(org, payroll);
+    res.set("Content-Type", "application/pdf");
+    res.set("Content-Disposition", `inline; filename="payslip-${payroll.periodYear}-${payroll.periodMonth}.pdf"`);
+    res.send(pdf);
   }
 
   @Post("payroll/:id/items")
