@@ -8,6 +8,26 @@
 import PDFDocument = require("pdfkit");
 import type { Prisma } from "@prisma/client";
 
+// pdfkit loads its standard-font metric files (Helvetica etc.) with a
+// require() whose path it builds at runtime, so Vercel's file tracer
+// never bundled js/standard-fonts/*.cjs and doc.font("Helvetica")
+// threw "Cannot find module .../Helvetica.cjs" in production. These
+// string-literal require.resolve() calls ARE traceable, so nft
+// includes the files (also covered by includeFiles in vercel.json —
+// belt and suspenders). Wrapped in try/catch for non-bundled
+// environments (local dev, tests); the return value is never used.
+function pinPdfkitFonts(): void {
+  try {
+    require.resolve("pdfkit/js/standard-fonts/Helvetica.cjs");
+    require.resolve("pdfkit/js/standard-fonts/Helvetica-Bold.cjs");
+    require.resolve("pdfkit/js/standard-fonts/Helvetica-Oblique.cjs");
+    require.resolve("pdfkit/js/standard-fonts/Helvetica-BoldOblique.cjs");
+  } catch {
+    /* not bundled here — fine */
+  }
+}
+pinPdfkitFonts();
+
 function toNumber(value: Prisma.Decimal | number): number {
   return typeof value === "number" ? value : value.toNumber();
 }
