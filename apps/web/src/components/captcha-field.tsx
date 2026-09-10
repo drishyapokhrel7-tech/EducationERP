@@ -78,7 +78,7 @@ export function CaptchaField({
       <Input
         required
         inputMode="numeric"
-        maxLength={4}
+        maxLength={6}
         placeholder="Type the numbers above"
         value={value.captchaAnswer}
         onChange={(e) => onChange({ captchaId: value.captchaId, captchaAnswer: e.target.value })}

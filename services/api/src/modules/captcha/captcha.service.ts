@@ -25,19 +25,23 @@ export class CaptchaService {
   constructor(private readonly prisma: PrismaService) {}
 
   async generate(): Promise<{ captchaId: string; svg: string }> {
-    // Simplified for legibility: fewer characters, no crossing noise
-    // lines, single readable color instead of per-letter color
-    // mixing, digits-only (no letter/case ambiguity at all — matching
-    // normalize()'s already-case-insensitive check, there was no
-    // security reason to include letters).
+    // Digits-only, single-colour — deliberately legible (letter/case
+    // ambiguity was a real usability complaint, and normalize() is
+    // case-insensitive anyway). But 4 chars with zero noise is
+    // trivially OCR-farmed, so: 5 chars (100k combinations vs 10k)
+    // plus one distortion line. Combined with the single-use
+    // consume-on-attempt check and the /auth/login 10/min throttle,
+    // an online guess/OCR attack isn't worthwhile; this raises the
+    // cost of scripted credential-stuffing without hurting a real
+    // person.
     const captcha = svgCaptcha.create({
-      size: 4,
-      noise: 0,
+      size: 5,
+      noise: 1,
       color: false,
       charPreset: "0123456789",
-      width: 150,
+      width: 170,
       height: 60,
-      fontSize: 60,
+      fontSize: 58,
     });
     // Not tenant data — no withTenant/organizationId, same as every
     // other genuinely global table in this schema.
