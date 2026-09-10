@@ -18,6 +18,7 @@ import { Avatar } from "@/components/avatar";
 import { EditionUsageBadge } from "@/components/edition-usage-badge";
 import { EditionUpgradeBanner } from "@/components/edition-upgrade-banner";
 import { api } from "@/lib/api";
+import { downloadBlob } from "@/lib/download";
 import { statusVariant } from "@/lib/status-variant";
 import { useHighlightFromSearch } from "@/lib/use-highlight-from-search";
 import { isEditionLimitError } from "@/lib/edition-limit-error";
@@ -436,6 +437,14 @@ export default function StudentsPage() {
                 }}
               >
                 Edit
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => downloadBlob(() => api.getStudentIdCardPdf(s.id), `id-card-${s.studentCode}.pdf`)}
+              >
+                ID card
               </Button>
               <Button
                 type="button"

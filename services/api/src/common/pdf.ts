@@ -53,10 +53,10 @@ export interface LetterheadOrg {
   logoUrl: string | null;
 }
 
-// Best-effort — a letterhead logo is nice, never load-bearing. Any
-// failure (bad URL, slow host, non-image bytes) just falls through to
-// the text-only letterhead.
-async function fetchLogo(url: string): Promise<Buffer | null> {
+// Best-effort image fetch — a letterhead logo or an ID-card photo is
+// nice, never load-bearing. Any failure (bad URL, slow host, non-image
+// bytes) returns null and the caller renders without it.
+export async function fetchImage(url: string): Promise<Buffer | null> {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 4000);
@@ -75,7 +75,7 @@ async function fetchLogo(url: string): Promise<Buffer | null> {
 export async function drawLetterhead(doc: Doc, org: LetterheadOrg): Promise<void> {
   const left = doc.page.margins.left;
   const top = doc.page.margins.top;
-  const logo = org.logoUrl ? await fetchLogo(org.logoUrl) : null;
+  const logo = org.logoUrl ? await fetchImage(org.logoUrl) : null;
   let textX = left;
   if (logo) {
     try {

@@ -912,6 +912,9 @@ export function createApiClient({
     },
     downloadStudentImportTemplate: () => requestBlob("/organizations/me/students/import-template"),
     exportStudents: () => requestBlob("/organizations/me/students/export"),
+    // Printable ID card PDF (org header + photo + name/ID/class) — a
+    // Blob, for download or inline browser print.
+    getStudentIdCardPdf: (id: string) => requestBlob(`/organizations/me/students/${id}/id-card`),
 
     listRooms: () => request<Room[]>("/organizations/me/rooms"),
     createRoom: (input: CreateRoomInput) =>

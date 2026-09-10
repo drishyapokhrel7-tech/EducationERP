@@ -115,6 +115,46 @@ export class StudentsService {
     });
   }
 
+  // Org letterhead + one student's ID-card fields (name/code/photo/
+  // dob/gender + current class from the latest enrollment). Letterhead
+  // read outside withTenant, same as the other *Document methods.
+  async getStudentIdCardDocument(organizationId: string, studentId: string) {
+    const [org, row] = await Promise.all([
+      this.prisma.organization.findUniqueOrThrow({
+        where: { id: organizationId },
+        select: { name: true, address: true, phone: true, email: true, website: true, logoUrl: true },
+      }),
+      this.prisma.withTenant(organizationId, (tx) =>
+        tx.student.findUnique({
+          where: { id: studentId },
+          select: {
+            firstName: true,
+            lastName: true,
+            studentCode: true,
+            photoUrl: true,
+            dateOfBirth: true,
+            gender: true,
+            enrollments: {
+              select: { program: { select: { name: true } }, section: { select: { name: true } } },
+              orderBy: { enrollmentDate: "desc" },
+              take: 1,
+            },
+          },
+        }),
+      ),
+    ]);
+    if (!row) throw new NotFoundException("Student not found");
+    const { enrollments, ...s } = row;
+    return {
+      org,
+      student: {
+        ...s,
+        programName: enrollments[0]?.program.name ?? null,
+        sectionName: enrollments[0]?.section?.name ?? null,
+      },
+    };
+  }
+
   // Paginated (Phase 8 performance-optimization slice) — this was an
   // unbounded findMany. `orderBy` is required for skip/take to be
   // well-defined at all (Postgres gives no ordering guarantee across

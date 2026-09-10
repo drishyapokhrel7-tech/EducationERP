@@ -18,6 +18,7 @@ import {
 import { FileInterceptor } from "@nestjs/platform-express";
 import type { Response } from "express";
 import { StudentsService } from "./students.service";
+import { buildStudentIdCardPdf } from "./student-id-card-document";
 import { CreateStudentDto } from "./dto/create-student.dto";
 import { UpdateStudentDto } from "./dto/update-student.dto";
 import { CreateGuardianDto } from "./dto/create-guardian.dto";
@@ -60,6 +61,19 @@ export class StudentsController {
   @RequirePermissions("student:create")
   createStudent(@CurrentUser() user: JwtPayload, @Body() dto: CreateStudentDto) {
     return this.students.createStudent(user.organizationId, dto);
+  }
+
+  // Printable ID card — one card (org header + photo + name/ID/class/
+  // DOB) centred on an A4 page. student:view (same as opening the
+  // record), @Res() for the Buffer.
+  @Get("students/:id/id-card")
+  @RequirePermissions("student:view")
+  async getStudentIdCard(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Res() res: Response) {
+    const { org, student } = await this.students.getStudentIdCardDocument(user.organizationId, id);
+    const pdf = await buildStudentIdCardPdf(org, student);
+    res.set("Content-Type", "application/pdf");
+    res.set("Content-Disposition", `inline; filename="id-card-${student.studentCode}.pdf"`);
+    res.send(pdf);
   }
 
   @Patch("students/:id")
