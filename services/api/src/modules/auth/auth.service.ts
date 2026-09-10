@@ -1,6 +1,8 @@
 import { randomBytes, createHash } from "crypto";
 import {
   ConflictException,
+  HttpException,
+  HttpStatus,
   Injectable,
   UnauthorizedException,
 } from "@nestjs/common";
@@ -136,6 +138,8 @@ export class AuthService {
     // DISABLE_CAPTCHA bypasses this deliberately allows.
     await this.captcha.requireValid(dto.captchaId, dto.captchaAnswer);
 
+    await this.assertNotLockedOut(dto.identifier);
+
     const user = await this.prisma.user.findFirst({
       where: { OR: [{ email: dto.identifier }, { username: dto.identifier }] },
     });
@@ -161,6 +165,44 @@ export class AuthService {
 
     const tokens = await this.issueTokens(user.id, user.organizationId, meta);
     return { user: this.toSafeUser(user), ...tokens };
+  }
+
+  // Brute-force brake, on top of the per-IP /auth/login throttle and
+  // the single-use captcha: after LOCKOUT_THRESHOLD failed attempts
+  // for one identifier inside LOCKOUT_WINDOW_MS, further attempts are
+  // refused with a 429 until the streak ages out. A successful login
+  // in between clears it (only failures *after* the last success
+  // count). Skipped under NODE_ENV=test, like the captcha check —
+  // the e2e suite logs in dozens of times with deliberate failures.
+  private static readonly LOCKOUT_THRESHOLD = 8;
+  private static readonly LOCKOUT_WINDOW_MS = 15 * 60 * 1000;
+
+  private async assertNotLockedOut(identifier: string): Promise<void> {
+    if (process.env.NODE_ENV === "test") return;
+    const since = new Date(Date.now() - AuthService.LOCKOUT_WINDOW_MS);
+
+    const lastSuccess = await this.prisma.loginEvent.findFirst({
+      where: { email: identifier, success: true, createdAt: { gte: since } },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
+    });
+    const countFrom = lastSuccess ? lastSuccess.createdAt : since;
+
+    const recentFailures = await this.prisma.loginEvent.findMany({
+      where: { email: identifier, success: false, createdAt: { gt: countFrom } },
+      orderBy: { createdAt: "asc" },
+      select: { createdAt: true },
+    });
+
+    if (recentFailures.length >= AuthService.LOCKOUT_THRESHOLD) {
+      const oldest = recentFailures[0].createdAt.getTime();
+      const retryInMs = oldest + AuthService.LOCKOUT_WINDOW_MS - Date.now();
+      const retryMin = Math.max(1, Math.ceil(retryInMs / 60_000));
+      throw new HttpException(
+        `Too many failed sign-in attempts. Try again in about ${retryMin} minute${retryMin === 1 ? "" : "s"}, or reset your password.`,
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
   }
 
   async refresh(refreshToken: string) {
