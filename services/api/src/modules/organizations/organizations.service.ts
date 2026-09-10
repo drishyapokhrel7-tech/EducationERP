@@ -3,6 +3,7 @@ import { PrismaClient } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateCampusDto } from "./dto/create-campus.dto";
 import { UpdateCampusDto } from "./dto/update-campus.dto";
+import { UpdateOrganizationDto } from "./dto/update-organization.dto";
 import { editionStatus } from "./edition-limits";
 import { seedCollegeStructure } from "../org-structure/college-structure-defaults";
 import { DEFAULT_COLLEGE_STAFF_TYPES, DEFAULT_COLLEGE_DESIGNATIONS } from "../staff/staff.service";
@@ -18,6 +19,14 @@ export class OrganizationsService {
       throw new NotFoundException("Organization not found");
     }
     return org;
+  }
+
+  // Letterhead metadata only — organizationName/slug are set once at
+  // registration and never editable here, same "identity vs.
+  // decoration" split as every field this touches.
+  async updateOwnOrganization(organizationId: string, dto: UpdateOrganizationDto) {
+    await this.getOwnOrganization(organizationId);
+    return this.prisma.organization.update({ where: { id: organizationId }, data: dto });
   }
 
   // organizationId is taken from the caller's JWT (see

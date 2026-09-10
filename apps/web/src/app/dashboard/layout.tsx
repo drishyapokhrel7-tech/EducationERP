@@ -18,7 +18,6 @@ import {
   CreditCard,
   FileQuestion,
   Fingerprint,
-  Gauge,
   GraduationCap,
   ScrollText,
   LayoutDashboard,
@@ -65,7 +64,10 @@ interface NavGroup {
 const NAV_GROUPS: NavGroup[] = [
   {
     label: "Organization",
-    items: [{ href: "/dashboard/org-structure", label: "Org structure", icon: Network }],
+    items: [
+      { href: "/dashboard/institutions", label: "Institutions", icon: Building2 },
+      { href: "/dashboard/org-structure", label: "Org structure", icon: Network },
+    ],
   },
   {
     label: "People",
@@ -141,10 +143,11 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "Insights",
-    items: [
-      { href: "/dashboard/overview", label: "Highlights", icon: Gauge },
-      { href: "/dashboard/analytics", label: "Analytics & Reports", icon: BarChart3 },
-    ],
+    // "Highlights" used to live here as its own page — its stats,
+    // charts, and recent-activity feed are now the home dashboard
+    // itself (/dashboard, top of the sidebar) rather than a separate
+    // Insights link.
+    items: [{ href: "/dashboard/analytics", label: "Analytics & Reports", icon: BarChart3 }],
   },
 ];
 

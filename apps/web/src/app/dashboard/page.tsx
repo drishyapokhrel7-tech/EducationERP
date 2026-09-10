@@ -1,54 +1,136 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import Link from "next/link";
 import useSWR from "swr";
-import { toast } from "sonner";
-import { Building2, ClipboardList, GraduationCap, Users } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
+  Banknote,
+  Building2,
+  CalendarCheck,
+  ClipboardList,
+  GraduationCap,
+  MessageSquare,
+  UserPlus,
+  Users,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { NativeSelect } from "@/components/ui/native-select";
-import { Separator } from "@/components/ui/separator";
 import { StatCard } from "@/components/ui/stat-card";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { OnboardingChecklist, type OnboardingStep } from "@/components/dashboard/onboarding-checklist";
 import { api } from "@/lib/api";
-import { submitAction, submitDelete } from "@/lib/submit-action";
-import type { CampusType } from "@education-erp/api-client";
+import { formatRelativeTime } from "@/lib/relative-time";
 
+// The theme's own --chart-1..5 tokens (globals.css) — defined for both
+// light and dark but never actually used by any component until the
+// charts on this page, referenced directly as CSS vars (not hardcoded
+// hex) so a chart's colors follow the same theme switch as everything
+// else, light or dark.
+const CHART_COLORS = [
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-5)",
+];
+
+const NPR = new Intl.NumberFormat("en-NP", { style: "currency", currency: "NPR", maximumFractionDigits: 0 });
+
+const QUICK_ACTIONS = [
+  { href: "/dashboard/students#students", label: "Add student", icon: GraduationCap },
+  { href: "/dashboard/staff#employees", label: "Add employee", icon: UserPlus },
+  { href: "/dashboard/attendance", label: "Take attendance", icon: CalendarCheck },
+  { href: "/dashboard/finance", label: "Record payment", icon: Banknote },
+  { href: "/dashboard/communication", label: "Send message", icon: MessageSquare },
+  { href: "/dashboard/admissions", label: "New admission", icon: ClipboardList },
+] as const;
+
+function ChartCard({
+  title,
+  loading,
+  empty,
+  children,
+}: {
+  title: string;
+  loading: boolean;
+  empty: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <p className="text-muted-foreground text-sm">Loading…</p>
+        ) : empty ? (
+          <p className="text-muted-foreground text-sm">No data yet.</p>
+        ) : (
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              {children as never}
+            </ResponsiveContainer>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// The home dashboard — the very first thing landed on, top of the
+// sidebar. Used to be an Institution/Campus setup form with four bare
+// stat cards bolted on (that setup form now lives at
+// /dashboard/institutions); this used to also be split across a
+// separate "/dashboard/overview" page ("Highlights") tucked under
+// Insights — its stats/charts/activity feed are folded in here
+// instead, since a home dashboard is exactly what that page already
+// was.
 export default function DashboardPage() {
   const organizationQuery = useSWR("organization", () => api.getOwnOrganization());
   const organization = organizationQuery.data;
   const campusesQuery = useSWR("campuses", () => api.listCampuses());
   const campuses = campusesQuery.data ?? [];
-  const mutateCampuses = campusesQuery.mutate;
-  // Only a count is shown (StatCard below) — fetch page 1 at the
-  // smallest page size and read `.total` rather than pulling the whole
-  // roster just to call `.length` on it (Phase 8 performance-
-  // optimization slice).
-  const studentsQuery = useSWR("students-count", () => api.listStudents({ pageSize: 1 }));
-  const studentsPage = studentsQuery.data;
-  const employeesQuery = useSWR("employees-count", () => api.listEmployees({ pageSize: 1 }));
-  const employeesPage = employeesQuery.data;
   const applicationsQuery = useSWR("admission-applications", () => api.listAdmissionApplications());
   const applications = applicationsQuery.data ?? [];
+
+  const operational = useSWR("analytics-operational", () => api.getOperationalAnalytics());
+  const enrollment = useSWR("analytics-enrollment", () => api.getEnrollmentAnalytics());
+  const academic = useSWR("analytics-academic", () => api.getAcademicAnalytics());
+  const financial = useSWR("analytics-financial", () => api.getFinancialAnalytics());
+  const activity = useSWR("recent-audit-logs", () => api.listAuditLogs({ limit: 10 }));
+
   // Getting-started checklist (UX audit finding) — driven entirely by
   // real counts, same SWR keys the pages that actually own each of
   // these already use, so a session that's visited them dedupes
   // instead of double-fetching. Every one of these lists is a small,
   // org-scoped catalog table (already fetched unbounded elsewhere in
-  // this app) except enrollments, which reads its own `.total` the
-  // same way the students/employees counts above do.
+  // this app) except students/employees/enrollments, which read their
+  // own `.total` from the paginated list endpoints instead.
   //
   // Deliberately reading the raw (non-defaulted) `.data` here, not
   // `data = []` — this is the exact "still loading" vs "genuinely
   // empty" distinction the audit itself flagged for EntityCard (#06).
-  // With 11 requests firing in parallel on every dashboard load, some
-  // are still in flight for a moment; defaulting straight to `[]`
-  // would count an unloaded step as "not done," which would even
-  // flash this whole card into view on an org that's actually fully
-  // set up, right before the last request resolves and it disappears.
+  // With this many requests firing in parallel on every dashboard
+  // load, some are still in flight for a moment; defaulting straight
+  // to `[]` would count an unloaded step as "not done," which would
+  // even flash this whole card into view on an org that's actually
+  // fully set up, right before the last request resolves and it
+  // disappears.
+  const studentsQuery = useSWR("students-count", () => api.listStudents({ pageSize: 1 }));
+  const studentsPage = studentsQuery.data;
+  const employeesQuery = useSWR("employees-count", () => api.listEmployees({ pageSize: 1 }));
+  const employeesPage = employeesQuery.data;
   const facultiesQuery = useSWR("faculties", () => api.listFaculties());
   const departmentsQuery = useSWR("departments", () => api.listDepartments());
   const programsQuery = useSWR("programs", () => api.listPrograms());
@@ -94,7 +176,7 @@ export default function DashboardPage() {
   ].every((d) => d !== undefined);
 
   const onboardingSteps: OnboardingStep[] = [
-    { label: "Institution", done: campuses.length > 0 },
+    { label: "Institution", done: campuses.length > 0, href: "/dashboard/institutions" },
     { label: "Faculty", done: (facultiesQuery.data ?? []).length > 0, href: "/dashboard/org-structure#faculties" },
     {
       label: "Department",
@@ -138,85 +220,9 @@ export default function DashboardPage() {
     { label: "Send one message", done: (messagesQuery.data ?? []).length > 0, href: "/dashboard/communication" },
     { label: "Run one report", done: (reportExportsQuery.data ?? []).length > 0, href: "/dashboard/analytics" },
   ];
-  const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState({ name: "", code: "" });
-  const [editingCampusId, setEditingCampusId] = useState<string | null>(null);
-  const [editCampusForm, setEditCampusForm] = useState<{ name: string; code: string; type: CampusType }>({
-    name: "",
-    code: "",
-    type: "GENERIC",
-  });
-  // Deleting an Institution is the root of an entire org tree (for a
-  // single-campus school, its only campus) — the one delete button on
-  // this page that genuinely earns a confirm step, unlike the small
-  // catalog-entity deletes elsewhere which already have a legible
-  // dependency-guard error and no real "oops" risk.
-  const [deletingCampus, setDeletingCampus] = useState<{ id: string; name: string } | null>(null);
-
-  // A real, persisted Campus.type now backs this picker (previously a
-  // client-only cosmetic label with no stored column — see the git
-  // history for that former comment). Selecting "College" causes the
-  // backend to seed a default Faculty/Department/Program structure
-  // for this campus (see the API's college-structure-defaults.ts) —
-  // every other option behaves exactly as before, a bare campus row.
-  // GENERIC reads as "Other" here, deliberately NOT "Institution" —
-  // "Institution" is the umbrella word covering every option in this
-  // list (School, College, Montessori, ...), so listing it as one of
-  // the choices read as circular/confusing. "Other" is the plain,
-  // not-further-classified option; "Institution"/"Institutions" is
-  // reserved for the page-level heading below, never a selectable type.
-  const CAMPUS_TYPE_OPTIONS = [
-    { value: "GENERIC", label: "Other" },
-    { value: "SCHOOL", label: "School" },
-    { value: "COLLEGE", label: "College" },
-    { value: "MONTESSORI", label: "Montessori" },
-  ] as const;
-  const [campusType, setCampusType] = useState<(typeof CAMPUS_TYPE_OPTIONS)[number]["value"]>("GENERIC");
-  // Only describes what's about to be added (the button text, toast
-  // messages) — never the section heading/count below. Coupling those
-  // to whichever type happens to be selected in the add-form was
-  // itself the confusing bug: picking "College" here used to retitle
-  // the whole list "Colleges" even with zero colleges actually
-  // created. The list's own label is computed separately, below, from
-  // the real data only. GENERIC reads as "Institution" here (not the
-  // dropdown's own "Other" label) — "Add Institution"/"Institution
-  // created" reads naturally as plain action copy, the circularity
-  // problem only existed inside the type list itself.
-  const campusTypeLabel = campusType === "GENERIC" ? "Institution" : CAMPUS_TYPE_OPTIONS.find((o) => o.value === campusType)!.label;
-  const existingCampusLabel = campuses.length === 1 ? "Institution" : "Institutions";
-
-  // Not every institution runs multiple campuses/schools — this
-  // shortcut fills the campus form from the organization's own
-  // already-validated name/slug (slug is @MinLength(2) at registration,
-  // well over the campus code's @MinLength(1), so this always passes
-  // validation) instead of making a single-site admin retype it.
-  function onSingleInstitution() {
-    if (!organization) return;
-    setForm({ name: organization.name, code: organization.slug });
-    toast.success("Okay No Problem Now you can click Add Institution button below to make this institution official.");
-  }
-
-  async function onCreateCampus(e: FormEvent) {
-    e.preventDefault();
-    setCreating(true);
-    try {
-      const campus = await api.createCampus({ ...form, type: campusType });
-      setForm({ name: "", code: "" });
-      toast.success(
-        campusType === "COLLEGE"
-          ? "College created with a default Faculty/Department/Program structure — edit it anytime under Org Structure."
-          : `${campusTypeLabel} created`,
-      );
-      mutateCampuses([...campuses, campus], { revalidate: false });
-    } catch {
-      toast.error(`Failed to create ${campusTypeLabel.toLowerCase()}`);
-    } finally {
-      setCreating(false);
-    }
-  }
 
   return (
-    <div className="max-w-5xl space-y-6">
+    <div className="max-w-6xl space-y-6">
       <div>
         {organization ? (
           <h1 className="text-2xl font-semibold">{organization.name}</h1>
@@ -235,31 +241,61 @@ export default function DashboardPage() {
           <h1 className="text-2xl font-semibold">Loading…</h1>
         )}
         <p className="text-muted-foreground text-sm">
-          Your organization&apos;s data is private — nothing here is visible to any other school on this platform.
+          A glanceable summary of the institution, computed live from current data. Your organization&apos;s data is
+          private — nothing here is visible to any other school on this platform.
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        {QUICK_ACTIONS.map((action) => (
+          <Link
+            key={action.href}
+            href={action.href}
+            className="border-border/60 bg-card hover:border-primary/40 hover:bg-accent flex flex-col items-center gap-2 rounded-xl border p-4 text-center shadow-sm transition-colors"
+          >
+            <span className="bg-primary/10 text-primary flex size-9 items-center justify-center rounded-lg">
+              <action.icon className="size-4" />
+            </span>
+            <span className="text-xs font-medium">{action.label}</span>
+          </Link>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
         <StatCard
-          label={existingCampusLabel}
+          label={campuses.length === 1 ? "Institution" : "Institutions"}
           value={campuses.length}
           icon={<Building2 className="size-4" />}
           error={!!campusesQuery.error}
           onRetry={() => campusesQuery.mutate()}
         />
         <StatCard
-          label="Students"
-          value={studentsPage?.total ?? 0}
+          label="Active students"
+          value={operational.data?.activeStudents ?? "—"}
           icon={<GraduationCap className="size-4" />}
-          error={!!studentsQuery.error}
-          onRetry={() => studentsQuery.mutate()}
+          error={!!operational.error}
+          onRetry={() => operational.mutate()}
         />
         <StatCard
-          label="Staff"
-          value={employeesPage?.total ?? 0}
+          label="Active staff"
+          value={operational.data?.activeStaff ?? "—"}
           icon={<Users className="size-4" />}
-          error={!!employeesQuery.error}
-          onRetry={() => employeesQuery.mutate()}
+          error={!!operational.error}
+          onRetry={() => operational.mutate()}
+        />
+        <StatCard
+          label="Active enrollments"
+          value={operational.data?.activeEnrollments ?? "—"}
+          icon={<GraduationCap className="size-4" />}
+          error={!!operational.error}
+          onRetry={() => operational.mutate()}
+        />
+        <StatCard
+          label="Outstanding fees"
+          value={operational.data ? NPR.format(operational.data.outstandingAmount) : "—"}
+          icon={<Banknote className="size-4" />}
+          error={!!operational.error}
+          onRetry={() => operational.mutate()}
         />
         <StatCard
           label="Admissions"
@@ -274,158 +310,147 @@ export default function DashboardPage() {
         <OnboardingChecklist steps={onboardingSteps} firstWeekSteps={firstWeekSteps} />
       ) : null}
 
+      <div className="grid gap-4 md:grid-cols-2">
+        <ChartCard
+          title="Admissions funnel"
+          loading={!enrollment.data}
+          empty={(enrollment.data?.admissionsFunnel.length ?? 0) === 0}
+        >
+          <PieChart>
+            <Pie
+              data={enrollment.data?.admissionsFunnel ?? []}
+              dataKey="count"
+              nameKey="status"
+              cx="50%"
+              cy="50%"
+              startAngle={0}
+              endAngle={360}
+              innerRadius={55}
+              outerRadius={90}
+            >
+              {(enrollment.data?.admissionsFunnel ?? []).map((_, i) => (
+                <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+              ))}
+            </Pie>
+            <Legend />
+            <Tooltip />
+          </PieChart>
+        </ChartCard>
+
+        <ChartCard
+          title="Enrollment trend"
+          loading={!enrollment.data}
+          empty={(enrollment.data?.enrollmentTrend.length ?? 0) === 0}
+        >
+          <BarChart data={enrollment.data?.enrollmentTrend ?? []}>
+            <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+            <XAxis dataKey="academicYear" tick={{ fontSize: 12 }} />
+            <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
+            <Tooltip />
+            <Bar dataKey="count" fill="var(--chart-1)" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+          </BarChart>
+        </ChartCard>
+
+        <ChartCard
+          title="Enrollment by program"
+          loading={!academic.data}
+          empty={(academic.data?.enrollmentByProgram.length ?? 0) === 0}
+        >
+          <BarChart data={academic.data?.enrollmentByProgram ?? []} layout="vertical">
+            <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+            <XAxis type="number" allowDecimals={false} tick={{ fontSize: 12 }} />
+            <YAxis dataKey="name" type="category" width={140} tick={{ fontSize: 12 }} />
+            <Tooltip />
+            <Bar dataKey="count" fill="var(--chart-2)" radius={[0, 4, 4, 0]} isAnimationActive={false} />
+          </BarChart>
+        </ChartCard>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Fee collections</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {!financial.data ? (
+              <p className="text-muted-foreground text-sm">Loading…</p>
+            ) : (
+              <>
+                <div className="grid grid-cols-3 gap-3 text-sm">
+                  <div>
+                    <p className="text-muted-foreground text-xs">Invoiced</p>
+                    <p className="font-semibold">{NPR.format(financial.data.totalInvoiced)}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground text-xs">Collected</p>
+                    <p className="font-semibold">{NPR.format(financial.data.totalCollected)}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground text-xs">Outstanding</p>
+                    <p className="font-semibold">{NPR.format(financial.data.totalOutstanding)}</p>
+                  </div>
+                </div>
+                {financial.data.collectionsByMethod.length === 0 ? (
+                  <p className="text-muted-foreground text-sm">No payments recorded yet.</p>
+                ) : (
+                  <div className="h-48">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={financial.data.collectionsByMethod}
+                          dataKey="amount"
+                          nameKey="method"
+                          cx="50%"
+                          cy="50%"
+                          startAngle={0}
+                          endAngle={360}
+                          innerRadius={40}
+                          outerRadius={70}
+                        >
+                          {financial.data.collectionsByMethod.map((_, i) => (
+                            <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Legend />
+                        <Tooltip formatter={(value) => NPR.format(Number(value))} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
       <Card>
         <CardHeader>
-          <CardTitle>{existingCampusLabel}</CardTitle>
+          <CardTitle>Recent activity</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          {campuses.length === 0 ? (
-            <p className="text-muted-foreground text-sm">No institutions yet.</p>
+        <CardContent>
+          {!activity.data ? (
+            <p className="text-muted-foreground text-sm">Loading…</p>
+          ) : activity.data.length === 0 ? (
+            <p className="text-muted-foreground text-sm">No activity recorded yet.</p>
           ) : (
             <ul className="divide-y">
-              {campuses.map((campus) => (
-                <li key={campus.id} className="flex items-center justify-between py-2 text-sm">
+              {activity.data.map((entry) => (
+                <li key={entry.id} className="flex items-center justify-between gap-3 py-2 text-sm">
                   <span>
-                    {campus.name} <span className="text-muted-foreground">{campus.code}</span>
+                    <span className="font-medium">
+                      {entry.user ? `${entry.user.firstName} ${entry.user.lastName}` : "System"}
+                    </span>{" "}
+                    <span className="text-muted-foreground">
+                      {entry.action.toLowerCase()} {entry.resource.replace(/_/g, " ")}
+                    </span>
                   </span>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        setEditingCampusId(campus.id);
-                        setEditCampusForm({ name: campus.name, code: campus.code, type: campus.type });
-                      }}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="destructive"
-                      onClick={() => setDeletingCampus({ id: campus.id, name: campus.name })}
-                    >
-                      Delete
-                    </Button>
-                  </div>
+                  <span className="text-muted-foreground shrink-0 text-xs">
+                    {formatRelativeTime(entry.createdAt)}
+                  </span>
                 </li>
               ))}
             </ul>
           )}
-
-          {editingCampusId ? (
-            <form
-              className="flex flex-wrap items-end gap-3"
-              onSubmit={(e: FormEvent) => {
-                e.preventDefault();
-                submitAction(
-                  () => api.updateCampus(editingCampusId, editCampusForm),
-                  () => {
-                    setEditingCampusId(null);
-                    mutateCampuses();
-                  },
-                );
-              }}
-            >
-              <div className="space-y-2">
-                <Label>Type</Label>
-                <NativeSelect
-                  className="w-32"
-                  placeholder="Select type"
-                  value={editCampusForm.type}
-                  onChange={(v) => setEditCampusForm((f) => ({ ...f, type: v as CampusType }))}
-                  options={CAMPUS_TYPE_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Name</Label>
-                <Input
-                  required
-                  value={editCampusForm.name}
-                  onChange={(e) => setEditCampusForm((f) => ({ ...f, name: e.target.value }))}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Code</Label>
-                <Input
-                  required
-                  className="w-24"
-                  value={editCampusForm.code}
-                  onChange={(e) => setEditCampusForm((f) => ({ ...f, code: e.target.value }))}
-                />
-              </div>
-              <Button type="submit" size="sm">
-                Save
-              </Button>
-              <Button type="button" size="sm" variant="outline" onClick={() => setEditingCampusId(null)}>
-                Cancel
-              </Button>
-            </form>
-          ) : null}
-
-          <Separator />
-
-          {campuses.length === 0 ? (
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-muted-foreground text-xs">
-                Only one {campusTypeLabel.toLowerCase()}? Skip typing it in yourself.
-              </p>
-              <Button type="button" variant="outline" size="sm" onClick={onSingleInstitution} disabled={!organization}>
-                I have only one institution
-              </Button>
-            </div>
-          ) : null}
-
-          <form onSubmit={onCreateCampus} className="flex items-end gap-3">
-            <div className="space-y-2">
-              <Label>Type</Label>
-              <NativeSelect
-                className="w-32"
-                placeholder="Select type"
-                value={campusType}
-                onChange={(v) => setCampusType(v as (typeof CAMPUS_TYPE_OPTIONS)[number]["value"])}
-                options={CAMPUS_TYPE_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="campus-name">Name</Label>
-              <Input
-                id="campus-name"
-                required
-                value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="campus-code">Code</Label>
-              <Input
-                id="campus-code"
-                required
-                className="w-24"
-                value={form.code}
-                onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))}
-              />
-            </div>
-            <Button type="submit" disabled={creating}>
-              {creating ? "Adding…" : `Add ${campusTypeLabel}`}
-            </Button>
-          </form>
         </CardContent>
       </Card>
-
-      <ConfirmDialog
-        open={deletingCampus !== null}
-        onOpenChange={(open) => !open && setDeletingCampus(null)}
-        title={`Delete ${deletingCampus?.name}?`}
-        description="This removes the institution and everything underneath it — faculties, departments, programs, sections. If any of those are still referenced elsewhere, the delete is blocked instead."
-        confirmLabel="Delete institution"
-        variant="destructive"
-        onConfirm={() => {
-          if (!deletingCampus) return;
-          return submitDelete(() => api.deleteCampus(deletingCampus.id), () => mutateCampuses());
-        }}
-      />
     </div>
   );
 }

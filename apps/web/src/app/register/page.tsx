@@ -24,6 +24,7 @@ export default function RegisterPage() {
   const [form, setForm] = useState({
     organizationName: "",
     slug: "",
+    website: "",
     adminFirstName: "",
     adminLastName: "",
     adminEmail: "",
@@ -50,7 +51,7 @@ export default function RegisterPage() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const challenge = await registerOrganization(form);
+      const challenge = await registerOrganization({ ...form, website: form.website || undefined });
       toast.success("Organization created");
       setVerification(challenge);
     } catch (err) {
@@ -174,6 +175,16 @@ export default function RegisterPage() {
                 Student Id will look like{" "}
                 <span className="font-mono">{form.slug || "prefix"}.STU001</span>
               </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="website">Website (optional)</Label>
+              <Input
+                id="website"
+                type="url"
+                placeholder="https://myschool.edu"
+                value={form.website}
+                onChange={(e) => update("website", e.target.value)}
+              />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">

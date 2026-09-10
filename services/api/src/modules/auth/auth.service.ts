@@ -56,7 +56,7 @@ export class AuthService {
 
     const { user, organization } = await this.prisma.$transaction(async (tx) => {
       const organization = await tx.organization.create({
-        data: { name: dto.organizationName, slug: dto.slug },
+        data: { name: dto.organizationName, slug: dto.slug, website: dto.website },
       });
       // audit_logs is RLS-protected (WITH CHECK organizationId = the
       // session GUC) — the org didn't exist to scope to until the

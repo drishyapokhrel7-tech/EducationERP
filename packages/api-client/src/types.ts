@@ -62,8 +62,28 @@ export interface Organization {
   name: string;
   slug: string;
   edition: Edition;
+  // Letterhead metadata for printable documents (invoices, receipts,
+  // report cards, ...) — every one renders gracefully with just
+  // `name` if these are unset.
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+  logoUrl: string | null;
+  website: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+// Distinct from the platform-admin's own UpdateOrganizationInput
+// further below (that one edits name/slug/edition on any org,
+// cross-tenant) — this is the tenant's own self-service edit of its
+// letterhead metadata only.
+export interface UpdateOwnOrganizationInput {
+  address?: string;
+  phone?: string;
+  email?: string;
+  logoUrl?: string;
+  website?: string;
 }
 
 export interface EditionStatus {
@@ -100,6 +120,9 @@ export interface RegisterOrganizationInput {
   adminFirstName: string;
   adminLastName: string;
   password: string;
+  // Optional letterhead metadata — the institution's own site, not
+  // required identity like organizationName/slug.
+  website?: string;
 }
 
 export interface LoginInput {

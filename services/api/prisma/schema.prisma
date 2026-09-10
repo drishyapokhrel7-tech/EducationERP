@@ -40,6 +40,20 @@ model Organization {
   // enforcement time only, the same "computed, not stored" precedent
   // used throughout this schema.
   editionExpiresAt DateTime?
+  // Letterhead fields for printable documents (invoices, receipts,
+  // report cards, payslips, ID cards, admit cards) — every one of
+  // them renders gracefully with just `name` above if these are
+  // unset. logoUrl follows the same generic-storage-URL two-step
+  // upload pattern as Student.photoUrl/Employee.photoUrl, not a
+  // dedicated upload pipeline.
+  address          String?
+  phone            String?
+  email            String?
+  logoUrl          String?
+  // Optional at registration (RegisterOrganizationDto) and thereafter
+  // — the same letterhead reasoning as the fields above, not a
+  // required piece of identity like organizationName/slug.
+  website          String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
   deletedAt        DateTime?
@@ -4547,4 +4561,26 @@ model LeadSubmission {
 
   @@index([createdAt])
   @@map("lead_submissions")
+}
+
+// Anti-fake-submission gate for the public leads form — keyed on the
+// raw submitted email, not a userId, since a marketing-site visitor
+// has no account. Otherwise the exact same shape as
+// EmailVerificationCode/PasswordResetCode: Postgres-backed, single-
+// use, expiring, argon2-hashed, generic-failure verify. Deliberately
+// follows PasswordResetService's "email-only, hard-fail if delivery
+// didn't happen" precedent rather than EmailVerificationService's
+// on-screen fallback — showing the code on-screen here would let a
+// scripted submission read it straight back out of the API response,
+// defeating the entire point of this gate.
+model LeadVerificationCode {
+  id         String    @id @default(uuid())
+  email      String
+  codeHash   String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([email])
+  @@map("lead_verification_codes")
 }

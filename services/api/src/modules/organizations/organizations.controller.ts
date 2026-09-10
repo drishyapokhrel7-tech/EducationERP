@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@n
 import { OrganizationsService } from "./organizations.service";
 import { CreateCampusDto } from "./dto/create-campus.dto";
 import { UpdateCampusDto } from "./dto/update-campus.dto";
+import { UpdateOrganizationDto } from "./dto/update-organization.dto";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
@@ -16,6 +17,12 @@ export class OrganizationsController {
   @Get()
   getOwn(@CurrentUser() user: JwtPayload) {
     return this.organizationsService.getOwnOrganization(user.organizationId);
+  }
+
+  @Patch()
+  @RequirePermissions("organization:update")
+  updateOwn(@CurrentUser() user: JwtPayload, @Body() dto: UpdateOrganizationDto) {
+    return this.organizationsService.updateOwnOrganization(user.organizationId, dto);
   }
 
   // No @RequirePermissions — every authenticated user in the org can

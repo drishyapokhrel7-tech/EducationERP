@@ -48,6 +48,7 @@ import type {
   ImportResult,
   LoginInput,
   Organization,
+  UpdateOwnOrganizationInput,
   Program,
   Qualification,
   RegisterOrganizationInput,
@@ -555,6 +556,9 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
       request<void>("/auth/logout", { method: "POST", body: JSON.stringify({ refreshToken }) }),
 
     getOwnOrganization: () => request<Organization>("/organizations/me"),
+
+    updateOwnOrganization: (input: UpdateOwnOrganizationInput) =>
+      request<Organization>("/organizations/me", { method: "PATCH", body: JSON.stringify(input) }),
 
     getEditionStatus: () => request<EditionStatus>("/organizations/me/edition-status"),
 

@@ -1,4 +1,4 @@
-import { IsEmail, IsString, MinLength } from "class-validator";
+import { IsEmail, IsOptional, IsString, IsUrl, MinLength } from "class-validator";
 
 export class RegisterOrganizationDto {
   @IsString()
@@ -23,4 +23,10 @@ export class RegisterOrganizationDto {
   @IsString()
   @MinLength(8)
   password!: string;
+
+  // Optional letterhead metadata (Organization.website) — same
+  // reasoning as address/phone/email/logoUrl, not required identity.
+  @IsOptional()
+  @IsUrl()
+  website?: string;
 }
