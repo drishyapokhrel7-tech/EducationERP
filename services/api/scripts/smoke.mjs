@@ -31,6 +31,7 @@ const PROTECTED = [
   "/organizations/me/payroll/x/payslip",
   "/organizations/me/students/x/id-card",
   "/organizations/me/exams/x/students/y/report-card/pdf",
+  "/organizations/me/exams/x/students/y/admit-card",
   "/organizations/me/fine-rules",
   "/organizations/me/analytics/financial",
   "/organizations/me/analytics/financial/export?format=pdf",

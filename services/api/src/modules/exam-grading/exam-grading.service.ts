@@ -136,4 +136,39 @@ export class ExamGradingService {
     ]);
     return { org, ...base };
   }
+
+  // Org letterhead + student + exam name + every subject this student
+  // is registered to sit (has an ExamAttempt for) within this exam,
+  // each with its schedule (date/time) and room(s) if set — the
+  // printable admit card / hall ticket.
+  async getAdmitCardDocument(organizationId: string, examId: string, studentId: string) {
+    const [org, base] = await Promise.all([
+      this.prisma.organization.findUniqueOrThrow({
+        where: { id: organizationId },
+        select: { name: true, address: true, phone: true, email: true, website: true, logoUrl: true },
+      }),
+      this.prisma.withTenant(organizationId, async (tx) => {
+        const exam = await tx.exam.findUnique({ where: { id: examId }, select: { name: true } });
+        if (!exam) throw new NotFoundException("Exam not found");
+        const student = await tx.student.findUniqueOrThrow({
+          where: { id: studentId },
+          select: { firstName: true, lastName: true, studentCode: true, photoUrl: true },
+        });
+        const attempts = await tx.examAttempt.findMany({
+          where: { organizationId, studentId, examSubject: { examId } },
+          include: {
+            examSubject: {
+              include: {
+                curriculumSubject: { include: { subject: true } },
+                examSchedule: { include: { examRooms: { include: { room: true } } } },
+              },
+            },
+          },
+        });
+        if (attempts.length === 0) throw new NotFoundException("Student is not registered for any subject in this exam");
+        return { exam, student, subjects: attempts };
+      }),
+    ]);
+    return { org, ...base };
+  }
 }

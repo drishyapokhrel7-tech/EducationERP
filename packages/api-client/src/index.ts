@@ -1155,6 +1155,10 @@ export function createApiClient({
     // Blob, for download or inline browser print.
     getReportCardPdf: (examId: string, studentId: string) =>
       requestBlob(`/organizations/me/exams/${examId}/students/${studentId}/report-card/pdf`),
+    // Admit card / hall ticket PDF — every subject the student is
+    // registered for in this exam, with schedule + room.
+    getAdmitCardPdf: (examId: string, studentId: string) =>
+      requestBlob(`/organizations/me/exams/${examId}/students/${studentId}/admit-card`),
 
     // No studentId param — the server derives it from the caller's own
     // linked Student row. See StudentPortalService.

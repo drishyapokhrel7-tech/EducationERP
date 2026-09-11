@@ -248,6 +248,15 @@ function ReportCardSection({ examId, students }: { examId: string; students: Stu
                   Download PDF
                 </Button>
               ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() =>
+                  downloadBlob(() => api.getAdmitCardPdf(examId, studentId), `admit-card-${studentId}.pdf`)
+                }
+              >
+                Admit card PDF
+              </Button>
             </div>
           ) : null}
         </div>
