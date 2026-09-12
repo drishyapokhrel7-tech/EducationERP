@@ -2064,6 +2064,10 @@ export interface FeeCategoryRecord {
   name: string;
   code: string;
   description: string | null;
+  // Which ledger account this category's invoice items post their
+  // credit side to — see AccountingService's posting rules. Null =
+  // posts to the org's default Fee Revenue system account.
+  revenueAccountId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -2078,6 +2082,9 @@ export interface UpdateFeeCategoryInput {
   name?: string;
   code?: string;
   description?: string;
+  // Pass "" to clear the mapping back to the org's default Fee
+  // Revenue account.
+  revenueAccountId?: string;
 }
 
 export interface FeeStructureItemRecord {
@@ -2319,6 +2326,146 @@ export interface ReceivableAging {
     days90Plus: number;
   };
   rows: ReceivableAgingRow[];
+}
+
+// ── Accounting (double-entry: Chart of Accounts / Journal / reports) ──
+
+export type AccountType = "ASSET" | "LIABILITY" | "EQUITY" | "INCOME" | "EXPENSE";
+
+export interface AccountRecord {
+  id: string;
+  organizationId: string;
+  code: string;
+  name: string;
+  type: AccountType;
+  parentId: string | null;
+  isSystemAccount: boolean;
+  active: boolean;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateAccountInput {
+  code: string;
+  name: string;
+  type: AccountType;
+  parentId?: string;
+  description?: string;
+}
+
+export interface UpdateAccountInput {
+  name?: string;
+  description?: string;
+  active?: boolean;
+}
+
+export interface LedgerEntry {
+  id: string;
+  journalEntryId: string;
+  date: string;
+  entryNumber: string | null;
+  memo: string;
+  description: string | null;
+  debit: number;
+  credit: number;
+  runningBalance: number;
+}
+
+export interface AccountLedger {
+  account: AccountRecord;
+  lines: LedgerEntry[];
+}
+
+export type JournalEntryStatus = "DRAFT" | "POSTED" | "VOID";
+export type JournalEntrySource = "MANUAL" | "INVOICE" | "PAYMENT" | "DISCOUNT" | "REFUND" | "PAYROLL";
+
+export interface JournalLineRecord {
+  id: string;
+  organizationId: string;
+  journalEntryId: string;
+  accountId: string;
+  debit: string;
+  credit: string;
+  description: string | null;
+  createdAt: string;
+  account: AccountRecord;
+}
+
+export interface JournalEntryRecord {
+  id: string;
+  organizationId: string;
+  entryNumber: string | null;
+  date: string;
+  memo: string;
+  source: JournalEntrySource;
+  sourceId: string | null;
+  status: JournalEntryStatus;
+  reversalOfId: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lines: JournalLineRecord[];
+  creator?: { firstName: string; lastName: string } | null;
+}
+
+export interface JournalLineInput {
+  accountId: string;
+  // Exactly one of debit/credit must be greater than zero.
+  debit?: number;
+  credit?: number;
+  description?: string;
+}
+
+export interface CreateJournalEntryInput {
+  date: string;
+  memo: string;
+  lines: JournalLineInput[];
+}
+
+export interface TrialBalanceRow {
+  account: AccountRecord;
+  debit: number;
+  credit: number;
+}
+
+export interface TrialBalance {
+  asOf: string;
+  rows: TrialBalanceRow[];
+  totalDebit: number;
+  totalCredit: number;
+}
+
+export interface BalanceSheetRow {
+  account: AccountRecord;
+  balance: number;
+}
+
+export interface BalanceSheet {
+  asOf: string;
+  assets: BalanceSheetRow[];
+  liabilities: BalanceSheetRow[];
+  equity: BalanceSheetRow[];
+  retainedEarnings: number;
+  totalAssets: number;
+  totalLiabilities: number;
+  totalEquity: number;
+  balanced: boolean;
+}
+
+export interface IncomeStatementRow {
+  account: AccountRecord;
+  amount: number;
+}
+
+export interface IncomeStatement {
+  from: string | null;
+  to: string;
+  income: IncomeStatementRow[];
+  expenses: IncomeStatementRow[];
+  totalIncome: number;
+  totalExpenses: number;
+  netIncome: number;
 }
 
 // eSewa online payment (Phase 7 slice 7a-2).

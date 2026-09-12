@@ -10,6 +10,7 @@ import {
   PrismaClient,
 } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
+import { AccountingService } from "../accounting/accounting.service";
 import { EsewaGatewayService, EsewaRedirectPayload } from "./esewa-gateway.service";
 import { CreateFeeCategoryDto } from "./dto/create-fee-category.dto";
 import { UpdateFeeCategoryDto } from "./dto/update-fee-category.dto";
@@ -59,6 +60,7 @@ export class FinanceService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly esewaGateway: EsewaGatewayService,
+    private readonly accounting: AccountingService,
   ) {}
 
   // ── Fee categories ──────────────────────────────────────────────────
@@ -78,7 +80,22 @@ export class FinanceService {
   async updateFeeCategory(organizationId: string, id: string, dto: UpdateFeeCategoryDto) {
     return this.prisma.withTenant(organizationId, async (tx) => {
       await this.loadFeeCategory(tx, organizationId, id);
-      return tx.feeCategory.update({ where: { id }, data: dto });
+      let revenueAccountId: string | null | undefined;
+      if (dto.revenueAccountId !== undefined) {
+        if (dto.revenueAccountId === "") {
+          revenueAccountId = null;
+        } else {
+          const account = await tx.account.findUnique({ where: { id: dto.revenueAccountId } });
+          if (!account || account.organizationId !== organizationId) {
+            throw new NotFoundException("Revenue account not found");
+          }
+          revenueAccountId = dto.revenueAccountId;
+        }
+      }
+      return tx.feeCategory.update({
+        where: { id },
+        data: { name: dto.name, code: dto.code, description: dto.description, revenueAccountId },
+      });
     });
   }
 
@@ -354,6 +371,7 @@ export class FinanceService {
     await tx.financialTransaction.create({
       data: { organizationId, type: FinancialTransactionType.INVOICE_CREATED, amount: totalAmount, invoiceId: invoice.id },
     });
+    await this.accounting.postInvoiceCreated(tx, organizationId, invoice.id);
 
     // Scholarships are auto-applied as Discount rows at the moment the
     // invoice is created — a snapshot, not a live reference, so a
@@ -385,6 +403,7 @@ export class FinanceService {
           discountId: discount.id,
         },
       });
+      await this.accounting.postDiscountApplied(tx, organizationId, discount.id);
     }
 
     await this.recomputeInvoiceStatus(tx, organizationId, invoice.id);
@@ -529,6 +548,7 @@ export class FinanceService {
       await tx.financialTransaction.create({
         data: { organizationId, type: FinancialTransactionType.PAYMENT_RECORDED, amount: dto.amount, invoiceId, paymentId: payment.id },
       });
+      await this.accounting.postPaymentRecorded(tx, organizationId, payment.id);
       await this.recomputeInvoiceStatus(tx, organizationId, invoiceId);
       return payment;
     });
@@ -661,6 +681,7 @@ export class FinanceService {
           paymentId: payment.id,
         },
       });
+      await this.accounting.postPaymentRecorded(tx, organizationId, payment.id);
       await tx.esewaTransaction.update({
         where: { id: esewaTx.id },
         data: { status: EsewaTransactionStatus.COMPLETE, esewaRefId: result.refId, completedAt: new Date() },
@@ -687,6 +708,7 @@ export class FinanceService {
       await tx.financialTransaction.create({
         data: { organizationId, type: FinancialTransactionType.DISCOUNT_APPLIED, amount: dto.amount, invoiceId, discountId: discount.id },
       });
+      await this.accounting.postDiscountApplied(tx, organizationId, discount.id);
       await this.recomputeInvoiceStatus(tx, organizationId, invoiceId);
       return discount;
     });
@@ -714,6 +736,7 @@ export class FinanceService {
           refundId: refund.id,
         },
       });
+      await this.accounting.postRefundIssued(tx, organizationId, refund.id);
       await this.recomputeInvoiceStatus(tx, organizationId, payment.invoiceId);
       return refund;
     });

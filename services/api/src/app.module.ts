@@ -29,6 +29,7 @@ import { AiGatewayModule } from "./modules/ai-gateway/ai-gateway.module";
 import { CameraEventsModule } from "./modules/camera-events/camera-events.module";
 import { DeviceGatewayModule } from "./modules/device-gateway/device-gateway.module";
 import { FinanceModule } from "./modules/finance/finance.module";
+import { AccountingModule } from "./modules/accounting/accounting.module";
 import { BillingModule } from "./modules/billing/billing.module";
 import { RbacModule } from "./modules/rbac/rbac.module";
 import { LeaveModule } from "./modules/leave/leave.module";
@@ -102,6 +103,7 @@ const queueModuleImports = process.env.REDIS_URL ? [QueueModule] : [];
     AiGatewayModule,
     CameraEventsModule,
     FinanceModule,
+    AccountingModule,
     BillingModule,
     RbacModule,
     LeaveModule,

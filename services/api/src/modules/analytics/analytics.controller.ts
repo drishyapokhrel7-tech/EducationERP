@@ -1,13 +1,14 @@
-import { BadRequestException, Controller, Get, Query, Res, UseGuards } from "@nestjs/common";
+import { Controller, Get, Query, Res, UseGuards } from "@nestjs/common";
 import type { Response } from "express";
 import { AnalyticsService } from "./analytics.service";
-import { ExportTable, toCsv, toPdf, toXlsx } from "./export-helpers";
+import { ExportTable } from "./export-helpers";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtPayload } from "../../common/auth/jwt-payload";
 import { PrismaService } from "../../prisma/prisma.service";
+import { sendTableResponse } from "../../common/send-table";
 
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller("organizations/me/analytics")
@@ -166,30 +167,13 @@ export class AnalyticsController {
     format: string,
     user: JwtPayload,
   ) {
-    if (format === "xlsx") {
-      const buffer = await toXlsx(table, filenameBase);
-      await this.logExport(user.organizationId, user.sub, filenameBase, format);
-      res.set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-      res.set("Content-Disposition", `attachment; filename="${filenameBase}.xlsx"`);
-      res.send(buffer);
-      return;
-    }
-    if (format === "csv") {
-      await this.logExport(user.organizationId, user.sub, filenameBase, format);
-      res.set("Content-Type", "text/csv");
-      res.set("Content-Disposition", `attachment; filename="${filenameBase}.csv"`);
-      res.send(toCsv(table));
-      return;
-    }
-    if (format === "pdf") {
-      const buffer = await toPdf(table, title);
-      await this.logExport(user.organizationId, user.sub, filenameBase, format);
-      res.set("Content-Type", "application/pdf");
-      res.set("Content-Disposition", `attachment; filename="${filenameBase}.pdf"`);
-      res.send(buffer);
-      return;
-    }
-    throw new BadRequestException('format must be "csv", "xlsx", or "pdf"');
+    // The format-switch itself now lives in the shared
+    // sendTableResponse (services/api/src/common/send-table.ts) —
+    // AccountingController's report exports reuse it too. This
+    // wrapper stays here since the audit-log signal is
+    // analytics-specific (see the comment above).
+    await sendTableResponse(res, table, filenameBase, title, format);
+    await this.logExport(user.organizationId, user.sub, filenameBase, format);
   }
 
   private logExport(organizationId: string, userId: string, report: string, format: string) {

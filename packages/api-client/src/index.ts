@@ -347,6 +347,15 @@ import type {
   CreateFineRuleInput,
   UpdateFineRuleInput,
   ReceivableAging,
+  AccountRecord,
+  CreateAccountInput,
+  UpdateAccountInput,
+  AccountLedger,
+  JournalEntryRecord,
+  CreateJournalEntryInput,
+  TrialBalance,
+  BalanceSheet,
+  IncomeStatement,
   InitiateEsewaPaymentInput,
   EsewaFormPayload,
   ConfirmEsewaPaymentResult,
@@ -1329,6 +1338,59 @@ export function createApiClient({
       request<FineRuleRecord>(`/organizations/me/fine-rules/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
     deleteFineRule: (id: string) =>
       request<{ deleted: true }>(`/organizations/me/fine-rules/${id}`, { method: "DELETE" }),
+
+    // ── Accounting (double-entry: Chart of Accounts / Journal / reports) ──
+    listAccounts: () => request<AccountRecord[]>("/organizations/me/accounting/accounts"),
+    createAccount: (input: CreateAccountInput) =>
+      request<AccountRecord>("/organizations/me/accounting/accounts", { method: "POST", body: JSON.stringify(input) }),
+    updateAccount: (id: string, input: UpdateAccountInput) =>
+      request<AccountRecord>(`/organizations/me/accounting/accounts/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      }),
+    deleteAccount: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/accounting/accounts/${id}`, { method: "DELETE" }),
+    getAccountLedger: (id: string, from?: string, to?: string) => {
+      const params = new URLSearchParams();
+      if (from) params.set("from", from);
+      if (to) params.set("to", to);
+      const qs = params.toString();
+      return request<AccountLedger>(`/organizations/me/accounting/accounts/${id}/ledger${qs ? `?${qs}` : ""}`);
+    },
+    listJournalEntries: () => request<JournalEntryRecord[]>("/organizations/me/accounting/journal-entries"),
+    getJournalEntry: (id: string) => request<JournalEntryRecord>(`/organizations/me/accounting/journal-entries/${id}`),
+    createJournalEntry: (input: CreateJournalEntryInput) =>
+      request<JournalEntryRecord>("/organizations/me/accounting/journal-entries", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    voidJournalEntry: (id: string) =>
+      request<JournalEntryRecord>(`/organizations/me/accounting/journal-entries/${id}/void`, { method: "POST" }),
+    getTrialBalance: (asOf?: string) =>
+      request<TrialBalance>(`/organizations/me/accounting/reports/trial-balance${asOf ? `?asOf=${asOf}` : ""}`),
+    exportTrialBalance: (format: AnalyticsExportFormat, asOf?: string) =>
+      requestBlob(
+        `/organizations/me/accounting/reports/trial-balance/export?format=${format}${asOf ? `&asOf=${asOf}` : ""}`,
+      ),
+    getBalanceSheet: (asOf?: string) =>
+      request<BalanceSheet>(`/organizations/me/accounting/reports/balance-sheet${asOf ? `?asOf=${asOf}` : ""}`),
+    exportBalanceSheet: (format: AnalyticsExportFormat, asOf?: string) =>
+      requestBlob(
+        `/organizations/me/accounting/reports/balance-sheet/export?format=${format}${asOf ? `&asOf=${asOf}` : ""}`,
+      ),
+    getIncomeStatement: (from?: string, to?: string) => {
+      const params = new URLSearchParams();
+      if (from) params.set("from", from);
+      if (to) params.set("to", to);
+      const qs = params.toString();
+      return request<IncomeStatement>(`/organizations/me/accounting/reports/income-statement${qs ? `?${qs}` : ""}`);
+    },
+    exportIncomeStatement: (format: AnalyticsExportFormat, from?: string, to?: string) => {
+      const params = new URLSearchParams({ format });
+      if (from) params.set("from", from);
+      if (to) params.set("to", to);
+      return requestBlob(`/organizations/me/accounting/reports/income-statement/export?${params.toString()}`);
+    },
     createScholarship: (input: CreateScholarshipInput) =>
       request<ScholarshipRecord>("/organizations/me/scholarships", { method: "POST", body: JSON.stringify(input) }),
     listScholarships: () => request<ScholarshipRecord[]>("/organizations/me/scholarships"),

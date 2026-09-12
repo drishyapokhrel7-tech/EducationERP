@@ -142,6 +142,9 @@ model Organization {
   discounts                   Discount[]
   refunds                     Refund[]
   financialTransactions       FinancialTransaction[]
+  accounts                    Account[]
+  journalEntries              JournalEntry[]
+  journalLines                JournalLine[]
   esewaTransactions           EsewaTransaction[]
   leaveTypes                  LeaveType[]
   staffLeaveBalances          StaffLeaveBalance[]
@@ -537,6 +540,7 @@ model User {
   editionUpgradeRequestsSubmitted EditionUpgradeRequest[]
   leaveRequestsReviewed           LeaveRequest[]
   payrollsFinalized               Payroll[]
+  journalEntriesCreated           JournalEntry[]
   notifications                   Notification[]
   messagesCreated                 Message[]               @relation("MessagesCreated")
   messagesReceivedDirectly        Message[]               @relation("MessagesToSpecificUser")
@@ -2465,15 +2469,23 @@ model Answer {
 // only currency the plan specifies; no multi-currency scope.
 
 model FeeCategory {
-  id             String   @id @default(uuid())
-  organizationId String
-  name           String
-  code           String
-  description    String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id               String   @id @default(uuid())
+  organizationId   String
+  name             String
+  code             String
+  description      String?
+  // Which ledger account an invoice item in this category posts its
+  // credit side to (e.g. "Tuition Fee" -> a "Tuition Revenue" account,
+  // "Library Fine" -> a different one) — see AccountingService's
+  // posting rules. Nullable: unset categories post to the org's
+  // default "Fee Revenue" system account, so adding this field never
+  // breaks an org that hasn't set up per-category mapping.
+  revenueAccountId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  revenueAccount    Account?           @relation(fields: [revenueAccountId], references: [id])
   feeStructureItems FeeStructureItem[]
   invoiceItems      InvoiceItem[]
   fineRules         FineRule[]
@@ -2820,6 +2832,125 @@ model FinancialTransaction {
 
   @@index([organizationId])
   @@map("financial_transactions")
+}
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  INCOME
+  EXPENSE
+}
+
+// Chart of Accounts — one flat table with an optional self-relation
+// (parentId) for a simple hierarchy (e.g. "1000 Cash" nested under a
+// "Current Assets" heading), rather than a deeper fixed tree. Every
+// organization gets a starter chart from
+// AccountingService.ensureDefaultAccounts (isSystemAccount: true,
+// well-known codes like "1000"/"1100"/"4000" that the Finance/Payroll
+// auto-posting integration maps onto) the first time it's needed —
+// there is no migration backfill, this covers both the 148 orgs that
+// already existed when this module shipped and every org created
+// after. A system account can be renamed but never deleted or
+// retyped; a custom account can be deleted once nothing posts to it
+// (assertNoDependents on journalLines).
+model Account {
+  id              String      @id @default(uuid())
+  organizationId  String
+  code            String
+  name            String
+  type            AccountType
+  parentId        String?
+  isSystemAccount Boolean     @default(false)
+  active          Boolean     @default(true)
+  description     String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent        Account?      @relation("AccountHierarchy", fields: [parentId], references: [id])
+  children      Account[]     @relation("AccountHierarchy")
+  journalLines  JournalLine[]
+  feeCategories FeeCategory[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+  @@map("accounts")
+}
+
+enum JournalEntryStatus {
+  DRAFT
+  POSTED
+  VOID
+}
+
+enum JournalEntrySource {
+  MANUAL
+  INVOICE
+  PAYMENT
+  DISCOUNT
+  REFUND
+  PAYROLL
+}
+
+// A double-entry journal entry — its lines (below) must balance
+// (sum(debit) == sum(credit)) before AccountingService will create it.
+// System-generated entries (source != MANUAL) are posted atomically in
+// the same withTenant transaction as the Invoice/Payment/Discount/
+// Refund/Payroll event that caused them (see FinanceService/
+// PayrollService's calls into AccountingService) — sourceId points
+// back at that row. A posted entry is never deleted or edited — same
+// append-only-audit precedent as FinancialTransaction/Refund; voiding
+// flips status to VOID and posts a separate reversing entry
+// (reversalOfId) with every line's debit/credit swapped, netting the
+// original to zero rather than erasing it.
+model JournalEntry {
+  id             String             @id @default(uuid())
+  organizationId String
+  // Human-readable, per-org sequential ("JE-000001") — same
+  // collision-retry generation as Invoice.invoiceNumber. Nullable only
+  // at the column level for the same reason invoiceNumber is.
+  entryNumber    String?
+  date           DateTime
+  memo           String
+  source         JournalEntrySource @default(MANUAL)
+  sourceId       String?
+  status         JournalEntryStatus @default(POSTED)
+  reversalOfId   String?
+  createdBy      String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  creator      User?          @relation(fields: [createdBy], references: [id])
+  reversalOf   JournalEntry?  @relation("JournalReversal", fields: [reversalOfId], references: [id])
+  reversedBy   JournalEntry[] @relation("JournalReversal")
+  lines        JournalLine[]
+
+  @@unique([organizationId, entryNumber])
+  @@index([organizationId])
+  @@index([organizationId, date])
+  @@map("journal_entries")
+}
+
+model JournalLine {
+  id             String   @id @default(uuid())
+  organizationId String
+  journalEntryId String
+  accountId      String
+  debit          Decimal  @default(0) @db.Decimal(12, 2)
+  credit         Decimal  @default(0) @db.Decimal(12, 2)
+  description    String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  journalEntry JournalEntry @relation(fields: [journalEntryId], references: [id])
+  account      Account      @relation(fields: [accountId], references: [id])
+
+  @@index([organizationId])
+  @@index([journalEntryId])
+  @@index([accountId])
+  @@map("journal_lines")
 }
 
 enum EsewaTransactionStatus {

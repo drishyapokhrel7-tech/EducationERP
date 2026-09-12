@@ -183,6 +183,11 @@ const RESOURCES = [
   // human-review workflow here to justify a second resource. Only
   // create/view are meaningfully used, same as camera/biometric_*.
   "gateway_device",
+  // Double-entry accounting engine — folds Account/JournalEntry and
+  // the Trial Balance/Balance Sheet/Income Statement reports together
+  // into one resource, same folding precedent as hostel/inventory/
+  // communication above.
+  "accounting",
 ];
 const ACTIONS = Object.values(PermissionAction);
 

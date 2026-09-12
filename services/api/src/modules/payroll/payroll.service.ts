@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { PayrollItemType, PayrollStatus, LeaveRequestStatus, EmployeeStatus, Prisma, PrismaClient } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
+import { AccountingService } from "../accounting/accounting.service";
 import { CreateSalaryStructureDto, SalaryStructureItemDto } from "./dto/create-salary-structure.dto";
 import { AddSalaryStructureItemDto } from "./dto/add-salary-structure-item.dto";
 import { GeneratePayrollDto } from "./dto/generate-payroll.dto";
@@ -25,7 +26,10 @@ function daysInMonth(year: number, month: number): number {
 
 @Injectable()
 export class PayrollService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly accounting: AccountingService,
+  ) {}
 
   // ── Salary structures ─────────────────────────────────────────────
 
@@ -272,7 +276,7 @@ export class PayrollService {
     return this.prisma.withTenant(organizationId, async (tx) => {
       const payroll = await tx.payroll.findUnique({
         where: { id },
-        include: { employee: true, items: true, finalizer: true },
+        include: { employee: true, items: true, finalizer: { select: { firstName: true, lastName: true } } },
       });
       if (!payroll || payroll.organizationId !== organizationId) throw new NotFoundException("Payroll not found");
       return payroll;
@@ -333,7 +337,7 @@ export class PayrollService {
         .filter((i) => i.type === PayrollItemType.DEDUCTION)
         .reduce((sum, i) => sum + toNumber(i.amount), 0);
 
-      return tx.payroll.update({
+      const updated = await tx.payroll.update({
         where: { id },
         data: {
           status: PayrollStatus.FINALIZED,
@@ -345,6 +349,8 @@ export class PayrollService {
         },
         include: { items: true, employee: true },
       });
+      await this.accounting.postPayrollFinalized(tx, organizationId, id);
+      return updated;
     });
   }
 
@@ -354,11 +360,13 @@ export class PayrollService {
       if (payroll.status !== PayrollStatus.FINALIZED) {
         throw new ConflictException(`This payroll must be finalized before it can be marked paid (currently ${payroll.status.toLowerCase()})`);
       }
-      return tx.payroll.update({
+      const updated = await tx.payroll.update({
         where: { id },
         data: { status: PayrollStatus.PAID, paymentMethod: dto.paymentMethod, paidAt: new Date() },
         include: { items: true, employee: true },
       });
+      await this.accounting.postPayrollPaid(tx, organizationId, id);
+      return updated;
     });
   }
 

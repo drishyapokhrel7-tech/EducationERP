@@ -3,8 +3,13 @@ import { FinanceService } from "./finance.service";
 import { FinanceController } from "./finance.controller";
 import { LateFeesController } from "./late-fees.controller";
 import { EsewaGatewayService } from "./esewa-gateway.service";
+import { AccountingModule } from "../accounting/accounting.module";
 
 @Module({
+  // Exports AccountingService — FinanceService injects it to
+  // auto-post invoice/payment/discount/refund events to the ledger,
+  // atomically in the same transaction as each event.
+  imports: [AccountingModule],
   providers: [FinanceService, EsewaGatewayService],
   controllers: [FinanceController, LateFeesController],
   // FinanceService: reused by StudentPortalModule's self-service

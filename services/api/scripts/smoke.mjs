@@ -37,6 +37,14 @@ const PROTECTED = [
   "/organizations/me/analytics/financial/export?format=pdf",
   "/organizations/me/analytics/receivable-aging",
   "/organizations/me/analytics/receivable-aging/export?format=pdf",
+  "/organizations/me/accounting/accounts",
+  "/organizations/me/accounting/journal-entries",
+  "/organizations/me/accounting/reports/trial-balance",
+  "/organizations/me/accounting/reports/trial-balance/export?format=pdf",
+  "/organizations/me/accounting/reports/balance-sheet",
+  "/organizations/me/accounting/reports/balance-sheet/export?format=pdf",
+  "/organizations/me/accounting/reports/income-statement",
+  "/organizations/me/accounting/reports/income-statement/export?format=pdf",
 ];
 
 const CRON = ["/internal/apply-late-fees", "/internal/health-watchdog"];

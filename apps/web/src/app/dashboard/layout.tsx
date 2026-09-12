@@ -7,6 +7,7 @@ import {
   BarChart3,
   BedDouble,
   BookOpen,
+  Calculator,
   Building2,
   Camera,
   CalendarCheck,
@@ -106,7 +107,10 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "Finance",
-    items: [{ href: "/dashboard/finance", label: "Finance", icon: Wallet }],
+    items: [
+      { href: "/dashboard/finance", label: "Finance", icon: Wallet },
+      { href: "/dashboard/accounting", label: "Accounting", icon: Calculator },
+    ],
   },
   {
     label: "Operations",
