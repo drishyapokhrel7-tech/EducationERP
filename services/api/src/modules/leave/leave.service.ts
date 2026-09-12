@@ -154,7 +154,7 @@ export class LeaveService {
     return this.prisma.withTenant(organizationId, (tx) =>
       tx.leaveRequest.findMany({
         where: { organizationId, employeeId: filters.employeeId, status: filters.status },
-        include: { employee: true, leaveType: true, reviewer: true },
+        include: { employee: true, leaveType: true, reviewer: { select: { firstName: true, lastName: true } } },
         orderBy: { createdAt: "desc" },
       }),
     );
