@@ -5,6 +5,12 @@
  * not a live API. Run with `pnpm run insights:export` (optionally
  * `-- --out <path>`, default `./insights-snapshot-<ISO-date>.json`).
  *
+ * If INSIGHTS_UPLOAD_URL is set, the same snapshot is also POSTed there
+ * (insight-mobile-api's POST /snapshots, authenticated with
+ * INSIGHTS_UPLOAD_API_KEY) so the Insight Mobile Android app can sync it —
+ * see website/insight-mobile/backend/README.md. Both env vars unset (the
+ * default) preserves the original local-file-only behavior untouched.
+ *
  * Uses a raw PrismaClient, same as seed-platform-admin.ts — this
  * bypasses RLS entirely (it connects as the DB owner, not the
  * app_runtime role PrismaService/withTenant use), so every count below
@@ -163,6 +169,39 @@ async function main() {
   writeFileSync(outPath, JSON.stringify(snapshot, null, 2));
   // eslint-disable-next-line no-console
   console.log(`Wrote snapshot for ${results.length} organizations and ${leads.length} leads to ${outPath}`);
+
+  await maybeUploadSnapshot(snapshot);
+}
+
+// Optional cloud-sync push to insight-mobile-api. Configured entirely via
+// env vars so this script's default (offline, local-file-only) behavior
+// never changes for anyone who hasn't set them up.
+async function maybeUploadSnapshot(snapshot: unknown): Promise<void> {
+  const uploadUrl = process.env.INSIGHTS_UPLOAD_URL;
+  if (!uploadUrl) return;
+  const apiKey = process.env.INSIGHTS_UPLOAD_API_KEY;
+  if (!apiKey) {
+    // eslint-disable-next-line no-console
+    console.warn("INSIGHTS_UPLOAD_URL is set but INSIGHTS_UPLOAD_API_KEY is not — skipping upload.");
+    return;
+  }
+  try {
+    const res = await fetch(uploadUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": apiKey },
+      body: JSON.stringify(snapshot),
+    });
+    if (!res.ok) {
+      // eslint-disable-next-line no-console
+      console.warn(`Snapshot upload to ${uploadUrl} failed: ${res.status} ${await res.text()}`);
+      return;
+    }
+    // eslint-disable-next-line no-console
+    console.log(`Uploaded snapshot to ${uploadUrl}`);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn(`Snapshot upload to ${uploadUrl} failed:`, err);
+  }
 }
 
 main()
