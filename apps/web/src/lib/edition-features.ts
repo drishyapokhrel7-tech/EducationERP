@@ -18,8 +18,8 @@ export const NEXT_EDITION_LABEL: Record<Edition, string> = {
 // EDITION_RANK/meetsEdition immediately below.
 export const EDITION_PRICING_NPR: Record<Edition, number | null> = {
   FREE: null,
-  PROFESSIONAL: 5000,
-  ULTRA: 10000,
+  PROFESSIONAL: 10000,
+  ULTRA: 20000,
 };
 
 const EDITION_RANK: Record<Edition, number> = { FREE: 0, PROFESSIONAL: 1, ULTRA: 2 };

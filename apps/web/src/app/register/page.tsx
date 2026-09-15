@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { toast } from "sonner";
 import { ApiError, type EmailVerificationChallenge } from "@education-erp/api-client";
 import { Button } from "@/components/ui/button";
@@ -230,6 +231,12 @@ export default function RegisterPage() {
             <Button type="submit" className="w-full" disabled={submitting}>
               {submitting ? "Registering…" : "Register Institution"}
             </Button>
+            <p className="text-muted-foreground text-center text-sm">
+              Already have an account?{" "}
+              <Link href="/login" className="text-primary font-medium underline underline-offset-4">
+                Go to login
+              </Link>
+            </p>
           </form>
         </CardContent>
       </Card>

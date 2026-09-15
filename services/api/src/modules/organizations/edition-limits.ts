@@ -24,8 +24,8 @@ export function editionLimit(edition: Edition): number {
 // precedent immediately below.
 export const EDITION_PRICING_NPR: Record<Edition, number | null> = {
   FREE: null,
-  PROFESSIONAL: 5000,
-  ULTRA: 10000,
+  PROFESSIONAL: 10000,
+  ULTRA: 20000,
 };
 
 // An expired paid edition is treated as FREE at read/enforcement time
