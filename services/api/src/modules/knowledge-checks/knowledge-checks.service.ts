@@ -8,7 +8,7 @@ import { CreateAttemptDto } from "./dto/create-attempt.dto";
 import { SaveQuizAnswerDto } from "./dto/save-quiz-answer.dto";
 
 const CHECK_INCLUDE = {
-  teachingAssignment: { include: { subject: true, section: true, employee: true } },
+  teachingAssignment: { include: { subject: true, section: true, employee: true, program: true } },
   syllabusNode: true,
   questions: { orderBy: { sequence: "asc" as const } },
   attempts: { include: { student: true } },

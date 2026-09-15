@@ -17,12 +17,16 @@ export class TransportService {
 
   // ── Vehicles ──────────────────────────────────────────────────────
 
-  createVehicle(organizationId: string, dto: CreateVehicleDto) {
-    return this.prisma.withTenant(organizationId, (tx) =>
-      tx.vehicle.create({
+  async createVehicle(organizationId: string, dto: CreateVehicleDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const existing = await tx.vehicle.findFirst({
+        where: { organizationId, registrationNumber: dto.registrationNumber },
+      });
+      if (existing) throw new ConflictException("A vehicle with this registration number already exists");
+      return tx.vehicle.create({
         data: { organizationId, registrationNumber: dto.registrationNumber, type: dto.type, capacity: dto.capacity, status: dto.status },
-      }),
-    );
+      });
+    });
   }
 
   listVehicles(organizationId: string) {

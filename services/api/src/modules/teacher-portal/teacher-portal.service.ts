@@ -84,7 +84,7 @@ export class TeacherPortalService {
           period: true,
           room: true,
           section: true,
-          teachingAssignment: { include: { subject: true, employee: true } },
+          teachingAssignment: { include: { subject: true, employee: true, program: true } },
         },
         orderBy: { period: { sequence: "asc" } },
       });

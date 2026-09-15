@@ -74,11 +74,16 @@ export default function AssignmentsPage() {
           title: string;
           submissionType: string;
           dueDate: string | null;
-          teachingAssignment: { subject: { name: string }; section: { name: string } };
+          teachingAssignment: {
+            subject: { name: string };
+            section: { name: string } | null;
+            program: { name: string };
+          };
           submissions: unknown[];
         }) => (
           <button type="button" className="hover:text-primary text-left" onClick={() => setActiveAssignmentId(a.id)}>
-            {a.title} — {a.teachingAssignment.subject.name} for {a.teachingAssignment.section.name}{" "}
+            {a.title} — {a.teachingAssignment.subject.name} for{" "}
+            {a.teachingAssignment.section ? a.teachingAssignment.section.name : a.teachingAssignment.program.name}{" "}
             <span className="text-muted-foreground">
               ({a.submissionType}
               {a.dueDate ? ` · due ${new Date(a.dueDate).toLocaleDateString()}` : ""} · {a.submissions.length} submitted)

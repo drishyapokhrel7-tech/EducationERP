@@ -23,7 +23,9 @@ export class AttendanceService {
         where: { organizationId },
         include: {
           section: true,
-          classSchedule: { include: { period: true, room: true, teachingAssignment: { include: { subject: true } } } },
+          classSchedule: {
+            include: { period: true, room: true, teachingAssignment: { include: { subject: true, program: true } } },
+          },
           studentAttendance: { include: { student: true } },
         },
         orderBy: { date: "desc" },
@@ -82,7 +84,7 @@ export class AttendanceService {
         include: {
           section: true,
           studentAttendance: { include: { student: true } },
-          classSchedule: { include: { teachingAssignment: true } },
+          classSchedule: { include: { teachingAssignment: { include: { subject: true, program: true } } } },
         },
       });
       if (!session) throw new NotFoundException("Attendance session not found");

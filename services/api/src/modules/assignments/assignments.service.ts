@@ -6,7 +6,7 @@ import { GradeSubmissionDto } from "./dto/grade-submission.dto";
 import { UpdateAssignmentDto } from "./dto/update-assignment.dto";
 
 const ASSIGNMENT_INCLUDE = {
-  teachingAssignment: { include: { subject: true, section: true, employee: true } },
+  teachingAssignment: { include: { subject: true, section: true, employee: true, program: true } },
   submissions: { include: { student: true } },
 } as const;
 

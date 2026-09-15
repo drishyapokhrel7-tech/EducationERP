@@ -6,7 +6,7 @@ import { CreateClassMaterialDto } from "./dto/create-class-material.dto";
 
 const SESSION_INCLUDE = {
   classSchedule: {
-    include: { period: true, room: true, teachingAssignment: { include: { subject: true, employee: true } } },
+    include: { period: true, room: true, teachingAssignment: { include: { subject: true, employee: true, program: true } } },
   },
   section: true,
   lessonPlan: true,
@@ -44,7 +44,7 @@ export class ClassSessionsService {
           period: true,
           room: true,
           section: true,
-          teachingAssignment: { include: { subject: true, employee: true } },
+          teachingAssignment: { include: { subject: true, employee: true, program: true } },
         },
         orderBy: { period: { sequence: "asc" } },
       });

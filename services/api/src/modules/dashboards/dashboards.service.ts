@@ -154,7 +154,7 @@ export class DashboardsService {
 
       const teachingAssignments = await tx.teachingAssignment.findMany({
         where: { organizationId, employeeId },
-        include: { subject: true, section: true, semester: true },
+        include: { subject: true, section: true, semester: true, program: true },
       });
       const teachingAssignmentIds = teachingAssignments.map((t) => t.id);
 
@@ -164,7 +164,12 @@ export class DashboardsService {
       const [classSchedules, assignments, staffAttendanceRecords] = await Promise.all([
         tx.classSchedule.findMany({
           where: { organizationId, teachingAssignmentId: { in: teachingAssignmentIds } },
-          include: { period: true, room: true, section: true, teachingAssignment: { include: { subject: true } } },
+          include: {
+            period: true,
+            room: true,
+            section: true,
+            teachingAssignment: { include: { subject: true, program: true } },
+          },
           orderBy: [{ dayOfWeek: "asc" }, { period: { sequence: "asc" } }],
         }),
         tx.assignment.findMany({
@@ -179,7 +184,11 @@ export class DashboardsService {
 
       const recentClassSessions = await tx.classSession.findMany({
         where: { organizationId, classScheduleId: { in: classSchedules.map((c) => c.id) } },
-        include: { actualSyllabusNode: true, section: true },
+        include: {
+          actualSyllabusNode: true,
+          section: true,
+          classSchedule: { include: { teachingAssignment: { include: { program: true } } } },
+        },
         orderBy: { date: "desc" },
         take: 10,
       });

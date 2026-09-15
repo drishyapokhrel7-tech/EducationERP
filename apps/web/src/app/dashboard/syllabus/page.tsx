@@ -345,11 +345,17 @@ export default function SyllabusPage() {
         items={lessonPlans.data}
         renderItem={(p: {
           title: string;
-          teachingAssignment: { subject: { name: string }; section: { name: string }; employee: { firstName: string; lastName: string } };
+          teachingAssignment: {
+            subject: { name: string };
+            section: { name: string } | null;
+            program: { name: string };
+            employee: { firstName: string; lastName: string };
+          };
           syllabusNode: { name: string };
         }) => (
           <span>
-            {p.title} — {p.teachingAssignment.subject.name} for {p.teachingAssignment.section.name}{" "}
+            {p.title} — {p.teachingAssignment.subject.name} for{" "}
+            {p.teachingAssignment.section ? p.teachingAssignment.section.name : p.teachingAssignment.program.name}{" "}
             <span className="text-muted-foreground">
               ({p.teachingAssignment.employee.firstName} {p.teachingAssignment.employee.lastName} ·{" "}
               {p.syllabusNode.name})

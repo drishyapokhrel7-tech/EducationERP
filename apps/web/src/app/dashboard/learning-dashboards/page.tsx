@@ -70,7 +70,7 @@ export default function LearningDashboardsPage() {
                     <ul className="text-muted-foreground list-disc pl-5">
                       {teacherDashboard.data.teachingAssignments.map((t) => (
                         <li key={t.id}>
-                          {t.subject.name} · {t.section.name} · {t.semester.name}
+                          {t.subject.name} · {t.section ? t.section.name : t.program.name} · {t.semester.name}
                         </li>
                       ))}
                     </ul>
@@ -85,7 +85,7 @@ export default function LearningDashboardsPage() {
                       {teacherDashboard.data.classSchedules.map((c) => (
                         <li key={c.id}>
                           {DAYS[c.dayOfWeek]} · {c.period.name} — {c.teachingAssignment.subject.name} for{" "}
-                          {c.section.name} in {c.room.name}
+                          {c.section ? c.section.name : c.teachingAssignment.program.name} in {c.room.name}
                         </li>
                       ))}
                     </ul>
@@ -114,7 +114,8 @@ export default function LearningDashboardsPage() {
                       {teacherDashboard.data.recentClassSessions.map((c) => (
                         <li key={c.id}>
                           <span className="inline-flex flex-wrap items-center gap-2">
-                            {new Date(c.date).toLocaleDateString()} · {c.section.name}
+                            {new Date(c.date).toLocaleDateString()} ·{" "}
+                            {c.section ? c.section.name : c.classSchedule.teachingAssignment.program.name}
                             <Badge variant={statusVariant(c.status)}>{c.status}</Badge>
                             {c.actualSyllabusNode ? c.actualSyllabusNode.name : ""}
                           </span>

@@ -76,11 +76,11 @@ export default function AttendancePage() {
         renderItem={(s: {
           id: string;
           date: string;
-          section: { name: string };
+          section: { name: string } | null;
           classSchedule: {
             dayOfWeek: number;
             period: { name: string };
-            teachingAssignment: { subject: { name: string } };
+            teachingAssignment: { subject: { name: string }; program: { name: string } };
           };
           studentAttendance: unknown[];
         }) => (
@@ -90,7 +90,7 @@ export default function AttendancePage() {
             onClick={() => openSession(s.id)}
           >
             {new Date(s.date).toLocaleDateString()} — {s.classSchedule.teachingAssignment.subject.name}{" "}
-            for {s.section.name}{" "}
+            for {s.section ? s.section.name : s.classSchedule.teachingAssignment.program.name}{" "}
             <span className="text-muted-foreground">
               ({DAYS[s.classSchedule.dayOfWeek]} · {s.classSchedule.period.name}) ·{" "}
               {s.studentAttendance.length} marked

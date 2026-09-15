@@ -60,7 +60,11 @@ export default function KnowledgeChecksPage() {
           id: string;
           title: string;
           status: string;
-          teachingAssignment: { subject: { name: string }; section: { name: string } };
+          teachingAssignment: {
+            subject: { name: string };
+            section: { name: string } | null;
+            program: { name: string };
+          };
           questions: unknown[];
           attempts: unknown[];
         }) => (
@@ -69,7 +73,8 @@ export default function KnowledgeChecksPage() {
             className="hover:text-primary flex flex-wrap items-center gap-2 text-left"
             onClick={() => setActiveCheckId(c.id)}
           >
-            {c.title} — {c.teachingAssignment.subject.name} for {c.teachingAssignment.section.name}
+            {c.title} — {c.teachingAssignment.subject.name} for{" "}
+            {c.teachingAssignment.section ? c.teachingAssignment.section.name : c.teachingAssignment.program.name}
             <Badge variant={statusVariant(c.status)}>{c.status}</Badge>
             <span className="text-muted-foreground">
               ({c.questions.length} questions · {c.attempts.length} attempts)

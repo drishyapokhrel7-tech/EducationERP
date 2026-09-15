@@ -1447,11 +1447,12 @@ export interface StaffAttendanceSummary {
 export interface DashboardTeachingAssignment {
   id: string;
   subjectId: string;
-  sectionId: string;
+  sectionId: string | null;
   semesterId: string;
   subject: Subject;
-  section: Section;
+  section: Section | null;
   semester: Semester;
+  program: Program;
 }
 
 export interface DashboardClassSchedule {
@@ -1459,8 +1460,8 @@ export interface DashboardClassSchedule {
   dayOfWeek: number;
   period: Period;
   room: Room;
-  section: Section;
-  teachingAssignment: { subject: Subject };
+  section: Section | null;
+  teachingAssignment: { subject: Subject; program: Program };
 }
 
 export interface StudentTimetableEntry {
@@ -1476,8 +1477,9 @@ export interface DashboardClassSession {
   date: string;
   status: ClassSessionStatus;
   progressNotes: string | null;
-  section: Section;
+  section: Section | null;
   actualSyllabusNode: SyllabusNode | null;
+  classSchedule: { teachingAssignment: { program: Program } };
 }
 
 export interface AssignmentSummary {

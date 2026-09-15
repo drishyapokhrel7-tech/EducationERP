@@ -130,7 +130,7 @@ export class SyllabusService {
       tx.lessonPlan.findMany({
         where: { organizationId },
         include: {
-          teachingAssignment: { include: { subject: true, section: true, employee: true } },
+          teachingAssignment: { include: { subject: true, section: true, employee: true, program: true } },
           syllabusNode: true,
         },
         orderBy: { createdAt: "desc" },
