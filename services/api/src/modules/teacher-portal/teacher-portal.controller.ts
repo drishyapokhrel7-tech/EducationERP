@@ -20,6 +20,7 @@ import { UpdateAnnouncementDto } from "./dto/update-announcement.dto";
 import { CreateDiscussionTopicDto } from "./dto/create-discussion-topic.dto";
 import { UpdateDiscussionTopicDto } from "./dto/update-discussion-topic.dto";
 import { CreateDiscussionPostDto } from "./dto/create-discussion-post.dto";
+import { AnswerGuardianQuestionDto } from "./dto/answer-guardian-question.dto";
 
 // Deliberately JwtAuthGuard only — no PermissionsGuard/@RequirePermissions,
 // same reasoning as StudentPortalController/DriverPortalController:
@@ -228,6 +229,20 @@ export class TeacherPortalController {
     @Body() dto: CreateDiscussionPostDto,
   ) {
     return this.teacherPortal.createDiscussionPost(user.organizationId, user.sub, topicId, dto);
+  }
+
+  @Get("guardian-questions")
+  listGuardianQuestions(@CurrentUser() user: JwtPayload, @Query("teachingAssignmentId") teachingAssignmentId?: string) {
+    return this.teacherPortal.listGuardianQuestions(user.organizationId, user.sub, teachingAssignmentId);
+  }
+
+  @Put("guardian-questions/:questionId/answer")
+  answerGuardianQuestion(
+    @CurrentUser() user: JwtPayload,
+    @Param("questionId") questionId: string,
+    @Body() dto: AnswerGuardianQuestionDto,
+  ) {
+    return this.teacherPortal.answerGuardianQuestion(user.organizationId, user.sub, questionId, dto);
   }
 
   @Get("courses/:teachingAssignmentId/roster")

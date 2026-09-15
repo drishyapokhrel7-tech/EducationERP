@@ -112,6 +112,12 @@ export default function TeacherPage() {
   );
   const [replyBody, setReplyBody] = useState("");
 
+  const guardianQuestions = useSWR(
+    courseId ? ["teacher-guardian-questions", courseId] : null,
+    () => api.listTeacherGuardianQuestions(courseId),
+  );
+  const [guardianAnswerForms, setGuardianAnswerForms] = useState<Record<string, string>>({});
+
   // Gradebook (LMS discovery slice 7) — the grid is built from the
   // roster plus the same `assignments`/`quizzes` data already fetched
   // above for those cards; no separate fetch of grade data.
@@ -1288,6 +1294,74 @@ export default function TeacherPage() {
                       </Button>
                     </form>
                   </>
+                ) : null}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Guardian questions</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <NativeSelect
+                  className="w-64"
+                  placeholder="Select a course"
+                  value={courseId}
+                  onChange={(v) => setCourseId(v)}
+                  options={me.data.teachingAssignments.map((t) => ({ value: t.id, label: t.subject.name }))}
+                />
+
+                {courseId ? (
+                  !guardianQuestions.data || guardianQuestions.data.length === 0 ? (
+                    <p className="text-muted-foreground text-sm">No guardian questions yet.</p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {guardianQuestions.data.map((q) => (
+                        <li key={q.id} className="rounded-md border p-3 text-sm">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="font-medium">{q.subject}</span>
+                            <Badge variant={q.answer ? "success" : "secondary"}>
+                              {q.answer ? "Answered" : "Awaiting answer"}
+                            </Badge>
+                          </div>
+                          <p className="text-muted-foreground mt-1 text-xs">
+                            From {q.guardian?.firstName} {q.guardian?.lastName} re. {q.student?.firstName}{" "}
+                            {q.student?.lastName}
+                          </p>
+                          <p className="mt-1 whitespace-pre-wrap">{q.body}</p>
+                          {q.answer ? (
+                            <p className="text-muted-foreground mt-2 whitespace-pre-wrap">Answer: {q.answer}</p>
+                          ) : (
+                            <form
+                              className="mt-2 flex items-end gap-2"
+                              onSubmit={async (e: FormEvent) => {
+                                e.preventDefault();
+                                const answer = guardianAnswerForms[q.id] ?? "";
+                                try {
+                                  await api.answerGuardianQuestion(q.id, { answer });
+                                  setGuardianAnswerForms((f) => ({ ...f, [q.id]: "" }));
+                                  guardianQuestions.mutate();
+                                  toast.success("Answer sent");
+                                } catch (err) {
+                                  toast.error(errorMessage(err, "Failed to send answer"));
+                                }
+                              }}
+                            >
+                              <textarea
+                                className="border-input focus-visible:border-ring focus-visible:ring-ring/50 min-h-16 w-full rounded-lg border bg-transparent px-2.5 py-1.5 text-sm outline-none transition-colors focus-visible:ring-3"
+                                placeholder="Write an answer"
+                                value={guardianAnswerForms[q.id] ?? ""}
+                                onChange={(e) => setGuardianAnswerForms((f) => ({ ...f, [q.id]: e.target.value }))}
+                              />
+                              <Button type="submit" size="sm" disabled={!(guardianAnswerForms[q.id] ?? "").trim()}>
+                                Answer
+                              </Button>
+                            </form>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )
                 ) : null}
               </CardContent>
             </Card>

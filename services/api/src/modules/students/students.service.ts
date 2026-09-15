@@ -14,6 +14,7 @@ import { ListEnrollmentsQueryDto } from "./dto/list-enrollments.dto";
 import { UpdateEnrollmentStatusDto } from "./dto/update-enrollment-status.dto";
 import { UpdateStudentStatusDto } from "./dto/update-student-status.dto";
 import { CreateStudentLoginDto } from "./dto/create-student-login.dto";
+import { CreateGuardianLoginDto } from "./dto/create-guardian-login.dto";
 import { ImportResult, ImportRowError } from "./dto/import-result.dto";
 import { assertUnderEditionLimit, editionLimit } from "../organizations/edition-limits";
 import { paginate } from "../../common/pagination";
@@ -526,6 +527,48 @@ export class StudentsService {
         },
       });
       await tx.student.update({ where: { id: studentId }, data: { userId: user.id } });
+
+      const { passwordHash: _passwordHash, ...safeUser } = user;
+      return { ...safeUser, username };
+    });
+  }
+
+  /**
+   * Mirrors createLogin above, with one deliberate difference: no role
+   * is assigned. This matches StaffService.createLogin (Teacher/Driver
+   * logins), not this method's own Student case — a guardian's portal
+   * routes are JwtAuthGuard-only, ownership-derived from userId, never
+   * gated by a permission string, so a role would grant nothing.
+   */
+  async createGuardianLogin(organizationId: string, guardianId: string, dto: CreateGuardianLoginDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const guardian = await tx.guardian.findUnique({ where: { id: guardianId } });
+      if (!guardian) throw new NotFoundException("Guardian not found");
+      if (guardian.userId) throw new ConflictException("This guardian already has a login");
+
+      const organization = await tx.organization.findUnique({ where: { id: organizationId } });
+      if (!organization) throw new NotFoundException("Organization not found");
+
+      // Guardian has no unique code the way Student (studentCode) and
+      // Employee (employeeCode) do — phone/email aren't guaranteed
+      // unique across guardians. A slice of the guardian's own id
+      // (already globally unique) avoids inventing a scheme that could
+      // collide.
+      const username = `${organization.slug}.guardian.${guardian.id.slice(0, 8)}`;
+      const passwordHash = await argon2.hash(dto.password);
+
+      const user = await tx.user.create({
+        data: {
+          organizationId,
+          email: `${username}@guardian.local`,
+          username,
+          passwordHash,
+          firstName: guardian.firstName,
+          lastName: guardian.lastName,
+          status: "ACTIVE",
+        },
+      });
+      await tx.guardian.update({ where: { id: guardianId }, data: { userId: user.id } });
 
       const { passwordHash: _passwordHash, ...safeUser } = user;
       return { ...safeUser, username };

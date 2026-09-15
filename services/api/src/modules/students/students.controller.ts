@@ -22,6 +22,7 @@ import { buildStudentIdCardPdf } from "./student-id-card-document";
 import { CreateStudentDto } from "./dto/create-student.dto";
 import { UpdateStudentDto } from "./dto/update-student.dto";
 import { CreateGuardianDto } from "./dto/create-guardian.dto";
+import { CreateGuardianLoginDto } from "./dto/create-guardian-login.dto";
 import { UpdateGuardianDto } from "./dto/update-guardian.dto";
 import { AttachGuardianDto } from "./dto/attach-guardian.dto";
 import { CreateEnrollmentDto } from "./dto/create-enrollment.dto";
@@ -120,6 +121,16 @@ export class StudentsController {
     @Body() dto: AttachGuardianDto,
   ) {
     return this.students.attachGuardian(user.organizationId, studentId, dto);
+  }
+
+  @Post("guardians/:guardianId/create-login")
+  @RequirePermissions("guardian:manage")
+  createGuardianLogin(
+    @CurrentUser() user: JwtPayload,
+    @Param("guardianId") guardianId: string,
+    @Body() dto: CreateGuardianLoginDto,
+  ) {
+    return this.students.createGuardianLogin(user.organizationId, guardianId, dto);
   }
 
   @Get("students/:studentId/enrollments")

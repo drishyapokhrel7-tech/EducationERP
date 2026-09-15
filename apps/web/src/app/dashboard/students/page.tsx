@@ -24,7 +24,8 @@ import { useHighlightFromSearch } from "@/lib/use-highlight-from-search";
 import { isEditionLimitError } from "@/lib/edition-limit-error";
 import { useEditionStatus } from "@/lib/use-edition-status";
 import { submitAction, submitDelete, errorMessage } from "@/lib/submit-action";
-import { ApiError, type Edition, type EnrollmentStatus, type ImportResult } from "@education-erp/api-client";
+import { ApiError, type Edition, type EnrollmentStatus, type ImportResult, type StudentStatus } from "@education-erp/api-client";
+import { todayLocalDateString } from "@/lib/local-date";
 
 // Matches the backend's GENDER_OPTIONS
 // (services/api/src/modules/students/students.service.ts) exactly —
@@ -151,6 +152,7 @@ export default function StudentsPage() {
     }),
   );
   const [enrollmentStatusEdits, setEnrollmentStatusEdits] = useState<Record<string, EnrollmentStatus>>({});
+  const [studentStatusEdits, setStudentStatusEdits] = useState<Record<string, StudentStatus>>({});
 
   const importFileRef = useRef<HTMLInputElement>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
@@ -175,6 +177,28 @@ export default function StudentsPage() {
       await api.createStudentLogin(studentId, { password });
       setLoginPasswordForms((f) => ({ ...f, [studentId]: "" }));
       students.mutate();
+      toast.success("Login created");
+    } catch {
+      toast.error("Failed to create login — password must be at least 8 characters");
+    }
+  }
+
+  // Keyed by guardianId, same pattern as loginPasswordForms above.
+  const [guardianLoginPasswordForms, setGuardianLoginPasswordForms] = useState<Record<string, string>>({});
+
+  // The backend derives the username as `${orgSlug}.guardian.${id.slice(0, 8)}`
+  // (StudentsService.createGuardianLogin) — deterministic, computed the
+  // same way studentUsername is above rather than only shown once.
+  function guardianUsername(guardianId: string): string {
+    return organization.data ? `${organization.data.slug}.guardian.${guardianId.slice(0, 8)}` : guardianId;
+  }
+
+  async function handleCreateGuardianLogin(guardianId: string) {
+    const password = guardianLoginPasswordForms[guardianId] ?? "";
+    try {
+      await api.createGuardianLogin(guardianId, { password });
+      setGuardianLoginPasswordForms((f) => ({ ...f, [guardianId]: "" }));
+      guardians.mutate();
       toast.success("Login created");
     } catch {
       toast.error("Failed to create login — password must be at least 8 characters");
@@ -420,6 +444,45 @@ export default function StudentsPage() {
               {s.firstName} {s.middleName ? `${s.middleName} ` : ""}
               {s.lastName} <span className="text-muted-foreground">{s.studentCode}</span>
               <Badge variant={statusVariant(s.status)}>{s.status}</Badge>
+              <NativeSelect
+                className="h-7 w-32"
+                placeholder="Change status"
+                value={studentStatusEdits[s.id] ?? ""}
+                onChange={(v) => setStudentStatusEdits((f) => ({ ...f, [s.id]: v as StudentStatus }))}
+                options={[
+                  { value: "ACTIVE", label: "Active" },
+                  { value: "INACTIVE", label: "Inactive" },
+                  { value: "GRADUATED", label: "Graduated" },
+                  { value: "TRANSFERRED", label: "Transferred" },
+                  { value: "WITHDRAWN", label: "Withdrawn" },
+                ].filter((o) => o.value !== s.status)}
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7"
+                disabled={!studentStatusEdits[s.id]}
+                onClick={() =>
+                  submitAction(
+                    () =>
+                      api.updateStudentStatus(s.id, {
+                        status: studentStatusEdits[s.id],
+                        effectiveDate: todayLocalDateString(),
+                      }),
+                    () => {
+                      setStudentStatusEdits((f) => {
+                        const next = { ...f };
+                        delete next[s.id];
+                        return next;
+                      });
+                      students.mutate();
+                    },
+                  )
+                }
+              >
+                Update
+              </Button>
               <Button
                 type="button"
                 size="sm"
@@ -663,6 +726,7 @@ export default function StudentsPage() {
         }
         renderItem={(g: {
           id: string;
+          userId: string | null;
           firstName: string;
           middleName: string | null;
           lastName: string;
@@ -670,37 +734,69 @@ export default function StudentsPage() {
           email: string | null;
           photoUrl: string | null;
         }) => (
-          <span id={`guardian-${g.id}`} className="flex items-center gap-2">
-            <Avatar src={g.photoUrl} />
-            {g.firstName} {g.middleName ? `${g.middleName} ` : ""}
-            {g.lastName} <span className="text-muted-foreground">{g.phone}</span>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                setEditingGuardianId(g.id);
-                setEditGuardianForm({
-                  firstName: g.firstName,
-                  middleName: g.middleName ?? "",
-                  lastName: g.lastName,
-                  phone: g.phone,
-                  email: g.email ?? "",
-                });
-                setEditGuardianPhoto(g.photoUrl ? { status: "uploaded", url: g.photoUrl } : EMPTY_PHOTO);
-              }}
-            >
-              Edit
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="destructive"
-              onClick={() => submitDelete(() => api.deleteGuardian(g.id), () => guardians.mutate())}
-            >
-              Delete
-            </Button>
-          </span>
+          <div id={`guardian-${g.id}`} className="rounded-md transition-shadow">
+            <span className="flex items-center gap-2">
+              <Avatar src={g.photoUrl} />
+              {g.firstName} {g.middleName ? `${g.middleName} ` : ""}
+              {g.lastName} <span className="text-muted-foreground">{g.phone}</span>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setEditingGuardianId(g.id);
+                  setEditGuardianForm({
+                    firstName: g.firstName,
+                    middleName: g.middleName ?? "",
+                    lastName: g.lastName,
+                    phone: g.phone,
+                    email: g.email ?? "",
+                  });
+                  setEditGuardianPhoto(g.photoUrl ? { status: "uploaded", url: g.photoUrl } : EMPTY_PHOTO);
+                }}
+              >
+                Edit
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                onClick={() => submitDelete(() => api.deleteGuardian(g.id), () => guardians.mutate())}
+              >
+                Delete
+              </Button>
+            </span>
+            {g.userId ? (
+              <p className="text-muted-foreground mt-1 text-xs">
+                Portal login: {guardianUsername(g.id)}
+              </p>
+            ) : (
+              <form
+                className="mt-2 flex items-end gap-2"
+                onSubmit={(e: FormEvent) => {
+                  e.preventDefault();
+                  handleCreateGuardianLogin(g.id);
+                }}
+              >
+                <Input
+                  type="password"
+                  className="h-7 w-40"
+                  placeholder="Set initial password"
+                  value={guardianLoginPasswordForms[g.id] ?? ""}
+                  onChange={(e) => setGuardianLoginPasswordForms((f) => ({ ...f, [g.id]: e.target.value }))}
+                />
+                <Button
+                  type="submit"
+                  size="sm"
+                  variant="outline"
+                  className="h-7"
+                  disabled={(guardianLoginPasswordForms[g.id] ?? "").length < 8}
+                >
+                  Create login
+                </Button>
+              </form>
+            )}
+          </div>
         )}
       >
         <form

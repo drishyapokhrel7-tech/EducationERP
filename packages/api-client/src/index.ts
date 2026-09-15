@@ -25,6 +25,13 @@ import type {
   CreateFacultyInput,
   CreateGuardianInput,
   UpdateGuardianInput,
+  CreateGuardianLoginInput,
+  CreateGuardianLoginResult,
+  ChildScheduleEntry,
+  GuardianPortalQuiz,
+  GuardianQuestion,
+  AskGuardianQuestionInput,
+  AnswerGuardianQuestionInput,
   CreateProgramInput,
   CreateQualificationInput,
   CreateSectionInput,
@@ -866,6 +873,11 @@ export function createApiClient({
       request<{ deleted: true }>(`/organizations/me/guardians/${id}`, { method: "DELETE" }),
     attachGuardian: (studentId: string, input: AttachGuardianInput) =>
       request<StudentGuardian>(`/organizations/me/students/${studentId}/guardians`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    createGuardianLogin: (guardianId: string, input: CreateGuardianLoginInput) =>
+      request<CreateGuardianLoginResult>(`/organizations/me/guardians/${guardianId}/create-login`, {
         method: "POST",
         body: JSON.stringify(input),
       }),
@@ -1748,6 +1760,19 @@ export function createApiClient({
         body: JSON.stringify(input),
       }),
 
+    // Guardian questions — teacher side (read + answer).
+    listTeacherGuardianQuestions: (teachingAssignmentId?: string) =>
+      request<GuardianQuestion[]>(
+        `/organizations/me/teacher-portal/guardian-questions${
+          teachingAssignmentId ? `?teachingAssignmentId=${encodeURIComponent(teachingAssignmentId)}` : ""
+        }`,
+      ),
+    answerGuardianQuestion: (questionId: string, input: AnswerGuardianQuestionInput) =>
+      request<GuardianQuestion>(`/organizations/me/teacher-portal/guardian-questions/${questionId}/answer`, {
+        method: "PUT",
+        body: JSON.stringify(input),
+      }),
+
     // Discussions — student self-service side.
     listStudentDiscussionTopics: () =>
       request<StudentPortalDiscussionTopic[]>("/organizations/me/portal/discussion-topics"),
@@ -1764,6 +1789,32 @@ export function createApiClient({
     uploadOwnDocument: (input: UploadOwnDocumentInput) =>
       request<StudentDocumentRecord>("/organizations/me/portal/documents", { method: "POST", body: JSON.stringify(input) }),
     listOwnCertificates: () => request<CertificateRecord[]>("/organizations/me/portal/certificates"),
+
+    // Guardian self-service portal — same JwtAuthGuard-only pattern,
+    // identity derived server-side from the caller's own token. Every
+    // call below is scoped to one of the guardian's own linked children
+    // (studentId), enforced server-side, never trusted from the client.
+    getGuardianPortalMe: () => request<Guardian>("/organizations/me/guardian-portal/me"),
+    listMyChildren: () => request<ParentDashboard>("/organizations/me/guardian-portal/children"),
+    getChildSchedule: (studentId: string, date: string) =>
+      request<ChildScheduleEntry[]>(
+        `/organizations/me/guardian-portal/children/${studentId}/schedule?date=${encodeURIComponent(date)}`,
+      ),
+    listChildQuizzes: (studentId: string) =>
+      request<GuardianPortalQuiz[]>(`/organizations/me/guardian-portal/children/${studentId}/quizzes`),
+    listChildTeachingAssignments: (studentId: string) =>
+      request<(TeachingAssignment & { subject: Subject; employee: Employee })[]>(
+        `/organizations/me/guardian-portal/children/${studentId}/teaching-assignments`,
+      ),
+    askGuardianQuestion: (studentId: string, input: AskGuardianQuestionInput) =>
+      request<GuardianQuestion>(`/organizations/me/guardian-portal/children/${studentId}/questions`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    listMyGuardianQuestions: (studentId?: string) =>
+      request<GuardianQuestion[]>(
+        `/organizations/me/guardian-portal/questions${studentId ? `?studentId=${encodeURIComponent(studentId)}` : ""}`,
+      ),
 
     // Gradebook (LMS discovery slice 7) — the only new endpoint; the
     // rest of the grid is built client-side from listTeacherAssignments/

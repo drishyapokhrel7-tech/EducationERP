@@ -547,6 +547,7 @@ export type StudentStatus = "ACTIVE" | "INACTIVE" | "GRADUATED" | "TRANSFERRED" 
 export interface Guardian {
   id: string;
   organizationId: string;
+  userId: string | null;
   firstName: string;
   middleName: string | null;
   lastName: string;
@@ -1557,6 +1558,64 @@ export interface TeacherDashboard {
 export interface ParentDashboard {
   guardian: Guardian;
   children: (StudentDashboard & { relationship: string; isPrimaryContact: boolean })[];
+}
+
+export interface ChildScheduleEntry {
+  id: string;
+  dayOfWeek: number;
+  period: Period;
+  room: Room;
+  section: Section | null;
+  teachingAssignment: TeachingAssignment & { subject: Subject; employee: Employee; program: Program };
+}
+
+export interface GuardianPortalQuiz {
+  id: string;
+  title: string;
+  durationMinutes: number | null;
+  questionCount: number;
+  teachingAssignment: TeachingAssignment & { subject: Subject; employee: Employee };
+  childAttempt: { startedAt: string | null; submittedAt: string | null; score: number | null } | null;
+}
+
+export interface GuardianQuestion {
+  id: string;
+  organizationId: string;
+  guardianId: string;
+  studentId: string;
+  teachingAssignmentId: string;
+  subject: string;
+  body: string;
+  answer: string | null;
+  answeredAt: string | null;
+  createdAt: string;
+  teachingAssignment: TeachingAssignment & { subject: Subject; employee?: Employee };
+  guardian?: Guardian;
+  student?: Student;
+}
+
+export interface AskGuardianQuestionInput {
+  teachingAssignmentId: string;
+  subject: string;
+  body: string;
+}
+
+export interface AnswerGuardianQuestionInput {
+  answer: string;
+}
+
+export interface CreateGuardianLoginInput {
+  password: string;
+}
+
+export interface CreateGuardianLoginResult {
+  id: string;
+  organizationId: string;
+  email: string;
+  username: string;
+  firstName: string;
+  lastName: string;
+  status: string;
 }
 
 export interface ExamType {

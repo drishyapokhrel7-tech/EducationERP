@@ -23,6 +23,7 @@ import { CreateDiscussionTopicDto } from "./dto/create-discussion-topic.dto";
 import { UpdateDiscussionTopicDto } from "./dto/update-discussion-topic.dto";
 import { CreateDiscussionPostDto } from "./dto/create-discussion-post.dto";
 import { NotificationsService } from "../notifications/notifications.service";
+import { AnswerGuardianQuestionDto } from "./dto/answer-guardian-question.dto";
 
 const SESSION_INCLUDE = {
   classSchedule: {
@@ -563,6 +564,55 @@ export class TeacherPortalService {
         throw new NotFoundException("Discussion topic not found");
       }
       return topic;
+    });
+  }
+
+  // ── Guardian questions ────────────────────────────────────────────────
+  // Read/answer side of GuardianPortalService.askQuestion — scoped to the
+  // caller's own TeachingAssignment.employeeId, same ownership idiom as
+  // every other check in this file.
+
+  async listGuardianQuestions(organizationId: string, userId: string, teachingAssignmentId?: string) {
+    const employee = await this.getOwnEmployee(organizationId, userId);
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      let ownTaIds: string[];
+      if (teachingAssignmentId) {
+        const ta = await this.assertOwnsTeachingAssignment(tx, employee.id, teachingAssignmentId);
+        ownTaIds = [ta.id];
+      } else {
+        const own = await tx.teachingAssignment.findMany({ where: { organizationId, employeeId: employee.id } });
+        ownTaIds = own.map((t) => t.id);
+      }
+      return tx.guardianQuestion.findMany({
+        where: { organizationId, teachingAssignmentId: { in: ownTaIds } },
+        include: { guardian: true, student: true, teachingAssignment: { include: { subject: true } } },
+        orderBy: { createdAt: "desc" },
+      });
+    });
+  }
+
+  async answerGuardianQuestion(organizationId: string, userId: string, questionId: string, dto: AnswerGuardianQuestionDto) {
+    const employee = await this.getOwnEmployee(organizationId, userId);
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const question = await tx.guardianQuestion.findUnique({
+        where: { id: questionId },
+        include: { teachingAssignment: true, guardian: true },
+      });
+      if (!question || question.teachingAssignment.employeeId !== employee.id) {
+        throw new NotFoundException("Question not found");
+      }
+      const updated = await tx.guardianQuestion.update({
+        where: { id: questionId },
+        data: { answer: dto.answer, answeredAt: new Date() },
+      });
+      if (question.guardian.userId) {
+        await this.notifications.notify(organizationId, question.guardian.userId, {
+          type: "guardian_question_answered",
+          title: "Your question was answered",
+          link: "/guardian-portal/questions",
+        });
+      }
+      return updated;
     });
   }
 

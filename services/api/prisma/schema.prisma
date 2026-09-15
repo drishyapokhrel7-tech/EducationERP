@@ -209,6 +209,7 @@ model Organization {
   gatewayDevices              GatewayDevice[]
   gatewayCardBindings         GatewayCardBinding[]
   gatewayScanEvents           GatewayScanEvent[]
+  guardianQuestions           GuardianQuestion[]
 
   @@map("organizations")
 }
@@ -530,6 +531,7 @@ model User {
   auditLogs                       AuditLog[]
   employee                        Employee?
   student                         Student?
+  guardian                        Guardian?
   faceMatchReviews                FaceMatchEvent[]
   feeAssignments                  StudentFeeAssignment[]
   paymentsRecorded                Payment[]
@@ -980,6 +982,7 @@ model Student {
   careerApplications          CareerApplication[]
   gatewayCardBindings         GatewayCardBinding[]
   gatewayScanEvents           GatewayScanEvent[]
+  guardianQuestions           GuardianQuestion[]
 
   @@unique([organizationId, studentCode])
   @@index([organizationId])
@@ -989,6 +992,10 @@ model Student {
 model Guardian {
   id             String   @id @default(uuid())
   organizationId String
+  // Set only if/when the guardian gets a portal login — not required
+  // for the administrative record to exist. Same optional-1:1 shape as
+  // Student.userId/Employee.userId; existing rows have no login.
+  userId         String?  @unique
   firstName      String
   middleName     String?
   lastName       String
@@ -1003,8 +1010,10 @@ model Guardian {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  students     StudentGuardian[]
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user              User?              @relation(fields: [userId], references: [id])
+  students          StudentGuardian[]
+  guardianQuestions GuardianQuestion[]
 
   @@index([organizationId])
   @@map("guardians")
@@ -1234,19 +1243,20 @@ model TeachingAssignment {
   semesterId     String
   createdAt      DateTime @default(now())
 
-  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  employee         Employee          @relation(fields: [employeeId], references: [id])
-  subject          Subject           @relation(fields: [subjectId], references: [id])
-  section          Section?          @relation(fields: [sectionId], references: [id])
-  program          Program           @relation(fields: [programId], references: [id])
-  semester         Semester          @relation(fields: [semesterId], references: [id])
-  classSchedules   ClassSchedule[]
-  lessonPlans      LessonPlan[]
-  assignments      Assignment[]
-  knowledgeChecks  KnowledgeCheck[]
-  courseModules    CourseModule[]
-  announcements    Announcement[]
-  discussionTopics DiscussionTopic[]
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employee          Employee           @relation(fields: [employeeId], references: [id])
+  subject           Subject            @relation(fields: [subjectId], references: [id])
+  section           Section?           @relation(fields: [sectionId], references: [id])
+  program           Program            @relation(fields: [programId], references: [id])
+  semester          Semester           @relation(fields: [semesterId], references: [id])
+  classSchedules    ClassSchedule[]
+  lessonPlans       LessonPlan[]
+  assignments       Assignment[]
+  knowledgeChecks   KnowledgeCheck[]
+  courseModules     CourseModule[]
+  announcements     Announcement[]
+  discussionTopics  DiscussionTopic[]
+  guardianQuestions GuardianQuestion[]
 
   // One teacher per subject+section+semester — re-assigning means
   // changing this row, not stacking a second one alongside it. Only
@@ -3542,6 +3552,38 @@ model DiscussionPost {
   @@index([organizationId])
   @@index([discussionTopicId])
   @@map("discussion_posts")
+}
+
+// A guardian's private question to one teacher about one specific class
+// their child is in. Deliberately NOT built on DiscussionTopic/
+// DiscussionPost above — that model is visible to and repliable-by
+// every student enrolled in the course (it's a whole-class board), and
+// adding a private-channel branch to DiscussionsService (already
+// shared by student-portal and teacher-portal) risks leaking a private
+// question into that shared code path. Single question + single answer
+// field — a guardian asks, the teacher answers, not a running thread.
+model GuardianQuestion {
+  id                   String    @id @default(uuid())
+  organizationId       String
+  guardianId           String
+  studentId            String
+  teachingAssignmentId String
+  subject              String
+  body                 String
+  answer               String?
+  answeredAt           DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  guardian           Guardian           @relation(fields: [guardianId], references: [id])
+  student            Student            @relation(fields: [studentId], references: [id])
+  teachingAssignment TeachingAssignment @relation(fields: [teachingAssignmentId], references: [id])
+
+  @@index([organizationId])
+  @@index([guardianId])
+  @@index([teachingAssignmentId])
+  @@map("guardian_questions")
 }
 
 // Persistent, in-app notifications (LMS discovery slice 9) — closes the

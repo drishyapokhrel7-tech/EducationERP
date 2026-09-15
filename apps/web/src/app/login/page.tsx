@@ -165,6 +165,13 @@ export default function LoginPage() {
         } catch {
           // not a teacher — fall through
         }
+        try {
+          await api.getGuardianPortalMe();
+          router.push("/guardian-portal");
+          return;
+        } catch {
+          // not a guardian — fall through
+        }
         router.push("/dashboard");
       }
     } catch (err) {
