@@ -4,7 +4,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom";
 import { Avatar } from "@/components/avatar";
 import { cn } from "@/lib/utils";
-import type { StudentPicker, EmployeePicker } from "@education-erp/api-client";
+import type { StudentPicker, EmployeePicker, BookRecord } from "@education-erp/api-client";
 
 // Every "pick a student / pick a staff member" dropdown in the app
 // used to be a bare <select> of "Name (CODE)" <option>s — impossible
@@ -55,6 +55,22 @@ export function employeeToPersonOption(e: EmployeePicker): PersonOption {
     photoUrl: e.photoUrl,
     detail: [e.designationName, e.staffTypeName].filter(Boolean).join(" · ") || null,
     inactive: e.status !== "ACTIVE",
+  };
+}
+
+// This picker's UI isn't actually person-specific — it's just a
+// searchable id/name/detail combobox. Reused here for "which book" (the
+// Library module's issue/reserve/fine forms) instead of a parallel
+// component: same avatar-or-cover-image + title + author/category
+// identity line the two Person mappers above already establish.
+export function bookToPersonOption(b: BookRecord): PersonOption {
+  return {
+    id: b.id,
+    name: b.title,
+    code: b.isbn ?? "no ISBN",
+    photoUrl: b.coverImageUrl,
+    detail: [b.author, b.category?.name].filter(Boolean).join(" · ") || null,
+    inactive: b.availableCopies <= 0,
   };
 }
 

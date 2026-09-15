@@ -205,6 +205,24 @@ import type {
   UpdateAssetInput,
   AssignAssetInput,
   AssetAssignmentRecord,
+  CreateBookCategoryInput,
+  UpdateBookCategoryInput,
+  BookCategoryRecord,
+  CreateBookInput,
+  UpdateBookInput,
+  BookRecord,
+  IssueBookInput,
+  LibraryTransactionRecord,
+  CreateFineInput,
+  LibraryFineRecord,
+  CreateReservationInput,
+  LibraryReservationRecord,
+  LibrarySettingsRecord,
+  UpdateLibrarySettingsInput,
+  LibraryOverdueReportRow,
+  LibraryMostBorrowedReportRow,
+  IsbnLookupResult,
+  OcrScanResult,
   CreateMessageTemplateInput,
   MessageTemplateRecord,
   CreateMessageInput,
@@ -1790,6 +1808,24 @@ export function createApiClient({
       request<StudentDocumentRecord>("/organizations/me/portal/documents", { method: "POST", body: JSON.stringify(input) }),
     listOwnCertificates: () => request<CertificateRecord[]>("/organizations/me/portal/certificates"),
 
+    // Library self-service portal (native module) — Student-only for
+    // v1, identity derived server-side from the caller's own token.
+    getLibraryPortalMe: () => request<Student>("/organizations/me/library-portal/me"),
+    searchLibraryBooks: (query?: string) =>
+      request<BookRecord[]>(`/organizations/me/library-portal/books${query ? `?query=${encodeURIComponent(query)}` : ""}`),
+    getMyLoans: () => request<LibraryTransactionRecord[]>("/organizations/me/library-portal/my-loans"),
+    getMyLibraryFines: () => request<LibraryFineRecord[]>("/organizations/me/library-portal/my-fines"),
+    getMyReservations: () => request<LibraryReservationRecord[]>("/organizations/me/library-portal/my-reservations"),
+    createMyReservation: (bookId: string) =>
+      request<LibraryReservationRecord>("/organizations/me/library-portal/reservations", {
+        method: "POST",
+        body: JSON.stringify({ bookId }),
+      }),
+    cancelMyReservation: (id: string) =>
+      request<LibraryReservationRecord>(`/organizations/me/library-portal/reservations/${id}/cancel`, {
+        method: "POST",
+      }),
+
     // Guardian self-service portal — same JwtAuthGuard-only pattern,
     // identity derived server-side from the caller's own token. Every
     // call below is scoped to one of the guardian's own linked children
@@ -1951,6 +1987,86 @@ export function createApiClient({
       request<AssetAssignmentRecord>(`/organizations/me/asset-assignments/${assignmentId}/return`, { method: "POST" }),
     listAssetAssignments: (assetId?: string) =>
       request<AssetAssignmentRecord[]>(`/organizations/me/asset-assignments${assetId ? `?assetId=${assetId}` : ""}`),
+
+    // Library (native module) — admin/staff surface.
+    createBookCategory: (input: CreateBookCategoryInput) =>
+      request<BookCategoryRecord>("/organizations/me/library/categories", { method: "POST", body: JSON.stringify(input) }),
+    listBookCategories: () => request<BookCategoryRecord[]>("/organizations/me/library/categories"),
+    updateBookCategory: (id: string, input: UpdateBookCategoryInput) =>
+      request<BookCategoryRecord>(`/organizations/me/library/categories/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      }),
+    deleteBookCategory: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/library/categories/${id}`, { method: "DELETE" }),
+    createBook: (input: CreateBookInput) =>
+      request<BookRecord>("/organizations/me/library/books", { method: "POST", body: JSON.stringify(input) }),
+    listBooks: (pagination?: PaginationParams) =>
+      request<PaginatedResult<BookRecord>>(`/organizations/me/library/books${paginationQuery(pagination)}`),
+    listBooksPicker: (query?: string) =>
+      request<BookRecord[]>(`/organizations/me/library/books/picker${query ? `?query=${encodeURIComponent(query)}` : ""}`),
+    updateBook: (id: string, input: UpdateBookInput) =>
+      request<BookRecord>(`/organizations/me/library/books/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    deleteBook: (id: string) => request<{ deleted: true }>(`/organizations/me/library/books/${id}`, { method: "DELETE" }),
+    isbnLookupBook: (isbn: string) =>
+      request<IsbnLookupResult>(`/organizations/me/library/books/isbn-lookup/${encodeURIComponent(isbn)}`),
+    ocrScanBookCover: (file: File) => {
+      const form = new FormData();
+      form.append("image", file);
+      return requestForm<OcrScanResult>("/organizations/me/library/books/ocr-scan", form);
+    },
+    issueBook: (input: IssueBookInput) =>
+      request<LibraryTransactionRecord>("/organizations/me/library/transactions/issue", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    returnBook: (transactionId: string) =>
+      request<LibraryTransactionRecord & { fine: LibraryFineRecord | null }>(
+        `/organizations/me/library/transactions/${transactionId}/return`,
+        { method: "POST" },
+      ),
+    listLibraryTransactions: (filters?: { bookId?: string; studentId?: string; employeeId?: string; open?: boolean }) => {
+      const params = new URLSearchParams();
+      if (filters?.bookId) params.set("bookId", filters.bookId);
+      if (filters?.studentId) params.set("studentId", filters.studentId);
+      if (filters?.employeeId) params.set("employeeId", filters.employeeId);
+      if (filters?.open) params.set("open", "true");
+      const qs = params.toString();
+      return request<LibraryTransactionRecord[]>(`/organizations/me/library/transactions${qs ? `?${qs}` : ""}`);
+    },
+    createLibraryFine: (input: CreateFineInput) =>
+      request<LibraryFineRecord>("/organizations/me/library/fines", { method: "POST", body: JSON.stringify(input) }),
+    listLibraryFines: (filters?: { studentId?: string; employeeId?: string; status?: string }) => {
+      const params = new URLSearchParams();
+      if (filters?.studentId) params.set("studentId", filters.studentId);
+      if (filters?.employeeId) params.set("employeeId", filters.employeeId);
+      if (filters?.status) params.set("status", filters.status);
+      const qs = params.toString();
+      return request<LibraryFineRecord[]>(`/organizations/me/library/fines${qs ? `?${qs}` : ""}`);
+    },
+    payLibraryFine: (id: string) => request<LibraryFineRecord>(`/organizations/me/library/fines/${id}/pay`, { method: "POST" }),
+    waiveLibraryFine: (id: string) =>
+      request<LibraryFineRecord>(`/organizations/me/library/fines/${id}/waive`, { method: "POST" }),
+    createLibraryReservation: (input: CreateReservationInput) =>
+      request<LibraryReservationRecord>("/organizations/me/library/reservations", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    listLibraryReservations: (filters?: { bookId?: string; status?: string }) => {
+      const params = new URLSearchParams();
+      if (filters?.bookId) params.set("bookId", filters.bookId);
+      if (filters?.status) params.set("status", filters.status);
+      const qs = params.toString();
+      return request<LibraryReservationRecord[]>(`/organizations/me/library/reservations${qs ? `?${qs}` : ""}`);
+    },
+    cancelLibraryReservation: (id: string) =>
+      request<LibraryReservationRecord>(`/organizations/me/library/reservations/${id}/cancel`, { method: "POST" }),
+    getLibrarySettings: () => request<LibrarySettingsRecord>("/organizations/me/library/settings"),
+    updateLibrarySettings: (input: UpdateLibrarySettingsInput) =>
+      request<LibrarySettingsRecord>("/organizations/me/library/settings", { method: "PATCH", body: JSON.stringify(input) }),
+    getLibraryOverdueReport: () => request<LibraryOverdueReportRow[]>("/organizations/me/library/reports/overdue"),
+    getLibraryMostBorrowedReport: () =>
+      request<LibraryMostBorrowedReportRow[]>("/organizations/me/library/reports/most-borrowed"),
 
     // Communication (Phase 7 slice 7g) — org-wide broadcast messaging;
     // announcements/notifications reuse the existing LMS endpoints

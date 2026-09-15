@@ -188,6 +188,13 @@ const RESOURCES = [
   // into one resource, same folding precedent as hostel/inventory/
   // communication above.
   "accounting",
+  // Native Library module — folds book_category/book/circulation
+  // (issue/return)/reservation/fine/settings/reports in too, same
+  // folding precedent as every Phase 7 resource above. The already-
+  // seeded "Librarian" system role (below) is permission-less until an
+  // org admin grants it library:view/library:manage via the existing
+  // Roles & Permissions UI.
+  "library",
 ];
 const ACTIONS = Object.values(PermissionAction);
 

@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import useSWR from "swr";
-import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,857 +9,931 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
-import { FaceCapture, type FaceCaptureResult } from "@/components/library/face-capture";
 import { PageSubNav } from "@/components/dashboard/page-subnav";
-import { libraryStaffApi, LibraryApiError, type FineCollectionReport } from "@/lib/library-api";
-import { useLibraryStaffSession, setStoredLibraryStaffSession } from "@/lib/library-auth-storage";
-import { useAuth } from "@/lib/auth-context";
-import { getAccessToken } from "@/lib/auth-storage";
+import { ListPager } from "@/components/dashboard/list-pager";
+import {
+  PersonPicker,
+  studentToPersonOption,
+  employeeToPersonOption,
+  bookToPersonOption,
+} from "@/components/person-picker";
+import { toast } from "sonner";
+import { CameraCapture } from "@/components/camera-capture";
+import { submitAction, submitDelete, errorMessage } from "@/lib/submit-action";
+import { api } from "@/lib/api";
+import type { LibraryTransactionRecord, LibraryFineRecord, LibraryReservationRecord } from "@education-erp/api-client";
 
-function errorMessage(err: unknown, fallback: string) {
-  if (err instanceof LibraryApiError) {
-    const message = (err.body as { message?: string } | undefined)?.message;
-    if (typeof message === "string") return message;
-  }
-  return fallback;
+const EMPTY_BOOK_FORM = {
+  title: "",
+  isbn: "",
+  author: "",
+  publisher: "",
+  edition: "",
+  coverImageUrl: "",
+  categoryId: "",
+  shelfLocation: "",
+  totalCopies: "1",
+};
+
+function borrowerLabel(row: { student: { firstName: string; lastName: string } | null; employee: { firstName: string; lastName: string } | null }) {
+  if (row.student) return `${row.student.firstName} ${row.student.lastName} (Student)`;
+  if (row.employee) return `${row.employee.firstName} ${row.employee.lastName} (Staff)`;
+  return "Unknown borrower";
 }
 
-async function submitAction(action: () => Promise<unknown>, onSuccess: () => void) {
-  try {
-    await action();
-    onSuccess();
-    toast.success("Saved");
-  } catch (err) {
-    toast.error(errorMessage(err, "Failed"));
-  }
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
 }
 
-function formatMoney(amount: string) {
-  return `NPR ${Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
-function dataUrlFromBlob(blob: Blob): Promise<File> {
-  return Promise.resolve(new File([blob], `capture-${Date.now()}.jpg`, { type: "image/jpeg" }));
+// A borrower field shared by the issue/reserve/manual-fine forms —
+// toggle between Student/Employee, then the matching PersonPicker.
+// Kept local (not a shared component) since each of the three call
+// sites carries its own independent local form state.
+function BorrowerField({
+  type,
+  onTypeChange,
+  studentId,
+  employeeId,
+  onStudentChange,
+  onEmployeeChange,
+  studentOptions,
+  employeeOptions,
+}: {
+  type: "student" | "employee";
+  onTypeChange: (t: "student" | "employee") => void;
+  studentId: string;
+  employeeId: string;
+  onStudentChange: (id: string) => void;
+  onEmployeeChange: (id: string) => void;
+  studentOptions: ReturnType<typeof studentToPersonOption>[];
+  employeeOptions: ReturnType<typeof employeeToPersonOption>[];
+}) {
+  return (
+    <div className="flex flex-wrap items-end gap-2">
+      <div className="space-y-1">
+        <Label className="text-xs">Borrower type</Label>
+        <NativeSelect
+          className="w-28"
+          placeholder="Type"
+          value={type}
+          onChange={(v) => onTypeChange(v as "student" | "employee")}
+          options={[
+            { value: "student", label: "Student" },
+            { value: "employee", label: "Staff" },
+          ]}
+        />
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs">Borrower</Label>
+        {type === "student" ? (
+          <PersonPicker
+            className="w-64"
+            placeholder="Select student"
+            value={studentId}
+            onChange={onStudentChange}
+            options={studentOptions}
+          />
+        ) : (
+          <PersonPicker
+            className="w-64"
+            placeholder="Select staff"
+            value={employeeId}
+            onChange={onEmployeeChange}
+            options={employeeOptions}
+          />
+        )}
+      </div>
+    </div>
+  );
 }
 
 export default function LibraryDashboardPage() {
-  const { user } = useAuth();
-  const session = useLibraryStaffSession();
+  // ── Reference data ───────────────────────────────────────────────
+  const categories = useSWR("library-categories", () => api.listBookCategories());
+  const studentsPicker = useSWR("students-picker", () => api.listStudentsPicker());
+  const employeesPicker = useSWR("employees-picker", () => api.listEmployeesPicker());
+  const booksPicker = useSWR("library-books-picker", () => api.listBooksPicker());
+  const studentOptions = (studentsPicker.data ?? []).map(studentToPersonOption);
+  const employeeOptions = (employeesPicker.data ?? []).map(employeeToPersonOption);
+  const bookOptions = (booksPicker.data ?? []).map(bookToPersonOption);
 
-  // ── Staff login ────────────────────────────────────────────────────
-  const [loginForm, setLoginForm] = useState({ username: "", password: "" });
-  const [loginError, setLoginError] = useState<string | null>(null);
-  const [loggingIn, setLoggingIn] = useState(false);
+  // ── Categories ────────────────────────────────────────────────────
+  const [categoryForm, setCategoryForm] = useState({ name: "", code: "" });
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const [editCategoryForm, setEditCategoryForm] = useState({ name: "", code: "" });
 
-  // ── ERP-SSO login (for staff granted the ERP's "Librarian" role) ────
-  const [ssoForm, setSsoForm] = useState({ identifier: user?.email ?? "", password: "" });
-  const [ssoError, setSsoError] = useState<string | null>(null);
-  const [ssoLoggingIn, setSsoLoggingIn] = useState(false);
+  // ── Books ─────────────────────────────────────────────────────────
+  const [booksPage, setBooksPage] = useState(1);
+  const books = useSWR(["library-books", booksPage], () => api.listBooks({ page: booksPage, pageSize: 25 }));
+  const [bookForm, setBookForm] = useState(EMPTY_BOOK_FORM);
+  const [editingBookId, setEditingBookId] = useState<string | null>(null);
+  const [editBookForm, setEditBookForm] = useState(EMPTY_BOOK_FORM);
 
-  // Silently bridge the ERP session already open in this browser,
-  // instead of asking an already-logged-in admin to type their
-  // password a second time (the exact "asks you to log in again" UX
-  // audit finding). Only the manual forms below (ERP password, or a
-  // separate library account) fall back into view on a genuine
-  // failure — not linked, no Librarian role, or no ERP session at all.
-  const [silentConnecting, setSilentConnecting] = useState(true);
-  const [silentFailure, setSilentFailure] = useState<string | null>(null);
-  const silentAttempted = useRef(false);
-
-  useEffect(() => {
-    if (session || silentAttempted.current) return;
-    silentAttempted.current = true;
-    async function run() {
-      const erpToken = getAccessToken();
-      if (!erpToken) {
-        setSilentConnecting(false);
-        return;
-      }
-      try {
-        const result = await libraryStaffApi.erpTokenLogin(erpToken);
-        if (result.user.role === "MEMBER") {
-          setSilentFailure("Your ERP account doesn't have the Librarian role — ask an admin to grant it via Roles & Permissions.");
-          return;
-        }
-        setStoredLibraryStaffSession(result);
-        toast.success("Connected to Library as " + result.user.role.toLowerCase());
-      } catch (err) {
-        setSilentFailure(errorMessage(err, "Could not connect automatically — sign in below."));
-      } finally {
-        setSilentConnecting(false);
-      }
-    }
-    void Promise.resolve().then(run);
-  }, [session]);
-
-  // ── Catalog ────────────────────────────────────────────────────────
-  const categories = useSWR(session ? "library-categories" : null, () => libraryStaffApi.listCategories());
-  const [categoryForm, setCategoryForm] = useState({ name: "", description: "" });
-  const [bookQuery, setBookQuery] = useState("");
-  const books = useSWR(session ? ["library-books", bookQuery] : null, () => libraryStaffApi.searchBooks(bookQuery || undefined));
-  const [bookForm, setBookForm] = useState({
-    title: "",
-    isbn: "",
-    categoryId: "",
-    publisher: "",
-    edition: "",
-    copies: "1",
-    entryMethod: "MANUAL" as "MANUAL" | "ISBN_SCAN" | "OCR",
-  });
+  // Minimal-data-entry helpers for the "Add book" form below — both
+  // preview-only, they only ever prefill bookForm, never submit on
+  // their own; the human still reviews and presses "Add book" (never
+  // auto-submit, same precedent PhotoInput/librarysystem's own Phase 5
+  // already established for anything OCR/lookup-assisted).
   const [isbnLookupValue, setIsbnLookupValue] = useState("");
+  const [isbnLookingUp, setIsbnLookingUp] = useState(false);
+  const [showCoverScan, setShowCoverScan] = useState(false);
+  const [scanningCover, setScanningCover] = useState(false);
 
-  // ── Members ────────────────────────────────────────────────────────
-  const members = useSWR(session ? "library-members" : null, () => libraryStaffApi.listMembers());
-  const [activeMemberId, setActiveMemberId] = useState<number | null>(null);
+  async function lookupIsbn() {
+    setIsbnLookingUp(true);
+    try {
+      const result = await api.isbnLookupBook(isbnLookupValue);
+      setBookForm((f) => ({
+        ...f,
+        title: result.title ?? f.title,
+        isbn: isbnLookupValue,
+        author: result.author ?? f.author,
+        publisher: result.publisher ?? f.publisher,
+        coverImageUrl: result.coverImageUrl ?? f.coverImageUrl,
+      }));
+      toast.success("Prefilled from ISBN lookup — review before saving");
+    } catch (err) {
+      toast.error(errorMessage(err, "ISBN lookup failed — no record for this ISBN, or the lookup service is unreachable"));
+    } finally {
+      setIsbnLookingUp(false);
+    }
+  }
 
-  // ── Circulation ────────────────────────────────────────────────────
-  const openTransactions = useSWR(session ? "library-open-transactions" : null, () => libraryStaffApi.listTransactions({ open: true }));
-  const [issueForm, setIssueForm] = useState({ bookId: "", memberId: "" });
-  const [issueFace, setIssueFace] = useState<FaceCaptureResult | null>(null);
-  const [issueOverride, setIssueOverride] = useState(false);
-  const [returnTransactionId, setReturnTransactionId] = useState("");
-  const [returnFace, setReturnFace] = useState<FaceCaptureResult | null>(null);
-  const [returnOverride, setReturnOverride] = useState(false);
+  async function scanCover(file: File) {
+    setScanningCover(true);
+    try {
+      const result = await api.ocrScanBookCover(file);
+      setBookForm((f) => ({ ...f, title: result.title ?? f.title, author: result.author ?? f.author }));
+      toast.success(
+        result.lowConfidence
+          ? "Prefilled from cover scan (low confidence) — check carefully before saving"
+          : "Prefilled from cover scan — review before saving",
+      );
+    } catch (err) {
+      toast.error(errorMessage(err, "Cover scan failed"));
+    } finally {
+      setScanningCover(false);
+      setShowCoverScan(false);
+    }
+  }
 
-  // ── Fines ──────────────────────────────────────────────────────────
-  const [fineFilter, setFineFilter] = useState<"UNPAID" | "PAID" | "">("UNPAID");
-  const fines = useSWR(session ? ["library-fines", fineFilter] : null, () =>
-    libraryStaffApi.listFines(fineFilter ? { paidStatus: fineFilter } : {}),
+  function refreshBookLists() {
+    books.mutate();
+    booksPicker.mutate();
+  }
+
+  // ── Circulation ───────────────────────────────────────────────────
+  const openTransactions = useSWR("library-open-transactions", () =>
+    api.listLibraryTransactions({ open: true }),
   );
+  const [issueBookId, setIssueBookId] = useState("");
+  const [issueBorrowerType, setIssueBorrowerType] = useState<"student" | "employee">("student");
+  const [issueStudentId, setIssueStudentId] = useState("");
+  const [issueEmployeeId, setIssueEmployeeId] = useState("");
 
-  // ── Reservations ───────────────────────────────────────────────────
-  const reservations = useSWR(session ? "library-all-reservations" : null, () => libraryStaffApi.listReservations({}));
+  // Optional face verification at issue time — reuses this ERP's own
+  // Phase 6 biometric infrastructure server-side. Opt-in, never
+  // blocking: no capture means no check at all; a capture that
+  // doesn't come back MATCHED just surfaces the reason in the error
+  // toast and asks for manualOverride, same "never a dead end"
+  // precedent as PhotoInput/CameraCapture's own camera-denied fallback.
+  const [showIssueFaceCapture, setShowIssueFaceCapture] = useState(false);
+  const [issueFaceImageBase64, setIssueFaceImageBase64] = useState<string | null>(null);
+  const [issueManualOverride, setIssueManualOverride] = useState(false);
 
-  // ── Reports ────────────────────────────────────────────────────────
-  const [reportRange, setReportRange] = useState({ from: "", to: "" });
-  const overdue = useSWR(session ? "library-report-overdue" : null, () => libraryStaffApi.getOverdueReport());
-  const mostBorrowed = useSWR(session ? "library-report-most-borrowed" : null, () => libraryStaffApi.getMostBorrowedReport());
-  const [fineCollection, setFineCollection] = useState<FineCollectionReport | null>(null);
+  // ── Fines ─────────────────────────────────────────────────────────
+  const [fineStatusFilter, setFineStatusFilter] = useState<"PENDING" | "PAID" | "WAIVED" | "">("PENDING");
+  const fines = useSWR(["library-fines", fineStatusFilter], () =>
+    api.listLibraryFines(fineStatusFilter ? { status: fineStatusFilter } : {}),
+  );
+  const [fineForm, setFineForm] = useState({ bookId: "", reason: "LOST" as "LOST" | "DAMAGED", amount: "" });
+  const [fineBorrowerType, setFineBorrowerType] = useState<"student" | "employee">("student");
+  const [fineStudentId, setFineStudentId] = useState("");
+  const [fineEmployeeId, setFineEmployeeId] = useState("");
 
-  // ── Settings ───────────────────────────────────────────────────────
-  const config = useSWR(session ? "library-system-config" : null, () => libraryStaffApi.getSystemConfig());
-  const [configForm, setConfigForm] = useState<{ finePerDayRate: string; faceMatchConfidenceMin: string; loanPeriodDays: string } | null>(null);
-  const [syncResult, setSyncResult] = useState<string | null>(null);
+  // ── Reservations ──────────────────────────────────────────────────
+  const reservations = useSWR("library-reservations", () => api.listLibraryReservations({}));
+  const [reservationBookId, setReservationBookId] = useState("");
+  const [reservationBorrowerType, setReservationBorrowerType] = useState<"student" | "employee">("student");
+  const [reservationStudentId, setReservationStudentId] = useState("");
+  const [reservationEmployeeId, setReservationEmployeeId] = useState("");
 
-  async function staffLogin(e: FormEvent) {
-    e.preventDefault();
-    setLoggingIn(true);
-    setLoginError(null);
-    try {
-      const result = await libraryStaffApi.staffLogin(loginForm.username, loginForm.password);
-      setStoredLibraryStaffSession(result);
-      toast.success("Logged in to Library");
-    } catch (err) {
-      setLoginError(errorMessage(err, "Invalid credentials"));
-    } finally {
-      setLoggingIn(false);
-    }
-  }
+  // ── Settings & reports ────────────────────────────────────────────
+  const settings = useSWR("library-settings", () => api.getLibrarySettings());
+  const [settingsForm, setSettingsForm] = useState<{ loanPeriodDays: string; finePerDayRate: string; maxActiveLoans: string } | null>(null);
+  const overdue = useSWR("library-overdue", () => api.getLibraryOverdueReport());
+  const mostBorrowed = useSWR("library-most-borrowed", () => api.getLibraryMostBorrowedReport());
 
-  // POST /auth/erp-login is a single shared endpoint that can return either a
-  // MEMBER or a LIBRARIAN session depending on the caller's ERP roles — a
-  // MEMBER result here must be rejected, not stored, or a staff member
-  // without the Librarian role would silently see the wrong kind of session
-  // in the staff store (the exact class of bug this integration's own
-  // session-separation fix already addressed once, see
-  // LIBRARY_SYSTEM_INTEGRATION_NOTES.md).
-  async function ssoLogin(e: FormEvent) {
-    e.preventDefault();
-    setSsoLoggingIn(true);
-    setSsoError(null);
-    try {
-      const result = await libraryStaffApi.erpLogin(ssoForm.identifier, ssoForm.password);
-      if (result.user.role === "MEMBER") {
-        setSsoError("Your ERP account doesn't have the Librarian role — ask an admin to grant it via Roles & Permissions.");
-        return;
+  const s = settingsForm ?? (settings.data
+    ? {
+        loanPeriodDays: String(settings.data.loanPeriodDays),
+        finePerDayRate: String(settings.data.finePerDayRate),
+        maxActiveLoans: String(settings.data.maxActiveLoans),
       }
-      setStoredLibraryStaffSession(result);
-      toast.success("Connected to Library as " + result.user.role.toLowerCase());
-    } catch (err) {
-      setSsoError(errorMessage(err, "Could not connect — check your ERP password"));
-    } finally {
-      setSsoLoggingIn(false);
-    }
-  }
+    : null);
 
-  const activeMember = members.data?.find((m) => m.id === activeMemberId) ?? null;
-  const cfg = configForm ?? (config.data ? { finePerDayRate: config.data.finePerDayRate, faceMatchConfidenceMin: String(config.data.faceMatchConfidenceMin), loanPeriodDays: String(config.data.loanPeriodDays) } : null);
+  function refreshCirculation() {
+    openTransactions.mutate();
+    fines.mutate();
+    reservations.mutate();
+    refreshBookLists();
+  }
 
   return (
     <div className="max-w-5xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Library</h1>
         <p className="text-muted-foreground text-sm">
-          Catalog, circulation, fines, reservations, and reports from the connected Library System.
+          Catalog, circulation, fines, reservations, and reports — native to this ERP, no separate login.
         </p>
       </div>
 
-      {!session && silentConnecting ? (
-        <Card>
-          <CardContent className="py-6">
-            <p className="text-muted-foreground text-sm">Connecting to Library using your current session…</p>
-          </CardContent>
-        </Card>
-      ) : !session ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Library staff login</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {silentFailure ? <p className="text-destructive text-xs">{silentFailure}</p> : null}
-            <div>
-              <p className="text-muted-foreground mb-3 text-xs">
-                Connect with your ERP session — works if an admin has granted you the &quot;Librarian&quot; role via{" "}
-                <a href="/dashboard/roles-permissions" className="underline">
-                  Roles &amp; Permissions
-                </a>
-                .
-              </p>
-              <form className="flex flex-wrap items-end gap-3" onSubmit={ssoLogin}>
-                <div className="space-y-1">
-                  <Label className="text-xs">ERP email or student ID</Label>
-                  <Input
-                    className="w-56"
-                    value={ssoForm.identifier}
-                    onChange={(e) => setSsoForm((f) => ({ ...f, identifier: e.target.value }))}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">ERP password</Label>
-                  <Input
-                    type="password"
-                    className="w-48"
-                    value={ssoForm.password}
-                    onChange={(e) => setSsoForm((f) => ({ ...f, password: e.target.value }))}
-                  />
-                </div>
-                <Button type="submit" size="sm" disabled={ssoLoggingIn || !ssoForm.identifier || !ssoForm.password}>
-                  {ssoLoggingIn ? "Connecting…" : "Connect via ERP"}
-                </Button>
-              </form>
-              {ssoError ? <p className="text-destructive mt-2 text-xs">{ssoError}</p> : null}
-            </div>
+      <PageSubNav
+        sections={[
+          { id: "categories", label: "Categories" },
+          { id: "books", label: "Books" },
+          { id: "circulation", label: "Circulation" },
+          { id: "fines", label: "Fines" },
+          { id: "reservations", label: "Reservations" },
+          { id: "reports", label: "Reports" },
+          { id: "settings", label: "Settings" },
+        ]}
+      />
 
-            <Separator />
-
-            <div>
-              <p className="text-muted-foreground mb-3 text-xs">Or a separate Librarian/Administrator library account.</p>
-              <form className="flex flex-wrap items-end gap-3" onSubmit={staffLogin}>
-                <div className="space-y-1">
-                  <Label className="text-xs">Username</Label>
-                  <Input className="w-48" value={loginForm.username} onChange={(e) => setLoginForm((f) => ({ ...f, username: e.target.value }))} />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Password</Label>
-                  <Input
-                    type="password"
-                    className="w-48"
-                    value={loginForm.password}
-                    onChange={(e) => setLoginForm((f) => ({ ...f, password: e.target.value }))}
-                  />
-                </div>
-                <Button type="submit" size="sm" disabled={loggingIn || !loginForm.username || !loginForm.password}>
-                  {loggingIn ? "Signing in…" : "Sign in"}
-                </Button>
-              </form>
-              {loginError ? <p className="text-destructive mt-2 text-xs">{loginError}</p> : null}
-            </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <>
-          <div className="flex justify-end">
-            <Button type="button" size="sm" variant="ghost" onClick={() => setStoredLibraryStaffSession(null)}>
-              Sign out of Library
-            </Button>
-          </div>
-
-          <PageSubNav
-            sections={[
-              { id: "catalog-categories", label: "Categories" },
-              { id: "catalog-books", label: "Books" },
-              { id: "members", label: "Members" },
-              { id: "circulation", label: "Circulation" },
-              { id: "fines", label: "Fines" },
-              { id: "reservations", label: "Reservations" },
-              { id: "reports", label: "Reports" },
-              { id: "settings", label: "Settings" },
-            ]}
-          />
-
-          {/* ── Catalog ─────────────────────────────────────────────── */}
-          <Card id="catalog-categories" className="scroll-mt-16">
-            <CardHeader>
-              <CardTitle>Catalog — Categories</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {!categories.data || categories.data.length === 0 ? (
-                <p className="text-muted-foreground text-sm">No categories yet.</p>
-              ) : (
-                <ul className="divide-y text-sm">
-                  {categories.data.map((c) => (
-                    <li key={c.id} className="py-2">
-                      {c.name} {c.description ? <span className="text-muted-foreground">— {c.description}</span> : null}
-                    </li>
-                  ))}
-                </ul>
+      {/* ── Categories ───────────────────────────────────────────── */}
+      <Card id="categories" className="scroll-mt-16">
+        <CardHeader>
+          <CardTitle>Categories</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {!categories.data || categories.data.length === 0 ? (
+            <p className="text-muted-foreground text-sm">No categories yet.</p>
+          ) : (
+            <ul className="divide-y text-sm">
+              {categories.data.map((c) =>
+                editingCategoryId === c.id ? (
+                  <li key={c.id} className="py-2">
+                    <form
+                      className="flex flex-wrap items-end gap-2"
+                      onSubmit={(e: FormEvent) => {
+                        e.preventDefault();
+                        submitAction(
+                          () => api.updateBookCategory(c.id, editCategoryForm),
+                          () => {
+                            setEditingCategoryId(null);
+                            categories.mutate();
+                          },
+                        );
+                      }}
+                    >
+                      <Input className="h-7 w-40" value={editCategoryForm.name} onChange={(e) => setEditCategoryForm((f) => ({ ...f, name: e.target.value }))} />
+                      <Input className="h-7 w-28" value={editCategoryForm.code} onChange={(e) => setEditCategoryForm((f) => ({ ...f, code: e.target.value }))} />
+                      <Button type="submit" size="sm" className="h-7">
+                        Save
+                      </Button>
+                      <Button type="button" size="sm" variant="outline" className="h-7" onClick={() => setEditingCategoryId(null)}>
+                        Cancel
+                      </Button>
+                    </form>
+                  </li>
+                ) : (
+                  <li key={c.id} className="flex items-center justify-between gap-2 py-2">
+                    <span>
+                      {c.name} <span className="text-muted-foreground">({c.code})</span>
+                    </span>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setEditingCategoryId(c.id);
+                          setEditCategoryForm({ name: c.name, code: c.code });
+                        }}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => submitDelete(() => api.deleteBookCategory(c.id), () => categories.mutate())}
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  </li>
+                ),
               )}
-              <Separator />
-              <form
-                className="flex flex-wrap items-end gap-3"
-                onSubmit={(e: FormEvent) => {
-                  e.preventDefault();
-                  submitAction(
-                    () => libraryStaffApi.createCategory({ name: categoryForm.name, description: categoryForm.description || undefined }),
-                    () => {
-                      setCategoryForm({ name: "", description: "" });
-                      categories.mutate();
-                    },
-                  );
-                }}
-              >
-                <div className="space-y-1">
-                  <Label className="text-xs">Name</Label>
-                  <Input value={categoryForm.name} onChange={(e) => setCategoryForm((f) => ({ ...f, name: e.target.value }))} />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Description</Label>
-                  <Input className="w-56" value={categoryForm.description} onChange={(e) => setCategoryForm((f) => ({ ...f, description: e.target.value }))} />
-                </div>
-                <Button type="submit" size="sm" disabled={!categoryForm.name}>
-                  Add category
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
+            </ul>
+          )}
+          <Separator />
+          <form
+            className="flex flex-wrap items-end gap-3"
+            onSubmit={(e: FormEvent) => {
+              e.preventDefault();
+              submitAction(
+                () => api.createBookCategory(categoryForm),
+                () => {
+                  setCategoryForm({ name: "", code: "" });
+                  categories.mutate();
+                },
+              );
+            }}
+          >
+            <div className="space-y-1">
+              <Label className="text-xs">Name</Label>
+              <Input value={categoryForm.name} onChange={(e) => setCategoryForm((f) => ({ ...f, name: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Code</Label>
+              <Input className="w-28" value={categoryForm.code} onChange={(e) => setCategoryForm((f) => ({ ...f, code: e.target.value }))} />
+            </div>
+            <Button type="submit" size="sm" disabled={!categoryForm.name || !categoryForm.code}>
+              Add category
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
 
-          <Card id="catalog-books" className="scroll-mt-16">
-            <CardHeader>
-              <CardTitle>Catalog — Books</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Input placeholder="Search…" value={bookQuery} onChange={(e) => setBookQuery(e.target.value)} />
-              {!books.data || books.data.length === 0 ? (
-                <p className="text-muted-foreground text-sm">No books found.</p>
-              ) : (
-                <ul className="divide-y text-sm">
-                  {books.data.map((b) => (
-                    <li key={b.id} className="py-2">
+      {/* ── Books ────────────────────────────────────────────────── */}
+      <Card id="books" className="scroll-mt-16">
+        <CardHeader>
+          <CardTitle>Books</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {!books.data || books.data.data.length === 0 ? (
+            <p className="text-muted-foreground text-sm">No books yet.</p>
+          ) : (
+            <ul className="divide-y text-sm">
+              {books.data.data.map((b) =>
+                editingBookId === b.id ? (
+                  <li key={b.id} className="py-2">
+                    <form
+                      className="flex flex-wrap items-end gap-2"
+                      onSubmit={(e: FormEvent) => {
+                        e.preventDefault();
+                        submitAction(
+                          () =>
+                            api.updateBook(b.id, {
+                              ...editBookForm,
+                              categoryId: editBookForm.categoryId || undefined,
+                              totalCopies: Number(editBookForm.totalCopies) || undefined,
+                            }),
+                          () => {
+                            setEditingBookId(null);
+                            refreshBookLists();
+                          },
+                        );
+                      }}
+                    >
+                      <Input className="h-7 w-48" value={editBookForm.title} onChange={(e) => setEditBookForm((f) => ({ ...f, title: e.target.value }))} />
+                      <Input className="h-7 w-32" placeholder="ISBN" value={editBookForm.isbn} onChange={(e) => setEditBookForm((f) => ({ ...f, isbn: e.target.value }))} />
+                      <Input className="h-7 w-36" placeholder="Author" value={editBookForm.author} onChange={(e) => setEditBookForm((f) => ({ ...f, author: e.target.value }))} />
+                      <NativeSelect
+                        className="h-7 w-36"
+                        placeholder="Category"
+                        value={editBookForm.categoryId}
+                        onChange={(v) => setEditBookForm((f) => ({ ...f, categoryId: v }))}
+                        options={(categories.data ?? []).map((c) => ({ value: c.id, label: c.name }))}
+                      />
+                      <Input
+                        type="number"
+                        className="h-7 w-20"
+                        placeholder="Copies"
+                        value={editBookForm.totalCopies}
+                        onChange={(e) => setEditBookForm((f) => ({ ...f, totalCopies: e.target.value }))}
+                      />
+                      <Button type="submit" size="sm" className="h-7">
+                        Save
+                      </Button>
+                      <Button type="button" size="sm" variant="outline" className="h-7" onClick={() => setEditingBookId(null)}>
+                        Cancel
+                      </Button>
+                    </form>
+                  </li>
+                ) : (
+                  <li key={b.id} className="flex items-center justify-between gap-2 py-2">
+                    <span>
                       <span className="font-medium">{b.title}</span>{" "}
                       <span className="text-muted-foreground">
-                        — {b.isbn ?? "no ISBN"} · {b.category?.name ?? "uncategorized"} · {b.availableCopies}/{b.copies} available ·{" "}
-                        <Badge variant={b.status === "ACTIVE" ? "success" : "secondary"}>{b.status}</Badge>
+                        — {b.isbn ?? "no ISBN"} · {b.author ?? "unknown author"} · {b.category?.name ?? "uncategorized"} ·{" "}
+                        {b.availableCopies}/{b.totalCopies} available
                       </span>
-                    </li>
-                  ))}
-                </ul>
+                    </span>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setEditingBookId(b.id);
+                          setEditBookForm({
+                            title: b.title,
+                            isbn: b.isbn ?? "",
+                            author: b.author ?? "",
+                            publisher: b.publisher ?? "",
+                            edition: b.edition ?? "",
+                            coverImageUrl: b.coverImageUrl ?? "",
+                            categoryId: b.categoryId ?? "",
+                            shelfLocation: b.shelfLocation ?? "",
+                            totalCopies: String(b.totalCopies),
+                          });
+                        }}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => submitDelete(() => api.deleteBook(b.id), refreshBookLists)}
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  </li>
+                ),
               )}
-              <Separator />
-              <div className="flex flex-wrap items-end gap-2">
-                <div className="space-y-1">
-                  <Label className="text-xs">ISBN lookup</Label>
-                  <Input className="w-40" value={isbnLookupValue} onChange={(e) => setIsbnLookupValue(e.target.value)} />
-                </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={!isbnLookupValue}
-                  onClick={async () => {
-                    try {
-                      const result = await libraryStaffApi.isbnLookup(isbnLookupValue);
-                      setBookForm((f) => ({
-                        ...f,
-                        title: result.title ?? f.title,
-                        isbn: result.isbn ?? isbnLookupValue,
-                        publisher: result.publisher ?? f.publisher,
-                        entryMethod: "ISBN_SCAN",
-                      }));
-                      toast.success("Prefilled from ISBN lookup — review before saving");
-                    } catch (err) {
-                      toast.error(errorMessage(err, "ISBN lookup failed"));
-                    }
-                  }}
-                >
-                  Prefill from ISBN
-                </Button>
-                <div className="space-y-1">
-                  <Label className="text-xs">Or scan a cover photo (OCR)</Label>
-                  <Input
-                    type="file"
-                    accept="image/*"
-                    className="w-56"
-                    onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      try {
-                        const result = await libraryStaffApi.ocrScan(file);
-                        setBookForm((f) => ({ ...f, title: result.title ?? f.title, entryMethod: "OCR" }));
-                        toast.success(result.lowConfidence ? "Prefilled (low confidence) — review before saving" : "Prefilled from cover scan — review before saving");
-                      } catch (err) {
-                        toast.error(errorMessage(err, "OCR scan failed"));
-                      }
-                    }}
-                  />
-                </div>
+            </ul>
+          )}
+          {books.data ? (
+            <ListPager
+              page={books.data.page}
+              totalPages={books.data.totalPages}
+              onPrev={() => setBooksPage((p) => Math.max(1, p - 1))}
+              onNext={() => setBooksPage((p) => p + 1)}
+            />
+          ) : null}
+          <Separator />
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Minimal entry — ISBN lookup or scan a cover</p>
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs">ISBN</Label>
+                <Input
+                  className="w-40"
+                  placeholder="978..."
+                  value={isbnLookupValue}
+                  onChange={(e) => setIsbnLookupValue(e.target.value)}
+                />
               </div>
-              <form
-                className="flex flex-wrap items-end gap-3"
-                onSubmit={(e: FormEvent) => {
-                  e.preventDefault();
+              <Button type="button" size="sm" variant="outline" disabled={!isbnLookupValue || isbnLookingUp} onClick={lookupIsbn}>
+                {isbnLookingUp ? "Looking up…" : "Look up ISBN"}
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setShowCoverScan((s) => !s)}>
+                {showCoverScan ? "Cancel scan" : "Scan cover"}
+              </Button>
+              <label className="text-muted-foreground flex h-8 cursor-pointer items-center text-xs underline">
+                or upload a cover photo
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (file) scanCover(file);
+                  }}
+                />
+              </label>
+              {scanningCover ? <span className="text-muted-foreground text-xs">Reading cover…</span> : null}
+            </div>
+            {showCoverScan ? <CameraCapture onCapture={({ blob }) => scanCover(new File([blob], "cover.jpg", { type: "image/jpeg" }))} /> : null}
+          </div>
+
+          <Separator />
+          <form
+            className="flex flex-wrap items-end gap-3"
+            onSubmit={(e: FormEvent) => {
+              e.preventDefault();
+              submitAction(
+                () =>
+                  api.createBook({
+                    ...bookForm,
+                    categoryId: bookForm.categoryId || undefined,
+                    totalCopies: Number(bookForm.totalCopies) || 1,
+                  }),
+                () => {
+                  setBookForm(EMPTY_BOOK_FORM);
+                  refreshBookLists();
+                },
+              );
+            }}
+          >
+            <div className="space-y-1">
+              <Label className="text-xs">Title</Label>
+              <Input className="w-48" value={bookForm.title} onChange={(e) => setBookForm((f) => ({ ...f, title: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">ISBN</Label>
+              <Input className="w-32" value={bookForm.isbn} onChange={(e) => setBookForm((f) => ({ ...f, isbn: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Author</Label>
+              <Input className="w-36" value={bookForm.author} onChange={(e) => setBookForm((f) => ({ ...f, author: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Category</Label>
+              <NativeSelect
+                className="w-36"
+                placeholder="Uncategorized"
+                value={bookForm.categoryId}
+                onChange={(v) => setBookForm((f) => ({ ...f, categoryId: v }))}
+                options={(categories.data ?? []).map((c) => ({ value: c.id, label: c.name }))}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Copies</Label>
+              <Input type="number" className="w-20" value={bookForm.totalCopies} onChange={(e) => setBookForm((f) => ({ ...f, totalCopies: e.target.value }))} />
+            </div>
+            <Button type="submit" size="sm" disabled={!bookForm.title}>
+              Add book
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      {/* ── Circulation ──────────────────────────────────────────── */}
+      <Card id="circulation" className="scroll-mt-16">
+        <CardHeader>
+          <CardTitle>Circulation</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Issue a book</p>
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs">Book</Label>
+                <PersonPicker className="w-64" placeholder="Select book" value={issueBookId} onChange={setIssueBookId} options={bookOptions} />
+              </div>
+              <BorrowerField
+                type={issueBorrowerType}
+                onTypeChange={setIssueBorrowerType}
+                studentId={issueStudentId}
+                employeeId={issueEmployeeId}
+                onStudentChange={setIssueStudentId}
+                onEmployeeChange={setIssueEmployeeId}
+                studentOptions={studentOptions}
+                employeeOptions={employeeOptions}
+              />
+              <Button type="button" size="sm" variant="outline" onClick={() => setShowIssueFaceCapture((s) => !s)}>
+                {showIssueFaceCapture ? "Cancel verification" : issueFaceImageBase64 ? "Recapture" : "Verify identity (face)"}
+              </Button>
+              <label className="flex h-8 items-center gap-1.5 text-xs">
+                <input type="checkbox" checked={issueManualOverride} onChange={(e) => setIssueManualOverride(e.target.checked)} />
+                Manual override
+              </label>
+              <Button
+                type="button"
+                size="sm"
+                disabled={!issueBookId || (issueBorrowerType === "student" ? !issueStudentId : !issueEmployeeId)}
+                onClick={() =>
                   submitAction(
                     () =>
-                      libraryStaffApi.createBook({
-                        title: bookForm.title,
-                        isbn: bookForm.isbn || undefined,
-                        categoryId: bookForm.categoryId ? Number(bookForm.categoryId) : undefined,
-                        publisher: bookForm.publisher || undefined,
-                        edition: bookForm.edition || undefined,
-                        copies: Number(bookForm.copies) || 1,
-                        entryMethod: bookForm.entryMethod,
+                      api.issueBook({
+                        bookId: issueBookId,
+                        studentId: issueBorrowerType === "student" ? issueStudentId : undefined,
+                        employeeId: issueBorrowerType === "employee" ? issueEmployeeId : undefined,
+                        faceImageBase64: issueFaceImageBase64 ?? undefined,
+                        manualOverride: issueManualOverride,
                       }),
                     () => {
-                      setBookForm({ title: "", isbn: "", categoryId: "", publisher: "", edition: "", copies: "1", entryMethod: "MANUAL" });
-                      setIsbnLookupValue("");
-                      books.mutate();
+                      setIssueBookId("");
+                      setIssueStudentId("");
+                      setIssueEmployeeId("");
+                      setIssueFaceImageBase64(null);
+                      setIssueManualOverride(false);
+                      setShowIssueFaceCapture(false);
+                      refreshCirculation();
                     },
-                  );
-                }}
+                    "Issued",
+                  )
+                }
               >
-                <div className="space-y-1">
-                  <Label className="text-xs">Title</Label>
-                  <Input className="w-48" value={bookForm.title} onChange={(e) => setBookForm((f) => ({ ...f, title: e.target.value }))} />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">ISBN</Label>
-                  <Input className="w-36" value={bookForm.isbn} onChange={(e) => setBookForm((f) => ({ ...f, isbn: e.target.value }))} />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Category</Label>
-                  <NativeSelect
-                    className="w-40"
-                    placeholder="Uncategorized"
-                    value={bookForm.categoryId}
-                    onChange={(v) => setBookForm((f) => ({ ...f, categoryId: v }))}
-                    options={(categories.data ?? []).map((c) => ({ value: String(c.id), label: c.name }))}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Copies</Label>
-                  <Input type="number" className="w-20" value={bookForm.copies} onChange={(e) => setBookForm((f) => ({ ...f, copies: e.target.value }))} />
-                </div>
-                <Button type="submit" size="sm" disabled={!bookForm.title}>
-                  Add book
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
+                Issue
+              </Button>
+            </div>
+            {showIssueFaceCapture ? (
+              <CameraCapture
+                onCapture={async ({ blob }) => {
+                  setIssueFaceImageBase64(await blobToBase64(blob));
+                  setShowIssueFaceCapture(false);
+                }}
+              />
+            ) : issueFaceImageBase64 ? (
+              <p className="text-muted-foreground text-xs">Face captured — will be checked against the borrower&apos;s enrolled template.</p>
+            ) : null}
+          </div>
 
-          {/* ── Members ─────────────────────────────────────────────── */}
-          <Card id="members" className="scroll-mt-16">
-            <CardHeader>
-              <CardTitle>Members</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {!members.data || members.data.length === 0 ? (
-                <p className="text-muted-foreground text-sm">No members yet.</p>
-              ) : (
-                <ul className="divide-y text-sm">
-                  {members.data.map((m) => (
-                    <li key={m.id} className="py-2">
-                      <button type="button" className="hover:text-primary text-left" onClick={() => setActiveMemberId(m.id)}>
-                        {m.name} <span className="text-muted-foreground">— {m.type} · {m.status}{m.erpRefId ? " · ERP-linked" : ""}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {activeMember ? (
-                <div className="bg-muted/40 space-y-2 rounded-lg border p-4 text-sm">
-                  <p className="font-medium">{activeMember.name}</p>
-                  <p className="text-muted-foreground text-xs">
-                    {activeMember.type} · {activeMember.status} · joined {new Date(activeMember.joinDate).toLocaleDateString()}
-                  </p>
-                  <p className="text-xs font-medium">Enroll face template</p>
-                  <FaceCapture
-                    onCapture={async (result) => {
-                      try {
-                        const file = await dataUrlFromBlob(result.blob);
-                        const enrolled = await libraryStaffApi.enrollFaceTemplate(activeMember.id, file);
-                        toast.success(`Face template enrolled (confidence ${enrolled.detectionConfidence.toFixed(2)})`);
-                      } catch (err) {
-                        toast.error(errorMessage(err, "Could not enroll face template"));
+          <Separator />
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Open loans</p>
+            {!openTransactions.data || openTransactions.data.length === 0 ? (
+              <p className="text-muted-foreground text-sm">None.</p>
+            ) : (
+              <ul className="divide-y text-sm">
+                {openTransactions.data.map((t: LibraryTransactionRecord) => (
+                  <li key={t.id} className="flex items-center justify-between gap-2 py-2">
+                    <span>
+                      {t.book.title} — {borrowerLabel(t)}{" "}
+                      <span className="text-muted-foreground">due {new Date(t.dueDate).toLocaleDateString()}</span>
+                      {t.issueFaceVerified ? (
+                        <Badge variant={t.issueFaceVerified === "MATCHED" ? "success" : "secondary"} className="ml-1">
+                          {t.issueFaceVerified}
+                        </Badge>
+                      ) : null}
+                    </span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        submitAction(() => api.returnBook(t.id), refreshCirculation, "Returned")
                       }
-                    }}
-                  />
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
+                    >
+                      Return
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
-          {/* ── Circulation ─────────────────────────────────────────── */}
-          <Card id="circulation" className="scroll-mt-16">
-            <CardHeader>
-              <CardTitle>Circulation</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <p className="text-sm font-medium">Issue a book</p>
-                <div className="flex flex-wrap items-end gap-2">
-                  <div className="space-y-1">
-                    <Label className="text-xs">Book</Label>
-                    <NativeSelect
-                      className="w-48"
-                      placeholder="Select book"
-                      value={issueForm.bookId}
-                      onChange={(v) => setIssueForm((f) => ({ ...f, bookId: v }))}
-                      options={(books.data ?? []).map((b) => ({ value: String(b.id), label: b.title }))}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Member</Label>
-                    <NativeSelect
-                      className="w-48"
-                      placeholder="Select member"
-                      value={issueForm.memberId}
-                      onChange={(v) => setIssueForm((f) => ({ ...f, memberId: v }))}
-                      options={(members.data ?? []).map((m) => ({ value: String(m.id), label: m.name }))}
-                    />
-                  </div>
-                </div>
-                <FaceCapture onCapture={setIssueFace} />
-                <label className="flex items-center gap-2 text-xs">
-                  <input type="checkbox" checked={issueOverride} onChange={(e) => setIssueOverride(e.target.checked)} />
-                  Manual override (no camera / no face match required)
-                </label>
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={!issueForm.bookId || !issueForm.memberId}
-                  onClick={() =>
-                    submitAction(
-                      () =>
-                        libraryStaffApi.issueBook({
-                          bookId: Number(issueForm.bookId),
-                          memberId: Number(issueForm.memberId),
-                          faceImageBase64: issueFace?.base64,
-                          manualOverride: issueOverride,
-                        }),
-                      () => {
-                        setIssueForm({ bookId: "", memberId: "" });
-                        setIssueFace(null);
-                        setIssueOverride(false);
-                        openTransactions.mutate();
-                        books.mutate();
-                      },
-                    )
-                  }
-                >
-                  Issue
-                </Button>
-              </div>
-
-              <Separator />
-
-              <div className="space-y-2">
-                <p className="text-sm font-medium">Return a book</p>
-                <NativeSelect
-                  className="w-64"
-                  placeholder="Select open loan"
-                  value={returnTransactionId}
-                  onChange={setReturnTransactionId}
-                  options={(openTransactions.data ?? []).map((t) => ({ value: String(t.id), label: `${t.book.title} — ${t.member.name}` }))}
-                />
-                <FaceCapture onCapture={setReturnFace} />
-                <label className="flex items-center gap-2 text-xs">
-                  <input type="checkbox" checked={returnOverride} onChange={(e) => setReturnOverride(e.target.checked)} />
-                  Manual override
-                </label>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={!returnTransactionId}
-                  onClick={() =>
-                    submitAction(
-                      () =>
-                        libraryStaffApi.returnBook({
-                          transactionId: Number(returnTransactionId),
-                          faceImageBase64: returnFace?.base64,
-                          manualOverride: returnOverride,
-                        }),
-                      () => {
-                        setReturnTransactionId("");
-                        setReturnFace(null);
-                        setReturnOverride(false);
-                        openTransactions.mutate();
-                        fines.mutate();
-                        books.mutate();
-                      },
-                    )
-                  }
-                >
-                  Return
-                </Button>
-              </div>
-
-              <Separator />
-              <p className="text-sm font-medium">Open loans</p>
-              {!openTransactions.data || openTransactions.data.length === 0 ? (
-                <p className="text-muted-foreground text-sm">None.</p>
-              ) : (
-                <ul className="divide-y text-sm">
-                  {openTransactions.data.map((t) => (
-                    <li key={t.id} className="py-2">
-                      {t.book.title} — {t.member.name} <span className="text-muted-foreground">due {new Date(t.dueDate).toLocaleDateString()}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* ── Fines ───────────────────────────────────────────────── */}
-          <Card id="fines" className="scroll-mt-16">
-            <CardHeader>
-              <CardTitle>Fines</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
+      {/* ── Fines ────────────────────────────────────────────────── */}
+      <Card id="fines" className="scroll-mt-16">
+        <CardHeader>
+          <CardTitle>Fines</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <NativeSelect
+            className="w-36"
+            placeholder="All"
+            value={fineStatusFilter}
+            onChange={(v) => setFineStatusFilter(v as "PENDING" | "PAID" | "WAIVED" | "")}
+            options={[
+              { value: "PENDING", label: "Pending" },
+              { value: "PAID", label: "Paid" },
+              { value: "WAIVED", label: "Waived" },
+            ]}
+          />
+          {!fines.data || fines.data.length === 0 ? (
+            <p className="text-muted-foreground text-sm">No fines.</p>
+          ) : (
+            <ul className="divide-y text-sm">
+              {fines.data.map((f: LibraryFineRecord) => (
+                <li key={f.id} className="flex items-center justify-between gap-2 py-2">
+                  <span>
+                    {borrowerLabel(f)} — NPR {Number(f.amount).toFixed(2)} ({f.reason})
+                    {" "}
+                    <Badge variant={f.status === "PAID" ? "success" : f.status === "WAIVED" ? "secondary" : "warning"}>
+                      {f.status}
+                    </Badge>
+                    {f.invoiceId ? <span className="text-muted-foreground text-xs"> · posted as invoice</span> : null}
+                  </span>
+                  {f.status === "PENDING" ? (
+                    <div className="flex gap-2">
+                      <Button type="button" size="sm" variant="outline" onClick={() => submitAction(() => api.payLibraryFine(f.id), () => fines.mutate(), "Marked paid")}>
+                        Mark paid
+                      </Button>
+                      <Button type="button" size="sm" variant="outline" onClick={() => submitAction(() => api.waiveLibraryFine(f.id), () => fines.mutate(), "Waived")}>
+                        Waive
+                      </Button>
+                    </div>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+          <Separator />
+          <p className="text-sm font-medium">Record a manual fine (lost / damaged)</p>
+          <form
+            className="flex flex-wrap items-end gap-3"
+            onSubmit={(e: FormEvent) => {
+              e.preventDefault();
+              submitAction(
+                () =>
+                  api.createLibraryFine({
+                    studentId: fineBorrowerType === "student" ? fineStudentId : undefined,
+                    employeeId: fineBorrowerType === "employee" ? fineEmployeeId : undefined,
+                    reason: fineForm.reason,
+                    amount: Number(fineForm.amount),
+                  }),
+                () => {
+                  setFineForm({ bookId: "", reason: "LOST", amount: "" });
+                  setFineStudentId("");
+                  setFineEmployeeId("");
+                  fines.mutate();
+                },
+                "Fine recorded",
+              );
+            }}
+          >
+            <BorrowerField
+              type={fineBorrowerType}
+              onTypeChange={setFineBorrowerType}
+              studentId={fineStudentId}
+              employeeId={fineEmployeeId}
+              onStudentChange={setFineStudentId}
+              onEmployeeChange={setFineEmployeeId}
+              studentOptions={studentOptions}
+              employeeOptions={employeeOptions}
+            />
+            <div className="space-y-1">
+              <Label className="text-xs">Reason</Label>
               <NativeSelect
-                className="w-40"
-                placeholder="All"
-                value={fineFilter}
-                onChange={(v) => setFineFilter(v as "UNPAID" | "PAID" | "")}
+                className="w-28"
+                placeholder="Reason"
+                value={fineForm.reason}
+                onChange={(v) => setFineForm((f) => ({ ...f, reason: v as "LOST" | "DAMAGED" }))}
                 options={[
-                  { value: "UNPAID", label: "Unpaid" },
-                  { value: "PAID", label: "Paid" },
+                  { value: "LOST", label: "Lost" },
+                  { value: "DAMAGED", label: "Damaged" },
                 ]}
               />
-              {!fines.data || fines.data.length === 0 ? (
-                <p className="text-muted-foreground text-sm">No fines.</p>
-              ) : (
-                <ul className="divide-y text-sm">
-                  {fines.data.map((f) => (
-                    <li key={f.id} className="flex items-center justify-between gap-2 py-2">
-                      <span>
-                        {formatMoney(f.amount)} <Badge variant={f.paidStatus === "PAID" ? "success" : "warning"}>{f.paidStatus}</Badge>
-                        {f.erpInvoiceId ? <span className="text-muted-foreground text-xs"> · posted to ERP</span> : null}
-                      </span>
-                      <div className="flex gap-2">
-                        {f.paidStatus === "UNPAID" ? (
-                          <Button type="button" size="sm" variant="outline" onClick={() => submitAction(() => libraryStaffApi.payFine(f.id), () => fines.mutate())}>
-                            Mark paid
-                          </Button>
-                        ) : null}
-                        {!f.erpInvoiceId ? (
-                          <Button type="button" size="sm" variant="outline" onClick={() => submitAction(() => libraryStaffApi.postFineToErp(f.id), () => fines.mutate())}>
-                            Post to ERP
-                          </Button>
-                        ) : null}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Amount (NPR)</Label>
+              <Input type="number" className="w-28" value={fineForm.amount} onChange={(e) => setFineForm((f) => ({ ...f, amount: e.target.value }))} />
+            </div>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={!fineForm.amount || (fineBorrowerType === "student" ? !fineStudentId : !fineEmployeeId)}
+            >
+              Record fine
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
 
-          {/* ── Reservations ────────────────────────────────────────── */}
-          <Card id="reservations" className="scroll-mt-16">
-            <CardHeader>
-              <CardTitle>Reservations</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {!reservations.data || reservations.data.length === 0 ? (
-                <p className="text-muted-foreground text-sm">No reservations.</p>
-              ) : (
-                <ul className="divide-y text-sm">
-                  {reservations.data.map((r) => (
-                    <li key={r.id} className="py-2">
-                      {r.book.title} — {r.member.name}{" "}
-                      {r.readyAt ? <Badge variant="success">Ready</Badge> : <Badge variant="secondary">Pending</Badge>}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
+      {/* ── Reservations ─────────────────────────────────────────── */}
+      <Card id="reservations" className="scroll-mt-16">
+        <CardHeader>
+          <CardTitle>Reservations</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {!reservations.data || reservations.data.length === 0 ? (
+            <p className="text-muted-foreground text-sm">No reservations.</p>
+          ) : (
+            <ul className="divide-y text-sm">
+              {reservations.data.map((r: LibraryReservationRecord) => (
+                <li key={r.id} className="flex items-center justify-between gap-2 py-2">
+                  <span>
+                    {r.book.title} — {borrowerLabel(r)}{" "}
+                    <Badge variant={r.status === "READY" ? "success" : r.status === "PENDING" ? "secondary" : "outline"}>
+                      {r.status}
+                    </Badge>
+                  </span>
+                  {r.status === "PENDING" || r.status === "READY" ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => submitAction(() => api.cancelLibraryReservation(r.id), () => reservations.mutate(), "Cancelled")}
+                    >
+                      Cancel
+                    </Button>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+          <Separator />
+          <form
+            className="flex flex-wrap items-end gap-3"
+            onSubmit={(e: FormEvent) => {
+              e.preventDefault();
+              submitAction(
+                () =>
+                  api.createLibraryReservation({
+                    bookId: reservationBookId,
+                    studentId: reservationBorrowerType === "student" ? reservationStudentId : undefined,
+                    employeeId: reservationBorrowerType === "employee" ? reservationEmployeeId : undefined,
+                  }),
+                () => {
+                  setReservationBookId("");
+                  setReservationStudentId("");
+                  setReservationEmployeeId("");
+                  reservations.mutate();
+                },
+                "Reserved",
+              );
+            }}
+          >
+            <div className="space-y-1">
+              <Label className="text-xs">Book</Label>
+              <PersonPicker className="w-64" placeholder="Select book" value={reservationBookId} onChange={setReservationBookId} options={bookOptions} />
+            </div>
+            <BorrowerField
+              type={reservationBorrowerType}
+              onTypeChange={setReservationBorrowerType}
+              studentId={reservationStudentId}
+              employeeId={reservationEmployeeId}
+              onStudentChange={setReservationStudentId}
+              onEmployeeChange={setReservationEmployeeId}
+              studentOptions={studentOptions}
+              employeeOptions={employeeOptions}
+            />
+            <Button
+              type="submit"
+              size="sm"
+              disabled={!reservationBookId || (reservationBorrowerType === "student" ? !reservationStudentId : !reservationEmployeeId)}
+            >
+              Reserve
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
 
-          {/* ── Reports ─────────────────────────────────────────────── */}
-          <Card id="reports" className="scroll-mt-16">
-            <CardHeader>
-              <CardTitle>Reports</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <p className="text-sm font-medium">Overdue</p>
-                {!overdue.data || overdue.data.length === 0 ? (
-                  <p className="text-muted-foreground text-sm">None overdue.</p>
-                ) : (
-                  <ul className="divide-y text-sm">
-                    {overdue.data.map((r) => (
-                      <li key={r.id} className="py-1">
-                        {r.book.title} — {r.member.name} <span className="text-muted-foreground">due {new Date(r.dueDate).toLocaleDateString()}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              <div>
-                <p className="text-sm font-medium">Most borrowed</p>
-                {!mostBorrowed.data || mostBorrowed.data.length === 0 ? (
-                  <p className="text-muted-foreground text-sm">No data yet.</p>
-                ) : (
-                  <ul className="divide-y text-sm">
-                    {mostBorrowed.data.map((row, i) => (
-                      <li key={i} className="py-1">
-                        {row.book.title} — {row.borrowCount} loans
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              <div className="space-y-2">
-                <p className="text-sm font-medium">Fine collection</p>
-                <div className="flex flex-wrap items-end gap-2">
-                  <div className="space-y-1">
-                    <Label className="text-xs">From</Label>
-                    <Input type="date" className="h-8 w-36" value={reportRange.from} onChange={(e) => setReportRange((r) => ({ ...r, from: e.target.value }))} />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">To</Label>
-                    <Input type="date" className="h-8 w-36" value={reportRange.to} onChange={(e) => setReportRange((r) => ({ ...r, to: e.target.value }))} />
-                  </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="h-8"
-                    onClick={async () => {
-                      try {
-                        const result = await libraryStaffApi.getFineCollectionReport({ from: reportRange.from || undefined, to: reportRange.to || undefined });
-                        setFineCollection(result);
-                      } catch (err) {
-                        toast.error(errorMessage(err, "Could not load report"));
-                      }
-                    }}
-                  >
-                    Run
-                  </Button>
-                </div>
-                {fineCollection ? (
-                  <p className="text-sm">
-                    Assessed: {formatMoney(String(fineCollection.totalAssessed))} ({fineCollection.countAssessed}) · Collected:{" "}
-                    {formatMoney(String(fineCollection.totalCollected))} ({fineCollection.countCollected}) · Outstanding:{" "}
-                    {formatMoney(String(fineCollection.totalOutstanding))} ({fineCollection.countOutstanding})
-                  </p>
-                ) : null}
-              </div>
-            </CardContent>
-          </Card>
+      {/* ── Reports ──────────────────────────────────────────────── */}
+      <Card id="reports" className="scroll-mt-16">
+        <CardHeader>
+          <CardTitle>Reports</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <p className="text-sm font-medium">Overdue</p>
+            {!overdue.data || overdue.data.length === 0 ? (
+              <p className="text-muted-foreground text-sm">None overdue.</p>
+            ) : (
+              <ul className="divide-y text-sm">
+                {overdue.data.map((r) => (
+                  <li key={r.id} className="py-1">
+                    {r.book.title} — {borrowerLabel(r)}{" "}
+                    <span className="text-muted-foreground">due {new Date(r.dueDate).toLocaleDateString()}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div>
+            <p className="text-sm font-medium">Most borrowed</p>
+            {!mostBorrowed.data || mostBorrowed.data.length === 0 ? (
+              <p className="text-muted-foreground text-sm">No data yet.</p>
+            ) : (
+              <ul className="divide-y text-sm">
+                {mostBorrowed.data.map((row, i) => (
+                  <li key={i} className="py-1">
+                    {row.book?.title ?? "Unknown"} — {row.borrowCount} loan{row.borrowCount === 1 ? "" : "s"}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
-          {/* ── Settings ────────────────────────────────────────────── */}
-          <Card id="settings" className="scroll-mt-16">
-            <CardHeader>
-              <CardTitle>Settings</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {cfg ? (
-                <form
-                  className="flex flex-wrap items-end gap-3"
-                  onSubmit={(e: FormEvent) => {
-                    e.preventDefault();
-                    submitAction(
-                      () =>
-                        libraryStaffApi.updateSystemConfig({
-                          finePerDayRate: Number(cfg.finePerDayRate),
-                          faceMatchConfidenceMin: Number(cfg.faceMatchConfidenceMin),
-                          loanPeriodDays: Number(cfg.loanPeriodDays),
-                        }),
-                      () => config.mutate(),
-                    );
-                  }}
-                >
-                  <div className="space-y-1">
-                    <Label className="text-xs">Fine per day (NPR)</Label>
-                    <Input
-                      type="number"
-                      className="w-28"
-                      value={cfg.finePerDayRate}
-                      onChange={(e) => setConfigForm({ ...cfg, finePerDayRate: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Loan period (days)</Label>
-                    <Input
-                      type="number"
-                      className="w-28"
-                      value={cfg.loanPeriodDays}
-                      onChange={(e) => setConfigForm({ ...cfg, loanPeriodDays: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Face-match confidence min</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      className="w-28"
-                      value={cfg.faceMatchConfidenceMin}
-                      onChange={(e) => setConfigForm({ ...cfg, faceMatchConfidenceMin: e.target.value })}
-                    />
-                  </div>
-                  <Button type="submit" size="sm">
-                    Save
-                  </Button>
-                </form>
-              ) : null}
-              {config.data ? (
-                <div className="flex items-center gap-2 text-sm">
-                  <span>ERP fee posting:</span>
-                  <Badge variant={config.data.erpFeePostingEnabled ? "success" : "secondary"}>
-                    {config.data.erpFeePostingEnabled ? "Enabled" : "Disabled"}
-                  </Badge>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() =>
-                      submitAction(
-                        () => libraryStaffApi.updateSystemConfig({ erpFeePostingEnabled: !config.data!.erpFeePostingEnabled }),
-                        () => config.mutate(),
-                      )
-                    }
-                  >
-                    Toggle
-                  </Button>
-                </div>
-              ) : null}
-              <Separator />
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={async () => {
-                    try {
-                      const result = await libraryStaffApi.syncRoster();
-                      setSyncResult(
-                        `Found ${result.studentsFound} students, ${result.employeesFound} employees — ${result.created} created, ${result.updated} updated, ${result.suspended} suspended.`,
-                      );
-                      members.mutate();
-                    } catch (err) {
-                      toast.error(errorMessage(err, "Roster sync failed"));
-                    }
-                  }}
-                >
-                  Sync roster from ERP
-                </Button>
-                {syncResult ? <span className="text-muted-foreground text-xs">{syncResult}</span> : null}
+      {/* ── Settings ─────────────────────────────────────────────── */}
+      <Card id="settings" className="scroll-mt-16">
+        <CardHeader>
+          <CardTitle>Settings</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {s ? (
+            <form
+              className="flex flex-wrap items-end gap-3"
+              onSubmit={(e: FormEvent) => {
+                e.preventDefault();
+                submitAction(
+                  () =>
+                    api.updateLibrarySettings({
+                      loanPeriodDays: Number(s.loanPeriodDays),
+                      finePerDayRate: Number(s.finePerDayRate),
+                      maxActiveLoans: Number(s.maxActiveLoans),
+                    }),
+                  () => settings.mutate(),
+                );
+              }}
+            >
+              <div className="space-y-1">
+                <Label className="text-xs">Loan period (days)</Label>
+                <Input type="number" className="w-28" value={s.loanPeriodDays} onChange={(e) => setSettingsForm({ ...s, loanPeriodDays: e.target.value })} />
               </div>
-            </CardContent>
-          </Card>
-        </>
-      )}
+              <div className="space-y-1">
+                <Label className="text-xs">Fine per day (NPR)</Label>
+                <Input type="number" className="w-28" value={s.finePerDayRate} onChange={(e) => setSettingsForm({ ...s, finePerDayRate: e.target.value })} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Max active loans</Label>
+                <Input type="number" className="w-28" value={s.maxActiveLoans} onChange={(e) => setSettingsForm({ ...s, maxActiveLoans: e.target.value })} />
+              </div>
+              <Button type="submit" size="sm">
+                Save
+              </Button>
+            </form>
+          ) : null}
+        </CardContent>
+      </Card>
     </div>
   );
 }

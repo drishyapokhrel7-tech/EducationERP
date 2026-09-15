@@ -4370,3 +4370,184 @@ export interface GatewayScanEvent extends GatewayScanEventRecord {
   matchedStudent: { id: string; firstName: string; lastName: string; studentCode: string } | null;
   matchedEmployee: { id: string; firstName: string; lastName: string; employeeCode: string } | null;
 }
+
+// ── Library (native module) ─────────────────────────────────────────────
+
+export interface CreateBookCategoryInput {
+  name: string;
+  code: string;
+}
+
+export interface UpdateBookCategoryInput {
+  name?: string;
+  code?: string;
+}
+
+export interface BookCategoryRecord {
+  id: string;
+  organizationId: string;
+  name: string;
+  code: string;
+  createdAt: string;
+}
+
+export interface CreateBookInput {
+  categoryId?: string;
+  title: string;
+  isbn?: string;
+  author?: string;
+  publisher?: string;
+  edition?: string;
+  shelfLocation?: string;
+  coverImageUrl?: string;
+  totalCopies?: number;
+}
+
+export interface UpdateBookInput {
+  categoryId?: string;
+  title?: string;
+  isbn?: string;
+  author?: string;
+  publisher?: string;
+  edition?: string;
+  shelfLocation?: string;
+  coverImageUrl?: string;
+  totalCopies?: number;
+}
+
+export interface BookRecord {
+  id: string;
+  organizationId: string;
+  categoryId: string | null;
+  title: string;
+  isbn: string | null;
+  author: string | null;
+  publisher: string | null;
+  edition: string | null;
+  shelfLocation: string | null;
+  coverImageUrl: string | null;
+  totalCopies: number;
+  availableCopies: number;
+  createdAt: string;
+  updatedAt: string;
+  category: BookCategoryRecord | null;
+}
+
+export type LibraryFineReason = "LATE_RETURN" | "LOST" | "DAMAGED";
+export type LibraryFineStatus = "PENDING" | "PAID" | "WAIVED";
+export type LibraryReservationStatus = "PENDING" | "READY" | "FULFILLED" | "CANCELLED";
+
+export interface LibraryFineRecord {
+  id: string;
+  organizationId: string;
+  transactionId: string | null;
+  studentId: string | null;
+  employeeId: string | null;
+  reason: LibraryFineReason;
+  amount: string;
+  status: LibraryFineStatus;
+  invoiceId: string | null;
+  paidAt: string | null;
+  createdAt: string;
+  student: Student | null;
+  employee: Employee | null;
+  transaction?: (LibraryTransactionRecord & { book: BookRecord }) | null;
+}
+
+export type FaceVerifiedOutcome = "MATCHED" | "NOT_MATCHED" | "MANUAL_OVERRIDE" | "UNAVAILABLE" | "NOT_ENROLLED";
+
+export interface IssueBookInput {
+  bookId: string;
+  studentId?: string;
+  employeeId?: string;
+  faceImageBase64?: string;
+  manualOverride?: boolean;
+}
+
+export interface CreateFineInput {
+  transactionId?: string;
+  studentId?: string;
+  employeeId?: string;
+  reason: "LOST" | "DAMAGED";
+  amount: number;
+}
+
+export interface LibraryTransactionRecord {
+  id: string;
+  organizationId: string;
+  bookId: string;
+  studentId: string | null;
+  employeeId: string | null;
+  issuedAt: string;
+  dueDate: string;
+  returnedAt: string | null;
+  issuedByUserId: string;
+  returnedByUserId: string | null;
+  issueFaceVerified: FaceVerifiedOutcome | null;
+  createdAt: string;
+  book: BookRecord;
+  student: Student | null;
+  employee: Employee | null;
+  fine?: LibraryFineRecord | null;
+}
+
+export interface CreateReservationInput {
+  bookId: string;
+  studentId?: string;
+  employeeId?: string;
+}
+
+export interface LibraryReservationRecord {
+  id: string;
+  organizationId: string;
+  bookId: string;
+  studentId: string | null;
+  employeeId: string | null;
+  status: LibraryReservationStatus;
+  reservedAt: string;
+  readyAt: string | null;
+  book: BookRecord;
+  student: Student | null;
+  employee: Employee | null;
+}
+
+export interface LibrarySettingsRecord {
+  id?: string;
+  organizationId: string;
+  loanPeriodDays: number;
+  finePerDayRate: string | number;
+  maxActiveLoans: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface UpdateLibrarySettingsInput {
+  loanPeriodDays?: number;
+  finePerDayRate?: number;
+  maxActiveLoans?: number;
+}
+
+export type LibraryOverdueReportRow = LibraryTransactionRecord;
+
+export interface LibraryMostBorrowedReportRow {
+  book: BookRecord | undefined;
+  borrowCount: number;
+}
+
+// Minimal data entry — ISBN lookup + OCR cover scan. Both preview-only,
+// never write a Book; the caller's form prefills from these and the
+// human still reviews/submits.
+export interface IsbnLookupResult {
+  isbn: string;
+  title: string | null;
+  author: string | null;
+  publisher: string | null;
+  coverImageUrl: string | null;
+  fetchedAt: string;
+}
+
+export interface OcrScanResult {
+  title: string | null;
+  author: string | null;
+  lowConfidence: boolean;
+}

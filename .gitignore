@@ -22,3 +22,8 @@ __pycache__/
 # snapshot.ts) — a local, real-data export artifact for the owner-
 # facing Electron app, never source, never meant to be committed.
 insights-snapshot-*.json
+
+# tesseract.js downloads its English language model to the process's
+# cwd on first OCR call (services/api/src/modules/library/library.
+# service.ts's ocrScanCover) — a runtime cache, not source.
+*.traineddata

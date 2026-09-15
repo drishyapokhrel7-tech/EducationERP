@@ -210,6 +210,12 @@ model Organization {
   gatewayCardBindings         GatewayCardBinding[]
   gatewayScanEvents           GatewayScanEvent[]
   guardianQuestions           GuardianQuestion[]
+  bookCategories              BookCategory[]
+  books                       Book[]
+  libraryTransactions         LibraryTransaction[]
+  libraryReservations         LibraryReservation[]
+  libraryFines                LibraryFine[]
+  librarySettings             LibrarySettings?
 
   @@map("organizations")
 }
@@ -844,6 +850,9 @@ model Employee {
   documents               StaffDocument[]
   gatewayCardBindings     GatewayCardBinding[]
   gatewayScanEvents       GatewayScanEvent[]
+  libraryTransactions     LibraryTransaction[]
+  libraryReservations     LibraryReservation[]
+  libraryFines            LibraryFine[]
 
   @@unique([organizationId, employeeCode])
   @@unique([organizationId, email])
@@ -983,6 +992,9 @@ model Student {
   gatewayCardBindings         GatewayCardBinding[]
   gatewayScanEvents           GatewayScanEvent[]
   guardianQuestions           GuardianQuestion[]
+  libraryTransactions         LibraryTransaction[]
+  libraryReservations         LibraryReservation[]
+  libraryFines                LibraryFine[]
 
   @@unique([organizationId, studentCode])
   @@index([organizationId])
@@ -2604,6 +2616,7 @@ model Invoice {
   transactions      FinancialTransaction[]
   esewaTransactions EsewaTransaction[]
   installments      Installment[]
+  libraryFines      LibraryFine[]
 
   @@unique([organizationId, invoiceNumber])
   @@index([organizationId])
@@ -4827,4 +4840,205 @@ model LeadVerificationCode {
 
   @@index([email])
   @@map("lead_verification_codes")
+}
+
+// ── Library (native module) ─────────────────────────────────────────────
+// A real, native Library module — this ERP's own Book/circulation/fine/
+// reservation data, not a bridge to the separate ~/librarysystem project
+// (that standalone repo's own design, confirmed via its SAD report, is
+// used here only as a feature reference). Borrower is a nullable
+// (studentId, employeeId) pair, exactly one set — same shape precedent as
+// TeachingAssignment's nullable (sectionId, programId) pair — enforced
+// with a hand-added DB CHECK constraint in this feature's own migration,
+// same comfort with hand-written SQL already used for RLS policies.
+
+model BookCategory {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  code           String
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  books        Book[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+  @@map("book_categories")
+}
+
+model Book {
+  id              String   @id @default(uuid())
+  organizationId  String
+  categoryId      String?
+  isbn            String?
+  title           String
+  // A plain string, not a normalized Author entity+join table — this
+  // module doesn't need per-author pages/bios, only search-by-author
+  // (substring match on this field). Deliberate simplification vs.
+  // librarysystem's own normalized AUTHOR table.
+  author          String?
+  publisher       String?
+  edition         String?
+  shelfLocation   String?
+  coverImageUrl   String?
+  totalCopies     Int      @default(1)
+  availableCopies Int      @default(1)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category     BookCategory?        @relation(fields: [categoryId], references: [id])
+  transactions LibraryTransaction[]
+  reservations LibraryReservation[]
+
+  @@index([organizationId])
+  @@map("books")
+}
+
+// Reuses Phase 6's already-built biometric infrastructure
+// (BiometricPolicy/FaceEnrollment/FaceEmbedding/AiGatewayService) —
+// not a new face-recognition stack. Unlike camera-events' 1:N
+// "identify anyone in the org" match, this is 1:1 "does this capture
+// match the CLAIMED borrower's own enrollment" — verification, not
+// identification. Optional and never blocking: a null
+// issueFaceVerified means verification wasn't attempted at all, same
+// "circulation is never hard-blocked" precedent as librarysystem's own
+// Phase 6 design (the feature reference for this whole module).
+enum FaceVerifiedOutcome {
+  MATCHED
+  NOT_MATCHED
+  MANUAL_OVERRIDE
+  UNAVAILABLE
+  NOT_ENROLLED
+}
+
+// No stored status — same "computed on read" precedent as Invoice:
+// returnedAt == null && dueDate < now => overdue, returnedAt != null =>
+// returned, else active. issuedByUserId/returnedByUserId are the acting
+// staff member's own id (JWT sub), never a request param.
+model LibraryTransaction {
+  id                String               @id @default(uuid())
+  organizationId    String
+  bookId            String
+  studentId         String?
+  employeeId        String?
+  issuedAt          DateTime             @default(now())
+  dueDate           DateTime
+  returnedAt        DateTime?
+  issuedByUserId    String
+  returnedByUserId  String?
+  issueFaceVerified FaceVerifiedOutcome?
+  createdAt         DateTime             @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  book         Book         @relation(fields: [bookId], references: [id])
+  student      Student?     @relation(fields: [studentId], references: [id])
+  employee     Employee?    @relation(fields: [employeeId], references: [id])
+  fine         LibraryFine?
+
+  @@index([organizationId])
+  @@index([bookId])
+  @@map("library_transactions")
+}
+
+enum LibraryReservationStatus {
+  PENDING
+  READY
+  FULFILLED
+  CANCELLED
+}
+
+model LibraryReservation {
+  id             String                   @id @default(uuid())
+  organizationId String
+  bookId         String
+  studentId      String?
+  employeeId     String?
+  status         LibraryReservationStatus @default(PENDING)
+  reservedAt     DateTime                 @default(now())
+  readyAt        DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  book         Book         @relation(fields: [bookId], references: [id])
+  student      Student?     @relation(fields: [studentId], references: [id])
+  employee     Employee?    @relation(fields: [employeeId], references: [id])
+
+  @@index([organizationId])
+  @@index([bookId])
+  @@map("library_reservations")
+}
+
+enum LibraryFineReason {
+  LATE_RETURN
+  LOST
+  DAMAGED
+}
+
+enum LibraryFineStatus {
+  PENDING
+  PAID
+  WAIVED
+}
+
+// invoiceId is set only for a student borrower whose fine was
+// successfully posted to Finance — an employee fine, or a student fine
+// with no active enrollment to invoice against, stays a standalone
+// record the librarian marks paid manually (cash collected), same
+// graceful-degradation precedent as Communication's uneven contact-field
+// resolution.
+model LibraryFine {
+  id             String            @id @default(uuid())
+  organizationId String
+  transactionId  String?           @unique
+  studentId      String?
+  employeeId     String?
+  reason         LibraryFineReason
+  amount         Decimal           @db.Decimal(12, 2)
+  status         LibraryFineStatus @default(PENDING)
+  invoiceId      String?
+  paidAt         DateTime?
+  createdAt      DateTime          @default(now())
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  transaction  LibraryTransaction? @relation(fields: [transactionId], references: [id])
+  student      Student?            @relation(fields: [studentId], references: [id])
+  employee     Employee?           @relation(fields: [employeeId], references: [id])
+  invoice      Invoice?            @relation(fields: [invoiceId], references: [id])
+
+  @@index([organizationId])
+  @@map("library_fines")
+}
+
+// Singleton per org, same shape as BiometricPolicy.
+model LibrarySettings {
+  id             String   @id @default(uuid())
+  organizationId String   @unique
+  loanPeriodDays Int      @default(14)
+  finePerDayRate Decimal  @default(5) @db.Decimal(12, 2)
+  maxActiveLoans Int      @default(3)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("library_settings")
+}
+
+// An ISBN identifies the same real-world book everywhere — this cache
+// is genuinely global reference data, not tenant data, same non-tenant/
+// no-RLS precedent as LeadSubmission above. Populated lazily by
+// LibraryService.isbnLookup (Open Library Books API), reused as a
+// fallback if that API is unreachable on a later lookup of the same
+// ISBN — resilience the reference implementation (~/librarysystem
+// Phase 5) already proved out.
+model IsbnLookupCache {
+  isbn          String   @id
+  title         String?
+  author        String?
+  publisher     String?
+  coverImageUrl String?
+  fetchedAt     DateTime @default(now())
+
+  @@map("isbn_lookup_cache")
 }
