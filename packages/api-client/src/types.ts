@@ -55,6 +55,18 @@ export interface CurrentUserInfo {
   permissions: string[];
 }
 
+// "Manage sessions" — one row per device/browser currently logged in.
+// Never carries the refresh token itself, only enough to recognize a
+// device (userAgent, ipAddress) and decide whether to revoke it.
+export interface AuthSession {
+  id: string;
+  userAgent: string | null;
+  ipAddress: string | null;
+  createdAt: string;
+  expiresAt: string;
+  isCurrent: boolean;
+}
+
 export type Edition = "FREE" | "PROFESSIONAL" | "ULTRA";
 
 export interface Organization {

@@ -267,6 +267,7 @@ import type {
   EmailVerificationChallenge,
   PasswordResetChallenge,
   CurrentUserInfo,
+  AuthSession,
   EditionStatus,
   Edition,
   PlatformAdminUser,
@@ -598,6 +599,18 @@ export function createApiClient({
     // SafeUser (stored in the session) has no roles field — the
     // user-profile popup fetches this separately for "Role".
     getMe: () => request<CurrentUserInfo>("/auth/me", { method: "POST" }),
+
+    // currentRefreshToken is optional and only ever used server-side to
+    // flag which returned session is this device (isCurrent) — pass
+    // getRefreshToken() from auth-storage, or omit it to skip that.
+    listSessions: (currentRefreshToken?: string) =>
+      request<AuthSession[]>("/auth/sessions", {
+        method: "POST",
+        body: JSON.stringify({ currentRefreshToken }),
+      }),
+
+    revokeSession: (id: string) =>
+      request<{ revoked: boolean }>(`/auth/sessions/${id}/revoke`, { method: "POST" }),
 
     login: (input: LoginInput) =>
       request<{ user: SafeUser } & AuthTokens>("/auth/login", {

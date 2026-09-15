@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Req, UseGuards } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import type { Request } from "express";
 import { AuthService } from "./auth.service";
@@ -8,6 +8,7 @@ import { RefreshDto } from "./dto/refresh.dto";
 import { VerifyEmailDto } from "./dto/verify-email.dto";
 import { ForgotPasswordDto } from "./dto/forgot-password.dto";
 import { ResetPasswordDto } from "./dto/reset-password.dto";
+import { ListSessionsDto } from "./dto/list-sessions.dto";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtPayload } from "../../common/auth/jwt-payload";
@@ -78,6 +79,19 @@ export class AuthController {
   @Post("resend-verification-code")
   resendVerificationCode(@CurrentUser() user: JwtPayload) {
     return this.authService.resendVerificationCode(user.sub);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post("sessions")
+  listSessions(@CurrentUser() user: JwtPayload, @Body() dto: ListSessionsDto) {
+    return this.authService.listSessions(user.sub, dto.currentRefreshToken);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post("sessions/:id/revoke")
+  async revokeSession(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    await this.authService.revokeSession(user.sub, id);
+    return { revoked: true };
   }
 
   // No auth guard — the whole point is the user is locked out.

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import useSWR from "swr";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -26,10 +27,10 @@ const EDITION_LABEL: Record<Edition, string> = {
 };
 
 // Same click-outside dropdown pattern as NotificationBell — clicking
-// the avatar/name in the header opens a small profile card instead of
-// navigating anywhere (this app has no dedicated "my profile" page).
-// Purely informational — logging out stays on the header's own
-// separate icon, not duplicated in here.
+// the avatar/name in the header opens a small profile card. Mostly
+// informational; the one action here is a link to /dashboard/account
+// for session management. Logging out this device stays on the
+// header's own separate icon, not duplicated in here.
 // Roles aren't on SafeUser (the object the session stores) — only the
 // JWT payload carries them, so this fetches POST auth/me on open
 // rather than widening what every page's stored session carries.
@@ -123,6 +124,13 @@ export function UserProfilePopover({ user }: { user: SafeUser }) {
               <dd>{user.emailVerifiedAt ? "Yes" : "Not yet"}</dd>
             </div>
           </dl>
+          <Link
+            href="/dashboard/account"
+            onClick={() => setOpen(false)}
+            className="text-primary mt-4 block text-center text-sm font-medium underline underline-offset-4"
+          >
+            Manage sessions
+          </Link>
         </div>
       ) : null}
     </div>

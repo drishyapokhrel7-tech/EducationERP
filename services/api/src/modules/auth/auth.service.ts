@@ -1,9 +1,11 @@
 import { randomBytes, createHash } from "crypto";
 import {
   ConflictException,
+  ForbiddenException,
   HttpException,
   HttpStatus,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
@@ -229,6 +231,40 @@ export class AuthService {
       where: { refreshTokenHash: tokenHash, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+  }
+
+  // "Manage sessions" — every device/browser this user is currently
+  // logged in on, so they can spot one they don't recognize and revoke
+  // just that one. currentRefreshToken is optional and only ever used
+  // to flag isCurrent by hash comparison, never to authenticate this
+  // call (the access token already did that via JwtAuthGuard).
+  async listSessions(userId: string, currentRefreshToken?: string) {
+    const currentHash = currentRefreshToken ? this.hashToken(currentRefreshToken) : null;
+    const sessions = await this.prisma.session.findMany({
+      where: { userId, revokedAt: null, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: "desc" },
+    });
+    return sessions.map((s) => ({
+      id: s.id,
+      userAgent: s.userAgent,
+      ipAddress: s.ipAddress,
+      createdAt: s.createdAt,
+      expiresAt: s.expiresAt,
+      isCurrent: currentHash !== null && s.refreshTokenHash === currentHash,
+    }));
+  }
+
+  // Revoking a session immediately invalidates its refresh token —
+  // the next time that device tries to silently refresh its (already
+  // short-lived) access token, it 401s and is signed out for real,
+  // not just locally. Revoking your own current session works the
+  // same way as clicking "log out" on this device.
+  async revokeSession(userId: string, sessionId: string) {
+    const session = await this.prisma.session.findUnique({ where: { id: sessionId } });
+    if (!session) throw new NotFoundException("Session not found");
+    if (session.userId !== userId) throw new ForbiddenException("This session belongs to someone else");
+    if (session.revokedAt) return;
+    await this.prisma.session.update({ where: { id: sessionId }, data: { revokedAt: new Date() } });
   }
 
   private async issueTokens(
