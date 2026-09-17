@@ -768,8 +768,9 @@ model StaffType {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   employees    Employee[]
+  designations Designation[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -779,17 +780,29 @@ model StaffType {
 model Designation {
   id             String   @id @default(uuid())
   organizationId String
+  // Optional, not required — every Designation row that predates this
+  // column (both real orgs' data and the DEFAULT_DESIGNATIONS/
+  // DEFAULT_COLLEGE_DESIGNATIONS seed lists, which were never designed
+  // to correspond 1:1 with DEFAULT_STAFF_TYPES) has no correct value to
+  // backfill here, and guessing one would just be inventing a
+  // school's own job-title policy. An admin assigns this once via the
+  // Designation setup form; until then, a null-staffTypeId designation
+  // stays selectable regardless of the chosen staff type (see
+  // StaffService docs) instead of silently disappearing.
+  staffTypeId    String?
   name           String
   code           String
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   organization        Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  staffType           StaffType?          @relation(fields: [staffTypeId], references: [id])
   employees           Employee[]
   employmentHistories EmploymentHistory[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
+  @@index([staffTypeId])
   @@map("designations")
 }
 

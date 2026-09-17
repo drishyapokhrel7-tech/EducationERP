@@ -50,20 +50,21 @@ export default function StaffPage() {
     return organization.data ? `${organization.data.slug}.${employeeCode}` : employeeCode;
   }
 
-  async function handleCreateLogin(employeeId: string) {
+  function handleCreateLogin(employeeId: string) {
     const password = loginPasswordForms[employeeId] ?? "";
-    try {
-      await api.createEmployeeLogin(employeeId, { password });
-      setLoginPasswordForms((f) => ({ ...f, [employeeId]: "" }));
-      employees.mutate();
-      toast.success("Login created");
-    } catch {
-      toast.error("Failed to create login — password must be at least 8 characters");
-    }
+    submitAction(
+      () => api.createEmployeeLogin(employeeId, { password }),
+      () => {
+        setLoginPasswordForms((f) => ({ ...f, [employeeId]: "" }));
+        employees.mutate();
+      },
+      "Login created",
+      "Creating login…",
+    );
   }
 
   const [staffTypeForm, setStaffTypeForm] = useState({ name: "", code: "" });
-  const [designationForm, setDesignationForm] = useState({ name: "", code: "" });
+  const [designationForm, setDesignationForm] = useState({ name: "", code: "", staffTypeId: "" });
 
   // Edit state, one per catalog entity on this page — a separate,
   // small inline form (rendered via EntityCard's `footer`) rather
@@ -73,12 +74,21 @@ export default function StaffPage() {
   const [editingStaffTypeId, setEditingStaffTypeId] = useState<string | null>(null);
   const [editStaffTypeForm, setEditStaffTypeForm] = useState({ name: "", code: "" });
   const [editingDesignationId, setEditingDesignationId] = useState<string | null>(null);
-  const [editDesignationForm, setEditDesignationForm] = useState({ name: "", code: "" });
+  const [editDesignationForm, setEditDesignationForm] = useState({ name: "", code: "", staffTypeId: "" });
+
+  // A designation with no staffTypeId assigned yet stays selectable no
+  // matter which staff type is chosen — see the schema comment on
+  // Designation.staffTypeId for why old/seeded designations can't be
+  // auto-mapped. Used by both the create and edit employee forms below
+  // to keep the Designation dropdown scoped to the chosen Staff type
+  // (the actual "control human error" behavior requested).
+  function designationOptionsFor(staffTypeId: string) {
+    return (designations.data ?? []).filter((d) => !d.staffTypeId || d.staffTypeId === staffTypeId);
+  }
   const [employeeForm, setEmployeeForm] = useState({
     staffTypeId: "",
     designationId: "",
     departmentId: "",
-    employeeCode: "",
     firstName: "",
     middleName: "",
     lastName: "",
@@ -243,10 +253,18 @@ export default function StaffPage() {
         title="Designations"
         emptyLabel="No designations yet."
         items={designations.data}
-        renderItem={(d: { id: string; name: string; code: string }) => (
+        renderItem={(d: { id: string; name: string; code: string; staffTypeId: string | null }) => (
           <div className="flex items-center justify-between gap-2">
             <span>
               {d.name} <span className="text-muted-foreground">{d.code}</span>
+              {d.staffTypeId ? (
+                <span className="text-muted-foreground">
+                  {" "}
+                  — {staffTypes.data?.find((t) => t.id === d.staffTypeId)?.name ?? "Unknown staff type"}
+                </span>
+              ) : (
+                <span className="text-muted-foreground"> — any staff type</span>
+              )}
             </span>
             <div className="flex items-center gap-2">
               <Button
@@ -255,7 +273,7 @@ export default function StaffPage() {
                 variant="outline"
                 onClick={() => {
                   setEditingDesignationId(d.id);
-                  setEditDesignationForm({ name: d.name, code: d.code });
+                  setEditDesignationForm({ name: d.name, code: d.code, staffTypeId: d.staffTypeId ?? "" });
                 }}
               >
                 Edit
@@ -278,7 +296,11 @@ export default function StaffPage() {
               onSubmit={(e: FormEvent) => {
                 e.preventDefault();
                 submitAction(
-                  () => api.updateDesignation(editingDesignationId, editDesignationForm),
+                  () =>
+                    api.updateDesignation(editingDesignationId, {
+                      ...editDesignationForm,
+                      staffTypeId: editDesignationForm.staffTypeId || undefined,
+                    }),
                   () => {
                     setEditingDesignationId(null);
                     designations.mutate();
@@ -303,6 +325,16 @@ export default function StaffPage() {
                   onChange={(e) => setEditDesignationForm((f) => ({ ...f, code: e.target.value }))}
                 />
               </div>
+              <div className="space-y-2">
+                <Label>Staff type</Label>
+                <NativeSelect
+                  className="w-40"
+                  placeholder="Any staff type"
+                  value={editDesignationForm.staffTypeId}
+                  onChange={(v) => setEditDesignationForm((f) => ({ ...f, staffTypeId: v }))}
+                  options={(staffTypes.data ?? []).map((t) => ({ value: t.id, label: t.name }))}
+                />
+              </div>
               <Button type="submit" size="sm">
                 Save
               </Button>
@@ -318,9 +350,9 @@ export default function StaffPage() {
           onSubmit={(e: FormEvent) => {
             e.preventDefault();
             submit(
-              () => api.createDesignation(designationForm),
+              () => api.createDesignation({ ...designationForm, staffTypeId: designationForm.staffTypeId || undefined }),
               () => {
-                setDesignationForm({ name: "", code: "" });
+                setDesignationForm({ name: "", code: "", staffTypeId: "" });
                 designations.mutate();
               },
             );
@@ -342,6 +374,16 @@ export default function StaffPage() {
               className="w-24"
               value={designationForm.code}
               onChange={(e) => setDesignationForm((f) => ({ ...f, code: e.target.value }))}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Staff type (optional)</Label>
+            <NativeSelect
+              className="w-40"
+              placeholder="Any staff type"
+              value={designationForm.staffTypeId}
+              onChange={(v) => setDesignationForm((f) => ({ ...f, staffTypeId: v }))}
+              options={(staffTypes.data ?? []).map((t) => ({ value: t.id, label: t.name }))}
             />
           </div>
           <Button type="submit">Add</Button>
@@ -385,7 +427,14 @@ export default function StaffPage() {
                     className="w-36"
                     placeholder="Select type"
                     value={editEmployeeForm.staffTypeId}
-                    onChange={(v) => setEditEmployeeForm((f) => ({ ...f, staffTypeId: v }))}
+                    onChange={(v) => {
+                      const stillValid = designationOptionsFor(v).some((d) => d.id === editEmployeeForm.designationId);
+                      setEditEmployeeForm((f) => ({
+                        ...f,
+                        staffTypeId: v,
+                        designationId: stillValid ? f.designationId : "",
+                      }));
+                    }}
                     options={(staffTypes.data ?? []).map((t) => ({ value: t.id, label: t.name }))}
                   />
                 </div>
@@ -396,7 +445,10 @@ export default function StaffPage() {
                     placeholder="Select designation"
                     value={editEmployeeForm.designationId}
                     onChange={(v) => setEditEmployeeForm((f) => ({ ...f, designationId: v }))}
-                    options={(designations.data ?? []).map((d) => ({ value: d.id, label: d.name }))}
+                    options={designationOptionsFor(editEmployeeForm.staffTypeId).map((d) => ({
+                      value: d.id,
+                      label: d.name,
+                    }))}
                   />
                 </div>
                 <div className="space-y-2">
@@ -590,7 +642,6 @@ export default function StaffPage() {
                   staffTypeId: "",
                   designationId: "",
                   departmentId: "",
-                  employeeCode: "",
                   firstName: "",
                   middleName: "",
                   lastName: "",
@@ -611,7 +662,10 @@ export default function StaffPage() {
               className="w-36"
               placeholder="Select type"
               value={employeeForm.staffTypeId}
-              onChange={(v) => setEmployeeForm((f) => ({ ...f, staffTypeId: v }))}
+              onChange={(v) => {
+                const stillValid = designationOptionsFor(v).some((d) => d.id === employeeForm.designationId);
+                setEmployeeForm((f) => ({ ...f, staffTypeId: v, designationId: stillValid ? f.designationId : "" }));
+              }}
               options={(staffTypes.data ?? []).map((t) => ({ value: t.id, label: t.name }))}
             />
           </div>
@@ -622,7 +676,7 @@ export default function StaffPage() {
               placeholder="Select designation"
               value={employeeForm.designationId}
               onChange={(v) => setEmployeeForm((f) => ({ ...f, designationId: v }))}
-              options={(designations.data ?? []).map((d) => ({ value: d.id, label: d.name }))}
+              options={designationOptionsFor(employeeForm.staffTypeId).map((d) => ({ value: d.id, label: d.name }))}
             />
           </div>
           <div className="space-y-2">
@@ -633,15 +687,6 @@ export default function StaffPage() {
               value={employeeForm.departmentId}
               onChange={(v) => setEmployeeForm((f) => ({ ...f, departmentId: v }))}
               options={(departments.data ?? []).map((d) => ({ value: d.id, label: d.name }))}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Employee code</Label>
-            <Input
-              required
-              className="w-28"
-              value={employeeForm.employeeCode}
-              onChange={(e) => setEmployeeForm((f) => ({ ...f, employeeCode: e.target.value }))}
             />
           </div>
           <div className="space-y-2">

@@ -89,8 +89,19 @@ export class OrganizationsService {
       data: DEFAULT_COLLEGE_STAFF_TYPES.map((t) => ({ ...t, organizationId })),
       skipDuplicates: true,
     });
+    // Same staffTypeCode → staffTypeId resolution as
+    // AuthService.registerOrganization — looked up fresh rather than
+    // trusting createMany's input, since skipDuplicates here means a
+    // matching StaffType row may already have existed before this call.
+    const staffTypesByCode = new Map(
+      (await tx.staffType.findMany({ where: { organizationId } })).map((t) => [t.code, t.id]),
+    );
     await tx.designation.createMany({
-      data: DEFAULT_COLLEGE_DESIGNATIONS.map((d) => ({ ...d, organizationId })),
+      data: DEFAULT_COLLEGE_DESIGNATIONS.map(({ staffTypeCode, ...d }) => ({
+        ...d,
+        organizationId,
+        staffTypeId: staffTypesByCode.get(staffTypeCode),
+      })),
       skipDuplicates: true,
     });
   }

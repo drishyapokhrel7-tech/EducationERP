@@ -97,8 +97,20 @@ export class AuthService {
       await tx.staffType.createMany({
         data: DEFAULT_STAFF_TYPES.map((t) => ({ ...t, organizationId: organization.id })),
       });
+      // createMany doesn't return the created rows, so the codes just
+      // inserted are looked back up here to resolve each designation's
+      // staffTypeCode into a real staffTypeId — the cascading Staff
+      // type → Designation dropdown on the staff form depends on this
+      // being set, not left null (see DEFAULT_DESIGNATIONS' comment).
+      const staffTypesByCode = new Map(
+        (await tx.staffType.findMany({ where: { organizationId: organization.id } })).map((t) => [t.code, t.id]),
+      );
       await tx.designation.createMany({
-        data: DEFAULT_DESIGNATIONS.map((d) => ({ ...d, organizationId: organization.id })),
+        data: DEFAULT_DESIGNATIONS.map(({ staffTypeCode, ...d }) => ({
+          ...d,
+          organizationId: organization.id,
+          staffTypeId: staffTypesByCode.get(staffTypeCode),
+        })),
       });
       return { user, organization };
     });

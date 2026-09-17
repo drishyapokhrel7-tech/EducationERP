@@ -358,16 +358,19 @@ export interface Designation {
   organizationId: string;
   name: string;
   code: string;
+  staffTypeId: string | null;
 }
 
 export interface CreateDesignationInput {
   name: string;
   code: string;
+  staffTypeId?: string;
 }
 
 export interface UpdateDesignationInput {
   name?: string;
   code?: string;
+  staffTypeId?: string;
 }
 
 export type EmployeeStatus = "ACTIVE" | "ON_LEAVE" | "SUSPENDED" | "TERMINATED";
@@ -414,11 +417,12 @@ export interface EmployeePicker {
   staffTypeName: string | null;
 }
 
+// employeeCode is deliberately absent — system-generated (EMP-0001...),
+// same precedent as CreateStudentInput's studentCode omission.
 export interface CreateEmployeeInput {
   staffTypeId: string;
   designationId: string;
   departmentId?: string;
-  employeeCode: string;
   firstName: string;
   middleName?: string;
   lastName: string;

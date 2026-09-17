@@ -11,10 +11,8 @@ export class CreateEmployeeDto {
   @IsString()
   departmentId?: string;
 
-  @IsString()
-  @MinLength(1)
-  employeeCode!: string;
-
+  // System-generated (EMP-0001...) — see StaffService.nextEmployeeCode,
+  // same pattern as CreateStudentDto's studentCode omission.
   @IsString()
   @MinLength(1)
   firstName!: string;

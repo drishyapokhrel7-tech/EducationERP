@@ -10,4 +10,8 @@ export class UpdateDesignationDto {
   @IsString()
   @MinLength(1)
   code?: string;
+
+  @IsOptional()
+  @IsString()
+  staffTypeId?: string;
 }

@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import * as argon2 from "argon2";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateStaffTypeDto } from "./dto/create-staff-type.dto";
@@ -22,7 +22,11 @@ import { assertNoDependents } from "../../common/assert-no-dependents";
 // before this was added. Just a starting point, not a fixed/closed
 // set — StaffType is fully editable/deletable (see updateStaffType/
 // deleteStaffType below) so an admin can rename, remove, or add to
-// this list freely once the org exists.
+// this list freely once the org exists. Four entries here
+// (Administrator/Accountant/Librarian/Office Assistant) exist only to
+// give DEFAULT_DESIGNATIONS' matching rows below a real staff type to
+// attach to — real reporting-style job titles, not administrative
+// filler, so they earn a place in this list the same as any other.
 export const DEFAULT_STAFF_TYPES: { name: string; code: string }[] = [
   { name: "Guard", code: "GD" },
   { name: "Teacher", code: "TR" },
@@ -31,22 +35,31 @@ export const DEFAULT_STAFF_TYPES: { name: string; code: string }[] = [
   { name: "Receptionist", code: "RC" },
   { name: "Driver", code: "DR" },
   { name: "Cantin", code: "CN" },
-];
-
-// Same seeding pattern as DEFAULT_STAFF_TYPES above, just for the
-// Designation catalog — common school job-title hierarchy, not a
-// closed set (fully editable/deletable afterward).
-export const DEFAULT_DESIGNATIONS: { name: string; code: string }[] = [
-  { name: "Principal", code: "PR" },
-  { name: "Vice Principal", code: "VP" },
-  { name: "Head Teacher", code: "HT" },
-  { name: "Senior Teacher", code: "ST" },
-  { name: "Teacher", code: "TR" },
-  { name: "Coordinator", code: "CR" },
   { name: "Administrator", code: "AD" },
   { name: "Accountant", code: "AC" },
   { name: "Librarian", code: "LB" },
   { name: "Office Assistant", code: "OA" },
+];
+
+// Same seeding pattern as DEFAULT_STAFF_TYPES above, just for the
+// Designation catalog — common school job-title hierarchy, not a
+// closed set (fully editable/deletable afterward). `staffTypeCode`
+// is this row's DEFAULT_STAFF_TYPES.code match — the two lists used to
+// be seeded with zero cross-referencing (a real bug: e.g. selecting
+// "Teacher" as staff type still showed "Librarian" as a designation
+// choice), so both insertion sites below now resolve this into a real
+// staffTypeId once the matching StaffType rows exist.
+export const DEFAULT_DESIGNATIONS: { name: string; code: string; staffTypeCode: string }[] = [
+  { name: "Principal", code: "PR", staffTypeCode: "PR" },
+  { name: "Vice Principal", code: "VP", staffTypeCode: "PR" },
+  { name: "Head Teacher", code: "HT", staffTypeCode: "TR" },
+  { name: "Senior Teacher", code: "ST", staffTypeCode: "TR" },
+  { name: "Teacher", code: "TR", staffTypeCode: "TR" },
+  { name: "Coordinator", code: "CR", staffTypeCode: "CR" },
+  { name: "Administrator", code: "AD", staffTypeCode: "AD" },
+  { name: "Accountant", code: "AC", staffTypeCode: "AC" },
+  { name: "Librarian", code: "LB", staffTypeCode: "LB" },
+  { name: "Office Assistant", code: "OA", staffTypeCode: "OA" },
 ];
 
 // The college counterpart of DEFAULT_STAFF_TYPES/DEFAULT_DESIGNATIONS
@@ -59,7 +72,9 @@ export const DEFAULT_DESIGNATIONS: { name: string; code: string }[] = [
 // (the seed-demo.ts precedent). Seeded with skipDuplicates — a second
 // COLLEGE campus added later re-runs this harmlessly. Same starting-
 // point, fully editable/deletable precedent as every other default
-// list here.
+// list here. Dean/Head of Department are added as their own staff
+// types (not folded into e.g. Professor) for the same
+// give-every-designation-a-real-match reason as the school list above.
 export const DEFAULT_COLLEGE_STAFF_TYPES: { name: string; code: string }[] = [
   { name: "Professor", code: "PROF" },
   { name: "Associate Professor", code: "APROF" },
@@ -69,19 +84,21 @@ export const DEFAULT_COLLEGE_STAFF_TYPES: { name: string; code: string }[] = [
   { name: "Lab Assistant", code: "LABAST" },
   { name: "Registrar", code: "REG" },
   { name: "Exam Controller", code: "EXAMC" },
-];
-
-export const DEFAULT_COLLEGE_DESIGNATIONS: { name: string; code: string }[] = [
   { name: "Dean", code: "DEAN" },
   { name: "Head of Department", code: "HOD" },
-  { name: "Professor", code: "PROF" },
-  { name: "Associate Professor", code: "APROF" },
-  { name: "Assistant Professor", code: "ASTPROF" },
-  { name: "Lecturer", code: "LEC" },
-  { name: "Teaching Assistant", code: "TA" },
-  { name: "Registrar", code: "REG" },
-  { name: "Exam Controller", code: "EXAMC" },
-  { name: "Lab Assistant", code: "LABAST" },
+];
+
+export const DEFAULT_COLLEGE_DESIGNATIONS: { name: string; code: string; staffTypeCode: string }[] = [
+  { name: "Dean", code: "DEAN", staffTypeCode: "DEAN" },
+  { name: "Head of Department", code: "HOD", staffTypeCode: "HOD" },
+  { name: "Professor", code: "PROF", staffTypeCode: "PROF" },
+  { name: "Associate Professor", code: "APROF", staffTypeCode: "APROF" },
+  { name: "Assistant Professor", code: "ASTPROF", staffTypeCode: "ASTPROF" },
+  { name: "Lecturer", code: "LEC", staffTypeCode: "LEC" },
+  { name: "Teaching Assistant", code: "TA", staffTypeCode: "TA" },
+  { name: "Registrar", code: "REG", staffTypeCode: "REG" },
+  { name: "Exam Controller", code: "EXAMC", staffTypeCode: "EXAMC" },
+  { name: "Lab Assistant", code: "LABAST", staffTypeCode: "LABAST" },
 ];
 
 /**
@@ -136,15 +153,19 @@ export class StaffService {
     );
   }
 
-  createDesignation(organizationId: string, dto: CreateDesignationDto) {
-    return this.prisma.withTenant(organizationId, (tx) =>
-      tx.designation.create({ data: { organizationId, name: dto.name, code: dto.code } }),
-    );
+  async createDesignation(organizationId: string, dto: CreateDesignationDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      if (dto.staffTypeId) await this.loadStaffType(tx, organizationId, dto.staffTypeId);
+      return tx.designation.create({
+        data: { organizationId, name: dto.name, code: dto.code, staffTypeId: dto.staffTypeId },
+      });
+    });
   }
 
   async updateDesignation(organizationId: string, id: string, dto: UpdateDesignationDto) {
     return this.prisma.withTenant(organizationId, async (tx) => {
       await this.loadDesignation(tx, organizationId, id);
+      if (dto.staffTypeId) await this.loadStaffType(tx, organizationId, dto.staffTypeId);
       return tx.designation.update({ where: { id }, data: dto });
     });
   }
@@ -224,6 +245,17 @@ export class StaffService {
     });
   }
 
+  // Same system-generated-code precedent as StudentsService.
+  // nextStudentCode/createStudent — an admin picking their own
+  // employeeCode was real duplicate/typo-prone busywork for something
+  // that only ever needs to be unique, not meaningful. Not private:
+  // available the same way for any future bulk/import path, though
+  // none exists yet for Employee.
+  async nextEmployeeCode(tx: PrismaClient, organizationId: string): Promise<string> {
+    const count = await tx.employee.count({ where: { organizationId } });
+    return `EMP-${String(count + 1).padStart(4, "0")}`;
+  }
+
   async createEmployee(organizationId: string, dto: CreateEmployeeDto) {
     return this.prisma.withTenant(organizationId, async (tx) => {
       const [staffType, designation, department] = await Promise.all([
@@ -236,22 +268,34 @@ export class StaffService {
       if (dto.departmentId && !department) throw new NotFoundException("Department not found");
       await assertUnderEditionLimit(tx, organizationId);
 
-      return tx.employee.create({
-        data: {
-          organizationId,
-          staffTypeId: dto.staffTypeId,
-          designationId: dto.designationId,
-          departmentId: dto.departmentId,
-          employeeCode: dto.employeeCode,
-          firstName: dto.firstName,
-          middleName: dto.middleName,
-          lastName: dto.lastName,
-          email: dto.email,
-          phone: dto.phone,
-          dateOfJoining: new Date(dto.dateOfJoining),
-          photoUrl: dto.photoUrl,
-        },
-      });
+      const maxAttempts = 5;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        const employeeCode = await this.nextEmployeeCode(tx, organizationId);
+        try {
+          return await tx.employee.create({
+            data: {
+              organizationId,
+              staffTypeId: dto.staffTypeId,
+              designationId: dto.designationId,
+              departmentId: dto.departmentId,
+              employeeCode,
+              firstName: dto.firstName,
+              middleName: dto.middleName,
+              lastName: dto.lastName,
+              email: dto.email,
+              phone: dto.phone,
+              dateOfJoining: new Date(dto.dateOfJoining),
+              photoUrl: dto.photoUrl,
+            },
+          });
+        } catch (err) {
+          const isUniqueViolation = err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
+          if (!isUniqueViolation || attempt === maxAttempts) throw err;
+          // Another concurrent create took this code first — recompute
+          // and try again.
+        }
+      }
+      throw new Error("Could not generate a unique employee code — please try again");
     });
   }
 
