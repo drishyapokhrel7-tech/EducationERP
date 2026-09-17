@@ -5,6 +5,15 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  /* This app's own components lean almost entirely on text-xs/text-sm
+     (960+ call sites) for body copy and labels — Tailwind's own
+     defaults (12px/14px) read too small for an app used all day.
+     Bumping the shared scale here fixes readability everywhere at
+     once instead of touching every call site; line-heights stay
+     proportional since Tailwind's --text-*--line-height values are
+     unitless multipliers, not fixed lengths. */
+  --text-xs: 0.8125rem;
+  --text-sm: 0.9375rem;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
