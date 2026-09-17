@@ -75,7 +75,7 @@ export class StorageService {
       // ever needs to know storage itself is the problem, not why —
       // exposing a raw Google API error message here would leak
       // implementation details this app otherwise deliberately hides.
-      this.logger.error(`Storage driver upload failed: ${err instanceof Error ? err.stack : err}`);
+      this.logger.error(`Storage driver upload failed: ${err instanceof Error ? err.stack : String(err)}`);
       throw new ServiceUnavailableException(
         "File storage is temporarily unavailable — try again shortly, or contact your administrator if this continues",
       );
