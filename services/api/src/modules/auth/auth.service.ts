@@ -58,9 +58,23 @@ export class AuthService {
 
     const passwordHash = await argon2.hash(dto.password);
 
+    // A wrong/unmatched referral code never blocks signup — it's
+    // looked up case-insensitively against an active partner only,
+    // and silently resolves to undefined (no referrer) on any miss,
+    // same graceful-degradation posture as everywhere else in this
+    // codebase that resolves an optional cross-reference.
+    let referredByPartnerId: string | undefined;
+    if (dto.referralCode) {
+      const partner = await this.prisma.marketingPartner.findFirst({
+        where: { referralCode: { equals: dto.referralCode, mode: "insensitive" }, active: true },
+        select: { id: true },
+      });
+      referredByPartnerId = partner?.id;
+    }
+
     const { user, organization } = await this.prisma.$transaction(async (tx) => {
       const organization = await tx.organization.create({
-        data: { name: dto.organizationName, slug: dto.slug, website: dto.website },
+        data: { name: dto.organizationName, slug: dto.slug, website: dto.website, referredByPartnerId },
       });
       // audit_logs is RLS-protected (WITH CHECK organizationId = the
       // session GUC) — the org didn't exist to scope to until the

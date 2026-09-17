@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, UseGuards } from "@nestjs/common";
 import { PlatformOrganizationsService } from "./platform-organizations.service";
 import { UpdateOrganizationDto } from "./dto/update-organization.dto";
+import { ResolveUpgradeRequestDto } from "./dto/resolve-upgrade-request.dto";
 import { PlatformAuthGuard } from "../../common/auth/platform-auth.guard";
 
 @UseGuards(PlatformAuthGuard)
@@ -19,8 +20,12 @@ export class PlatformOrganizationsController {
   }
 
   @Patch(":organizationId/upgrade-requests/:id")
-  resolveUpgradeRequest(@Param("organizationId") organizationId: string, @Param("id") id: string) {
-    return this.platformOrganizations.resolveUpgradeRequest(organizationId, id);
+  resolveUpgradeRequest(
+    @Param("organizationId") organizationId: string,
+    @Param("id") id: string,
+    @Body() dto: ResolveUpgradeRequestDto,
+  ) {
+    return this.platformOrganizations.resolveUpgradeRequest(organizationId, id, dto);
   }
 
   @Patch(":id")

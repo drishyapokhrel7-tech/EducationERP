@@ -299,6 +299,12 @@ import type {
   PlatformOrganizationSummary,
   PlatformUpgradeRequestSummary,
   UpdateOrganizationInput,
+  MarketingPartnerRecord,
+  CreateMarketingPartnerInput,
+  UpdateMarketingPartnerInput,
+  MarketingCommissionRecord,
+  CommissionStatus,
+  ResolveUpgradeRequestInput,
   RegisterGatewayDeviceInput,
   GatewayDeviceRecord,
   GatewayScanInput,
@@ -2399,9 +2405,40 @@ export function createApiClient({
     platformListUpgradeRequests: () =>
       request<PlatformUpgradeRequestSummary[]>("/platform/organizations/upgrade-requests", {}, 120_000),
 
-    platformResolveUpgradeRequest: (organizationId: string, id: string) =>
-      request<{ resolved: true; id: string }>(`/platform/organizations/${organizationId}/upgrade-requests/${id}`, {
+    platformResolveUpgradeRequest: (organizationId: string, id: string, input?: ResolveUpgradeRequestInput) =>
+      request<{ resolved: true; id: string; commissionCreated: boolean }>(
+        `/platform/organizations/${organizationId}/upgrade-requests/${id}`,
+        { method: "PATCH", body: JSON.stringify(input ?? {}) },
+      ),
+
+    // Marketing Partner / Commission tracking — platform-level referral
+    // affiliates who earn a % commission when an org they referred
+    // upgrades. See PlatformMarketingService for the full model.
+    platformListMarketingPartners: () => request<MarketingPartnerRecord[]>("/platform/marketing/partners"),
+
+    platformCreateMarketingPartner: (input: CreateMarketingPartnerInput) =>
+      request<MarketingPartnerRecord>("/platform/marketing/partners", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+
+    platformUpdateMarketingPartner: (id: string, input: UpdateMarketingPartnerInput) =>
+      request<MarketingPartnerRecord>(`/platform/marketing/partners/${id}`, {
         method: "PATCH",
+        body: JSON.stringify(input),
+      }),
+
+    platformListMarketingCommissions: (params?: { status?: CommissionStatus; partnerId?: string }) =>
+      request<MarketingCommissionRecord[]>(
+        `/platform/marketing/commissions${
+          params ? `?${new URLSearchParams(params as Record<string, string>)}` : ""
+        }`,
+      ),
+
+    platformMarkCommissionPaid: (id: string, note?: string) =>
+      request<MarketingCommissionRecord>(`/platform/marketing/commissions/${id}/mark-paid`, {
+        method: "PATCH",
+        body: JSON.stringify({ note }),
       }),
 
     // Device Gateway (Phase 8, docx §12) — barcode/RFID/smart-card

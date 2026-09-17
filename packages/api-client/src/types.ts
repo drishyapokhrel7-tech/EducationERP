@@ -135,6 +135,9 @@ export interface RegisterOrganizationInput {
   // Optional letterhead metadata — the institution's own site, not
   // required identity like organizationName/slug.
   website?: string;
+  // Optional MarketingPartner.referralCode — see
+  // AuthService.registerOrganization for the matching rules.
+  referralCode?: string;
 }
 
 export interface LoginInput {
@@ -2603,6 +2606,8 @@ export interface PlatformUpgradeRequestSummary {
   notes: string | null;
   requesterEmail: string;
   createdAt: string;
+  referredByPartnerId: string | null;
+  referredByPartnerName: string | null;
 }
 
 // The portal's own invoice list omits `student` (the caller already
@@ -4292,6 +4297,63 @@ export interface UpdateOrganizationInput {
   name?: string;
   slug?: string;
   edition?: Edition;
+}
+
+export interface MarketingPartnerRecord {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  referralCode: string;
+  payoutAccount: string | null;
+  commissionRatePercent: number;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateMarketingPartnerInput {
+  name: string;
+  email?: string;
+  phone?: string;
+  referralCode: string;
+  payoutAccount?: string;
+  commissionRatePercent?: number;
+}
+
+// referralCode is deliberately absent — locked at creation, see
+// CreateMarketingPartnerDto's own comment.
+export interface UpdateMarketingPartnerInput {
+  name?: string;
+  email?: string;
+  phone?: string;
+  payoutAccount?: string;
+  commissionRatePercent?: number;
+  active?: boolean;
+}
+
+export type CommissionStatus = "PENDING" | "PAID";
+
+export interface MarketingCommissionRecord {
+  id: string;
+  marketingPartnerId: string;
+  organizationId: string;
+  upgradeRequestId: string | null;
+  depositedAmount: number;
+  commissionRatePercent: number;
+  commissionAmount: number;
+  status: CommissionStatus;
+  note: string | null;
+  createdAt: string;
+  paidAt: string | null;
+  paidByPlatformAdminId: string | null;
+  partnerName: string;
+  organizationName: string;
+  organizationSlug: string;
+}
+
+export interface ResolveUpgradeRequestInput {
+  depositedAmount?: number;
 }
 
 // ── Device Gateway (Phase 8, docx §12 "Biometric/Device Gateway") ──────────

@@ -25,10 +25,10 @@ enum Edition {
 }
 
 model Organization {
-  id               String    @id @default(uuid())
-  name             String
-  slug             String    @unique
-  edition          Edition   @default(FREE)
+  id                  String    @id @default(uuid())
+  name                String
+  slug                String    @unique
+  edition             Edition   @default(FREE)
   // Null = no expiry: covers FREE (never expires) and any org the
   // platform admin manually set to a paid edition via the platform
   // console (a permanent-until-changed override, no time limit — see
@@ -39,25 +39,32 @@ model Organization {
   // (organizations/edition-limits.ts) computes that at read/
   // enforcement time only, the same "computed, not stored" precedent
   // used throughout this schema.
-  editionExpiresAt DateTime?
+  editionExpiresAt    DateTime?
   // Letterhead fields for printable documents (invoices, receipts,
   // report cards, payslips, ID cards, admit cards) — every one of
   // them renders gracefully with just `name` above if these are
   // unset. logoUrl follows the same generic-storage-URL two-step
   // upload pattern as Student.photoUrl/Employee.photoUrl, not a
   // dedicated upload pipeline.
-  address          String?
-  phone            String?
-  email            String?
-  logoUrl          String?
+  address             String?
+  phone               String?
+  email               String?
+  logoUrl             String?
   // Optional at registration (RegisterOrganizationDto) and thereafter
   // — the same letterhead reasoning as the fields above, not a
   // required piece of identity like organizationName/slug.
-  website          String?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  deletedAt        DateTime?
+  website             String?
+  // Set at registration only, from an optional referral code
+  // (RegisterOrganizationDto.referralCode) matched against
+  // MarketingPartner.referralCode — never changed after signup by any
+  // route. Null means "no referral," the overwhelming majority of orgs.
+  referredByPartnerId String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  deletedAt           DateTime?
 
+  referredByPartner           MarketingPartner?            @relation("OrganizationReferrer", fields: [referredByPartnerId], references: [id])
+  marketingCommissions        MarketingCommission[]
   editionUpgradePayments      EditionUpgradePayment[]
   editionUpgradeRequests      EditionUpgradeRequest[]
   campuses                    Campus[]
@@ -3080,11 +3087,81 @@ model EditionUpgradeRequest {
   createdAt      DateTime                    @default(now())
   resolvedAt     DateTime?
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  requester    User         @relation(fields: [requestedBy], references: [id])
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  requester    User                 @relation(fields: [requestedBy], references: [id])
+  commission   MarketingCommission?
 
   @@index([organizationId])
   @@map("edition_upgrade_requests")
+}
+
+enum CommissionStatus {
+  PENDING
+  PAID
+}
+
+// A referral affiliate ("marketing team" member) who brings in a paying
+// organization. Platform-level, like PlatformAdmin/LeadSubmission — not
+// tenant data, so deliberately NOT RLS-protected (queried directly via
+// `this.prisma.marketingPartner...`, never through withTenant), and only
+// ever reached through PlatformAuthGuard-guarded routes.
+//
+// payoutAccount is a free-text note (an eSewa ID, a bank account number,
+// whatever the partner gave Ovexa) for the owner's own reference when
+// THEY manually send the commission — this system computes and tracks
+// what's owed, it never initiates a real money transfer itself.
+model MarketingPartner {
+  id                    String   @id @default(uuid())
+  name                  String
+  email                 String?
+  phone                 String?
+  referralCode          String   @unique
+  payoutAccount         String?
+  commissionRatePercent Decimal  @default(10.00) @db.Decimal(5, 2)
+  active                Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  referredOrganizations Organization[]        @relation("OrganizationReferrer")
+  commissions           MarketingCommission[]
+
+  @@map("marketing_partners")
+}
+
+// One row per resolved, referred upgrade — created automatically the
+// moment Platform Admin resolves an EditionUpgradeRequest for an org
+// that has a referredByPartnerId, using whatever depositedAmount the
+// admin entered (falling back to EDITION_PRICING_NPR for the target
+// edition if left blank). commissionRate is copied from the partner at
+// creation time so a later change to the partner's rate never
+// retroactively changes an already-computed commission.
+//
+// status starts PENDING and only ever becomes PAID via an explicit
+// Platform Admin action (markCommissionPaid) after they've personally
+// sent the money — there is no automated payout path anywhere in this
+// model or the code that touches it.
+model MarketingCommission {
+  id                    String           @id @default(uuid())
+  marketingPartnerId    String
+  organizationId        String
+  upgradeRequestId      String?          @unique
+  depositedAmount       Decimal          @db.Decimal(12, 2)
+  commissionRatePercent Decimal          @db.Decimal(5, 2)
+  commissionAmount      Decimal          @db.Decimal(12, 2)
+  status                CommissionStatus @default(PENDING)
+  note                  String?
+  createdAt             DateTime         @default(now())
+  paidAt                DateTime?
+  paidByPlatformAdminId String?
+
+  marketingPartner    MarketingPartner       @relation(fields: [marketingPartnerId], references: [id], onDelete: Cascade)
+  organization        Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  upgradeRequest      EditionUpgradeRequest? @relation(fields: [upgradeRequestId], references: [id])
+  paidByPlatformAdmin PlatformAdmin?         @relation(fields: [paidByPlatformAdminId], references: [id])
+
+  @@index([marketingPartnerId])
+  @@index([organizationId])
+  @@map("marketing_commissions")
 }
 
 // ── HR & Payroll, part 1: Leave Management (Phase 7 slice 7b-1) ────────
@@ -4788,6 +4865,8 @@ model PlatformAdmin {
   name         String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  commissionsMarkedPaid MarketingCommission[]
 
   @@map("platform_admins")
 }

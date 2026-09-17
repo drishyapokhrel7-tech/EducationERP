@@ -29,4 +29,12 @@ export class RegisterOrganizationDto {
   @IsOptional()
   @IsUrl()
   website?: string;
+
+  // Optional MarketingPartner.referralCode, matched case-insensitively
+  // against an active partner at registration time — see
+  // AuthService.registerOrganization. A wrong/unmatched code never
+  // blocks signup, it just means no referrer gets attached.
+  @IsOptional()
+  @IsString()
+  referralCode?: string;
 }

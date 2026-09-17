@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState, type FormEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
 import { ApiError, type EmailVerificationChallenge } from "@education-erp/api-client";
@@ -18,14 +18,29 @@ function errorMessage(err: unknown, fallback: string): string {
   return err instanceof ApiError ? ((err.body as { message?: string })?.message ?? fallback) : fallback;
 }
 
+// useSearchParams() (for the ?ref= referral prefill below) needs a
+// Suspense boundary above it in the App Router, or Next.js bails out
+// of static optimization for the whole route — this thin wrapper is
+// the boundary; all the actual page content/state lives in the inner
+// component below.
 export default function RegisterPage() {
+  return (
+    <Suspense fallback={null}>
+      <RegisterPageContent />
+    </Suspense>
+  );
+}
+
+function RegisterPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { registerOrganization } = useAuth();
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({
     organizationName: "",
     slug: "",
     website: "",
+    referralCode: searchParams.get("ref") ?? "",
     adminFirstName: "",
     adminLastName: "",
     adminEmail: "",
@@ -52,7 +67,11 @@ export default function RegisterPage() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const challenge = await registerOrganization({ ...form, website: form.website || undefined });
+      const challenge = await registerOrganization({
+        ...form,
+        website: form.website || undefined,
+        referralCode: form.referralCode || undefined,
+      });
       toast.success("Organization created");
       setVerification(challenge);
     } catch (err) {
@@ -185,6 +204,15 @@ export default function RegisterPage() {
                 placeholder="https://myschool.edu"
                 value={form.website}
                 onChange={(e) => update("website", e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="referralCode">Referral code (optional)</Label>
+              <Input
+                id="referralCode"
+                placeholder="PARTNER2026"
+                value={form.referralCode}
+                onChange={(e) => update("referralCode", e.target.value)}
               />
             </div>
             <div className="grid grid-cols-2 gap-4">

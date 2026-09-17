@@ -1,11 +1,16 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { EditionUpgradeRequestStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
-import { editionStatus } from "../organizations/edition-limits";
+import { editionStatus, EDITION_PRICING_NPR } from "../organizations/edition-limits";
 import { UpdateOrganizationDto } from "./dto/update-organization.dto";
+import { ResolveUpgradeRequestDto } from "./dto/resolve-upgrade-request.dto";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function toNumber(value: Prisma.Decimal | number): number {
+  return typeof value === "number" ? value : value.toNumber();
 }
 
 // P2028 ("unable to start a transaction in the given time") is this
@@ -103,7 +108,13 @@ export class PlatformOrganizationsService {
   async listPendingUpgradeRequests() {
     const organizations = await this.prisma.organization.findMany({
       where: { deletedAt: null },
-      select: { id: true, name: true, slug: true },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        referredByPartnerId: true,
+        referredByPartner: { select: { name: true } },
+      },
     });
     type UpgradeRequestRow = {
       id: string;
@@ -115,6 +126,8 @@ export class PlatformOrganizationsService {
       notes: string | null;
       requesterEmail: string;
       createdAt: Date;
+      referredByPartnerId: string | null;
+      referredByPartnerName: string | null;
     };
     const BATCH_SIZE = 8;
     const results: UpgradeRequestRow[] = [];
@@ -142,6 +155,8 @@ export class PlatformOrganizationsService {
                 notes: req.notes,
                 requesterEmail: req.requester.email,
                 createdAt: req.createdAt,
+                referredByPartnerId: org.referredByPartnerId,
+                referredByPartnerName: org.referredByPartner?.name ?? null,
               }),
             ),
           ),
@@ -152,12 +167,15 @@ export class PlatformOrganizationsService {
     return results.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
   }
 
-  async resolveUpgradeRequest(organizationId: string, id: string) {
+  async resolveUpgradeRequest(organizationId: string, id: string, dto: ResolveUpgradeRequestDto) {
     const request = await this.prisma.withTenant(organizationId, (tx) =>
       tx.editionUpgradeRequest.findUnique({ where: { id } }),
     );
     if (!request || request.organizationId !== organizationId) {
       throw new NotFoundException("Upgrade request not found");
+    }
+    if (request.status === EditionUpgradeRequestStatus.RESOLVED) {
+      throw new ConflictException("Upgrade request already resolved");
     }
     await this.prisma.withTenant(organizationId, (tx) =>
       tx.editionUpgradeRequest.update({
@@ -165,7 +183,40 @@ export class PlatformOrganizationsService {
         data: { status: EditionUpgradeRequestStatus.RESOLVED, resolvedAt: new Date() },
       }),
     );
-    return { resolved: true as const, id };
+
+    // This is the deliberate "this request is fully handled" moment in
+    // the existing manual flow (the frontend already tells the admin to
+    // change the org's edition first, then resolve) — so a referral
+    // commission is recorded here, not when the edition itself changes.
+    // Only an org with a currently-active referrer earns one; a
+    // deactivated partner stops accruing new commissions even for orgs
+    // it referred in the past.
+    let commissionCreated = false;
+    const organization = await this.prisma.organization.findUnique({ where: { id: organizationId } });
+    if (organization?.referredByPartnerId) {
+      const partner = await this.prisma.marketingPartner.findUnique({
+        where: { id: organization.referredByPartnerId },
+      });
+      if (partner?.active) {
+        const depositedAmount = dto.depositedAmount ?? EDITION_PRICING_NPR[request.targetEdition] ?? undefined;
+        if (depositedAmount != null) {
+          const rate = toNumber(partner.commissionRatePercent);
+          const commissionAmount = Math.round(depositedAmount * rate) / 100;
+          await this.prisma.marketingCommission.create({
+            data: {
+              marketingPartnerId: partner.id,
+              organizationId,
+              upgradeRequestId: id,
+              depositedAmount,
+              commissionRatePercent: partner.commissionRatePercent,
+              commissionAmount,
+            },
+          });
+          commissionCreated = true;
+        }
+      }
+    }
+    return { resolved: true as const, id, commissionCreated };
   }
 
   async updateOrganization(organizationId: string, dto: UpdateOrganizationDto) {
