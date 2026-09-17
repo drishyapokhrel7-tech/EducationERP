@@ -16,6 +16,29 @@ import { useState } from "react";
 // (STORAGE_DRIVER=google-drive), and Drive's CDN is known to be
 // pickier about cross-origin embeds that carry a Referer than ones
 // that don't; dropping it costs nothing for the other storage drivers.
+
+// GoogleDriveStorageDriver.upload() returns a webContentLink
+// ("drive.google.com/uc?...&export=download") — a real, working link
+// to hand someone for an actual download, but Drive serves that
+// specific endpoint in a way browsers refuse to decode as an inline
+// <img> (confirmed live: it always fires onError). Google's own
+// image-serving host, lh3.googleusercontent.com, embeds the same file
+// fine — so only the *preview* path here needs the rewrite; the
+// stored url itself stays the real download link for every other
+// consumer (document links, class materials, ...).
+function toEmbeddableImageUrl(src: string): string {
+  try {
+    const url = new URL(src);
+    if (url.hostname === "drive.google.com" && url.pathname === "/uc") {
+      const id = url.searchParams.get("id");
+      if (id) return `https://lh3.googleusercontent.com/d/${id}`;
+    }
+  } catch {
+    // Not a parseable absolute URL — fall through and use src as-is.
+  }
+  return src;
+}
+
 export function Avatar({
   src,
   size = "sm",
@@ -43,7 +66,7 @@ export function Avatar({
   return (
     // eslint-disable-next-line @next/next/no-img-element -- external/storage-backend URL, not a local static asset next/image can optimize
     <img
-      src={src}
+      src={toEmbeddableImageUrl(src)}
       alt={alt}
       referrerPolicy="no-referrer"
       onError={() => setBroken(true)}

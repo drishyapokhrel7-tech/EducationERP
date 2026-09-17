@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable, Logger, ServiceUnavailableException } from "@nestjs/common";
 import { LocalDiskStorageDriver } from "./local-disk.storage";
 import { S3StorageDriver } from "./s3.storage";
 import { GoogleDriveStorageDriver } from "./google-drive.storage";
@@ -44,6 +44,7 @@ const ALLOWED_MIME_TYPES = new Set([
  */
 @Injectable()
 export class StorageService {
+  private readonly logger = new Logger(StorageService.name);
   private readonly driver: StorageDriver = StorageService.selectDriver();
 
   private static selectDriver(): StorageDriver {
@@ -62,6 +63,22 @@ export class StorageService {
     if (!ALLOWED_MIME_TYPES.has(file.mimetype)) {
       throw new BadRequestException(`Unsupported file type: ${file.mimetype}`);
     }
-    return this.driver.upload(organizationId, file);
+    try {
+      return await this.driver.upload(organizationId, file);
+    } catch (err) {
+      // An uncaught driver failure (e.g. Google Drive's OAuth refresh
+      // token expiring, per this project's own documented local-dev
+      // gap) previously fell through to AllExceptionsFilter's generic
+      // "Internal server error" — accurate-but-useless to whoever's
+      // staring at a failed photo upload. The real cause is logged
+      // server-side for whoever configured the driver; the client only
+      // ever needs to know storage itself is the problem, not why —
+      // exposing a raw Google API error message here would leak
+      // implementation details this app otherwise deliberately hides.
+      this.logger.error(`Storage driver upload failed: ${err instanceof Error ? err.stack : err}`);
+      throw new ServiceUnavailableException(
+        "File storage is temporarily unavailable — try again shortly, or contact your administrator if this continues",
+      );
+    }
   }
 }

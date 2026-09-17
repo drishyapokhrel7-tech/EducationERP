@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
+import { errorMessage } from "@/lib/submit-action";
 
 // Shared by every "paste a link" form this LMS work has built
 // (course module items, class materials, assignment submissions) —
@@ -49,8 +50,12 @@ export function FileUploadButton({
             const result = await api.uploadFile(file);
             onUploaded(result.url);
             toast.success("File uploaded");
-          } catch {
-            toast.error("Failed to upload file");
+          } catch (err) {
+            // Was a hardcoded "Failed to upload file" regardless of
+            // cause — hid real, actionable reasons (wrong file type,
+            // over the size limit, storage temporarily unavailable)
+            // behind a useless generic message.
+            toast.error(errorMessage(err, "Failed to upload file"));
           } finally {
             setUploading(false);
           }
