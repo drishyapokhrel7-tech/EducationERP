@@ -27,21 +27,25 @@ export class CaptchaService {
   async generate(): Promise<{ captchaId: string; svg: string }> {
     // Digits-only, single-colour — deliberately legible (letter/case
     // ambiguity was a real usability complaint, and normalize() is
-    // case-insensitive anyway). But 4 chars with zero noise is
-    // trivially OCR-farmed, so: 5 chars (100k combinations vs 10k)
-    // plus one distortion line. Combined with the single-use
-    // consume-on-attempt check and the /auth/login 10/min throttle,
-    // an online guess/OCR attack isn't worthwhile; this raises the
-    // cost of scripted credential-stuffing without hurting a real
-    // person.
+    // case-insensitive anyway). The distortion line (noise) was
+    // dropped entirely after real testing found it made adjacent
+    // digits genuinely hard to tell apart (a "6"/"8" or "1"/"7" pair
+    // crossed by the line reads as ambiguous even zoomed in) —
+    // security here comes from the 5-char digit space (100k
+    // combinations vs. 10k for 4) plus the library's own per-character
+    // warp/rotation, not from an extra line. Combined with the
+    // single-use consume-on-attempt check and the /auth/login 10/min
+    // throttle, an online guess/OCR attack still isn't worthwhile;
+    // this raises the cost of scripted credential-stuffing without
+    // hurting a real person trying to read their own challenge.
     const captcha = svgCaptcha.create({
       size: 5,
-      noise: 1,
+      noise: 0,
       color: false,
       charPreset: "0123456789",
-      width: 170,
-      height: 60,
-      fontSize: 58,
+      width: 190,
+      height: 70,
+      fontSize: 50,
     });
     // Not tenant data — no withTenant/organizationId, same as every
     // other genuinely global table in this schema.
