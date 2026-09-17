@@ -171,16 +171,17 @@ export default function StudentsPage() {
     return organization.data ? `${organization.data.slug}.${studentCode}` : studentCode;
   }
 
-  async function handleCreateLogin(studentId: string) {
+  function handleCreateLogin(studentId: string) {
     const password = loginPasswordForms[studentId] ?? "";
-    try {
-      await api.createStudentLogin(studentId, { password });
-      setLoginPasswordForms((f) => ({ ...f, [studentId]: "" }));
-      students.mutate();
-      toast.success("Login created");
-    } catch {
-      toast.error("Failed to create login — password must be at least 8 characters");
-    }
+    submitAction(
+      () => api.createStudentLogin(studentId, { password }),
+      () => {
+        setLoginPasswordForms((f) => ({ ...f, [studentId]: "" }));
+        students.mutate();
+      },
+      "Login created",
+      "Creating login…",
+    );
   }
 
   // Keyed by guardianId, same pattern as loginPasswordForms above.
@@ -193,16 +194,17 @@ export default function StudentsPage() {
     return organization.data ? `${organization.data.slug}.guardian.${guardianId.slice(0, 8)}` : guardianId;
   }
 
-  async function handleCreateGuardianLogin(guardianId: string) {
+  function handleCreateGuardianLogin(guardianId: string) {
     const password = guardianLoginPasswordForms[guardianId] ?? "";
-    try {
-      await api.createGuardianLogin(guardianId, { password });
-      setGuardianLoginPasswordForms((f) => ({ ...f, [guardianId]: "" }));
-      guardians.mutate();
-      toast.success("Login created");
-    } catch {
-      toast.error("Failed to create login — password must be at least 8 characters");
-    }
+    submitAction(
+      () => api.createGuardianLogin(guardianId, { password }),
+      () => {
+        setGuardianLoginPasswordForms((f) => ({ ...f, [guardianId]: "" }));
+        guardians.mutate();
+      },
+      "Login created",
+      "Creating login…",
+    );
   }
 
   async function handleImport() {

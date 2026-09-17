@@ -2,20 +2,12 @@
 
 import { use } from "react";
 import useSWR from "swr";
-import { toast } from "sonner";
 import { CheckCircle2, Circle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
-
-function errorMessage(err: unknown, fallback: string) {
-  const message =
-    err && typeof err === "object" && "body" in err
-      ? ((err as { body?: { message?: string } }).body?.message ?? null)
-      : null;
-  return typeof message === "string" ? message : fallback;
-}
+import { submitAction } from "@/lib/submit-action";
 
 export default function PortalCourseModulesPage({
   params,
@@ -88,14 +80,13 @@ export default function PortalCourseModulesPage({
                           size="sm"
                           variant={item.completed ? "outline" : "default"}
                           disabled={item.completed}
-                          onClick={async () => {
-                            try {
-                              await api.completeModuleItem(item.id);
-                              modules.mutate();
-                            } catch (err) {
-                              toast.error(errorMessage(err, "Failed to mark complete"));
-                            }
-                          }}
+                          onClick={() =>
+                            submitAction(
+                              () => api.completeModuleItem(item.id),
+                              () => modules.mutate(),
+                              "Marked complete",
+                            )
+                          }
                         >
                           {item.completed ? (
                             <>

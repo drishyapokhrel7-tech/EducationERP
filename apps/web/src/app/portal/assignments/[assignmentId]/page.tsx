@@ -2,21 +2,13 @@
 
 import { use, useState, type FormEvent } from "react";
 import useSWR from "swr";
-import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FileUploadButton } from "@/components/file-upload-button";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
-
-function errorMessage(err: unknown, fallback: string) {
-  const message =
-    err && typeof err === "object" && "body" in err
-      ? ((err as { body?: { message?: string } }).body?.message ?? null)
-      : null;
-  return typeof message === "string" ? message : fallback;
-}
+import { submitAction } from "@/lib/submit-action";
 
 export default function PortalAssignmentDetailPage({ params }: { params: Promise<{ assignmentId: string }> }) {
   const { assignmentId } = use(params);
@@ -112,16 +104,17 @@ export default function PortalAssignmentDetailPage({ params }: { params: Promise
               {canResubmit ? (
                 <form
                   className="space-y-2"
-                  onSubmit={async (e: FormEvent) => {
+                  onSubmit={(e: FormEvent) => {
                     e.preventDefault();
-                    try {
-                      await api.submitStudentAssignment(assignmentId, { content: content || undefined });
-                      setContent("");
-                      assignment.mutate();
-                      toast.success("Submitted");
-                    } catch (err) {
-                      toast.error(errorMessage(err, "Failed to submit"));
-                    }
+                    submitAction(
+                      () => api.submitStudentAssignment(assignmentId, { content: content || undefined }),
+                      () => {
+                        setContent("");
+                        assignment.mutate();
+                      },
+                      "Submitted",
+                      "Submitting…",
+                    );
                   }}
                 >
                   {assignment.data.submissionType === "TEXT" ? (

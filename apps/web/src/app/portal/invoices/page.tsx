@@ -33,6 +33,10 @@ function outstandingBalance(inv: { totalAmount: string; discounts: { amount: str
 export default function PortalInvoicesPage() {
   const invoices = useSWR("portal-invoices", () => api.getPortalInvoices());
   const [payAmount, setPayAmount] = useState<Record<string, string>>({});
+  // Guards against a double-click firing two eSewa payment intents
+  // before the first one's redirect actually navigates away — a real
+  // network round trip stands between the click and that redirect.
+  const [paying, setPaying] = useState<Record<string, boolean>>({});
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -82,17 +86,20 @@ export default function PortalInvoicesPage() {
                           type="button"
                           size="sm"
                           className="h-8"
+                          disabled={paying[inv.id]}
                           onClick={async () => {
+                            setPaying((f) => ({ ...f, [inv.id]: true }));
                             try {
                               const amount = Number(payAmount[inv.id] ?? outstanding.toFixed(2));
                               const { actionUrl, fields } = await api.initiatePortalEsewaPayment(inv.id, { amount });
                               submitEsewaForm(actionUrl, fields);
                             } catch (err) {
                               toast.error(errorMessage(err, "Could not start the eSewa payment"));
+                              setPaying((f) => ({ ...f, [inv.id]: false }));
                             }
                           }}
                         >
-                          Pay with eSewa
+                          {paying[inv.id] ? "Starting…" : "Pay with eSewa"}
                         </Button>
                       </div>
                     ) : null}

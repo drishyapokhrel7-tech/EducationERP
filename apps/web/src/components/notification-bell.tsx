@@ -4,8 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Bell } from "lucide-react";
 import useSWR from "swr";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
+import { errorMessage } from "@/lib/submit-action";
 
 // Shared by /teacher, /portal (LMS discovery slice 9), and /dashboard
 // (Phase 8 notifications-bullet gap-check — admin/staff users
@@ -52,8 +54,12 @@ export function NotificationBell() {
                 type="button"
                 className="text-muted-foreground text-xs underline-offset-4 hover:underline"
                 onClick={async () => {
-                  await api.markAllNotificationsRead();
-                  notifications.mutate();
+                  try {
+                    await api.markAllNotificationsRead();
+                    notifications.mutate();
+                  } catch (err) {
+                    toast.error(errorMessage(err, "Could not mark notifications read"));
+                  }
                 }}
               >
                 Mark all read
@@ -72,8 +78,12 @@ export function NotificationBell() {
                     onClick={async () => {
                       setOpen(false);
                       if (!n.isRead) {
-                        await api.markNotificationRead(n.id);
-                        notifications.mutate();
+                        try {
+                          await api.markNotificationRead(n.id);
+                          notifications.mutate();
+                        } catch (err) {
+                          toast.error(errorMessage(err, "Could not mark notification read"));
+                        }
                       }
                     }}
                   >

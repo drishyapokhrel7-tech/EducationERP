@@ -2,7 +2,6 @@
 
 import { useState, type FormEvent } from "react";
 import useSWR from "swr";
-import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,7 +12,7 @@ import { PersonPicker, employeeToPersonOption } from "@/components/person-picker
 import { EntityCard } from "@/components/dashboard/entity-card";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
-import { submitAction, errorMessage } from "@/lib/submit-action";
+import { submitAction } from "@/lib/submit-action";
 import type { AttendanceStatus, StaffAttendanceStatus } from "@education-erp/api-client";
 
 const DAYS = ["", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -100,17 +99,16 @@ export default function AttendancePage() {
       >
         <form
           className="flex flex-wrap items-end gap-3"
-          onSubmit={async (e: FormEvent) => {
+          onSubmit={(e: FormEvent) => {
             e.preventDefault();
-            try {
-              const created = await api.createAttendanceSession(sessionForm);
-              setSessionForm({ classScheduleId: "", date: "" });
-              sessions.mutate();
-              openSession(created.id);
-              toast.success("Saved");
-            } catch (err) {
-              toast.error(errorMessage(err, "Failed to open session"));
-            }
+            submitAction(
+              () => api.createAttendanceSession(sessionForm),
+              (created) => {
+                setSessionForm({ classScheduleId: "", date: "" });
+                sessions.mutate();
+                openSession(created.id);
+              },
+            );
           }}
         >
           <div className="space-y-2">

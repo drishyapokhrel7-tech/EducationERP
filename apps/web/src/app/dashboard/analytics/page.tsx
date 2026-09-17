@@ -2,29 +2,14 @@
 
 import { useState } from "react";
 import useSWR from "swr";
-import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
-import { errorMessage } from "@/lib/submit-action";
+import { downloadBlob as downloadFile } from "@/lib/download";
 import { toLocalDateString } from "@/lib/local-date";
-
-async function downloadFile(fetchBlob: () => Promise<Blob>, filename: string) {
-  try {
-    const blob = await fetchBlob();
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = filename;
-    anchor.click();
-    URL.revokeObjectURL(url);
-  } catch (err) {
-    toast.error(errorMessage(err, "Export failed"));
-  }
-}
 
 function ExportButtons({ onCsv, onXlsx, onPdf }: { onCsv: () => void; onXlsx: () => void; onPdf: () => void }) {
   return (

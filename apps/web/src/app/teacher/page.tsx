@@ -18,6 +18,7 @@ import { FileUploadButton } from "@/components/file-upload-button";
 import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
+import { submitAction } from "@/lib/submit-action";
 
 const DAYS = ["", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -424,14 +425,13 @@ export default function TeacherPage() {
                                   type="button"
                                   size="sm"
                                   variant="outline"
-                                  onClick={async () => {
-                                    try {
-                                      await api.updateCourseModule(m.id, { isPublished: !m.isPublished });
-                                      modules.mutate();
-                                    } catch (err) {
-                                      toast.error(errorMessage(err, "Failed to update module"));
-                                    }
-                                  }}
+                                  onClick={() =>
+                                    submitAction(
+                                      () => api.updateCourseModule(m.id, { isPublished: !m.isPublished }),
+                                      () => modules.mutate(),
+                                      m.isPublished ? "Unpublished" : "Published",
+                                    )
+                                  }
                                 >
                                   {m.isPublished ? "Unpublish" : "Publish"}
                                 </Button>
@@ -457,14 +457,13 @@ export default function TeacherPage() {
                                             size="sm"
                                             variant="outline"
                                             className="h-6"
-                                            onClick={async () => {
-                                              try {
-                                                await api.updateCourseModuleItem(item.id, { isPublished: !item.isPublished });
-                                                modules.mutate();
-                                              } catch (err) {
-                                                toast.error(errorMessage(err, "Failed to update item"));
-                                              }
-                                            }}
+                                            onClick={() =>
+                                              submitAction(
+                                                () => api.updateCourseModuleItem(item.id, { isPublished: !item.isPublished }),
+                                                () => modules.mutate(),
+                                                item.isPublished ? "Unpublished" : "Published",
+                                              )
+                                            }
                                           >
                                             {item.isPublished ? "Unpublish" : "Publish"}
                                           </Button>
@@ -637,14 +636,13 @@ export default function TeacherPage() {
                                   type="button"
                                   size="sm"
                                   variant="outline"
-                                  onClick={async () => {
-                                    try {
-                                      await api.updateTeacherAssignment(a.id, { isPublished: !a.isPublished });
-                                      assignments.mutate();
-                                    } catch (err) {
-                                      toast.error(errorMessage(err, "Failed to update assignment"));
-                                    }
-                                  }}
+                                  onClick={() =>
+                                    submitAction(
+                                      () => api.updateTeacherAssignment(a.id, { isPublished: !a.isPublished }),
+                                      () => assignments.mutate(),
+                                      a.isPublished ? "Unpublished" : "Published",
+                                    )
+                                  }
                                 >
                                   {a.isPublished ? "Unpublish" : "Publish"}
                                 </Button>
@@ -1072,14 +1070,13 @@ export default function TeacherPage() {
                                   type="button"
                                   size="sm"
                                   variant="outline"
-                                  onClick={async () => {
-                                    try {
-                                      await api.updateTeacherAnnouncement(a.id, { isPublished: !a.isPublished });
-                                      announcements.mutate();
-                                    } catch (err) {
-                                      toast.error(errorMessage(err, "Failed to update announcement"));
-                                    }
-                                  }}
+                                  onClick={() =>
+                                    submitAction(
+                                      () => api.updateTeacherAnnouncement(a.id, { isPublished: !a.isPublished }),
+                                      () => announcements.mutate(),
+                                      a.isPublished ? "Unpublished" : "Published",
+                                    )
+                                  }
                                 >
                                   {a.isPublished ? "Unpublish" : "Publish"}
                                 </Button>
@@ -1183,14 +1180,13 @@ export default function TeacherPage() {
                                   type="button"
                                   size="sm"
                                   variant="outline"
-                                  onClick={async () => {
-                                    try {
-                                      await api.updateTeacherDiscussionTopic(t.id, { isPublished: !t.isPublished });
-                                      discussionTopics.mutate();
-                                    } catch (err) {
-                                      toast.error(errorMessage(err, "Failed to update topic"));
-                                    }
-                                  }}
+                                  onClick={() =>
+                                    submitAction(
+                                      () => api.updateTeacherDiscussionTopic(t.id, { isPublished: !t.isPublished }),
+                                      () => discussionTopics.mutate(),
+                                      t.isPublished ? "Unpublished" : "Published",
+                                    )
+                                  }
                                 >
                                   {t.isPublished ? "Unpublish" : "Publish"}
                                 </Button>
@@ -1223,15 +1219,17 @@ export default function TeacherPage() {
                                     )}
                                     <form
                                       className="flex flex-wrap items-end gap-2"
-                                      onSubmit={async (e: FormEvent) => {
+                                      onSubmit={(e: FormEvent) => {
                                         e.preventDefault();
-                                        try {
-                                          await api.createTeacherDiscussionPost(t.id, { body: replyBody });
-                                          setReplyBody("");
-                                          expandedTopic.mutate();
-                                        } catch (err) {
-                                          toast.error(errorMessage(err, "Failed to reply"));
-                                        }
+                                        submitAction(
+                                          () => api.createTeacherDiscussionPost(t.id, { body: replyBody }),
+                                          () => {
+                                            setReplyBody("");
+                                            expandedTopic.mutate();
+                                          },
+                                          "Reply posted",
+                                          "Posting…",
+                                        );
                                       }}
                                     >
                                       <textarea

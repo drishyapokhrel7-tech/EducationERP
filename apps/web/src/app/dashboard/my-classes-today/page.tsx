@@ -2,7 +2,6 @@
 
 import { useState, type FormEvent } from "react";
 import useSWR from "swr";
-import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,7 +12,7 @@ import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
 import { todayLocalDateString } from "@/lib/local-date";
-import { errorMessage } from "@/lib/submit-action";
+import { submitAction } from "@/lib/submit-action";
 
 const DAYS = ["", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -34,15 +33,16 @@ export default function MyClassesTodayPage() {
   const [progressForm, setProgressForm] = useState({ actualSyllabusNodeId: "", progressNotes: "" });
   const [materialForm, setMaterialForm] = useState({ title: "", url: "", description: "" });
 
-  async function openClass(classScheduleId: string) {
-    try {
-      const session = await api.createClassSession({ classScheduleId, date });
-      classes.mutate();
-      setActiveSessionId(session.id);
-      toast.success("Class opened");
-    } catch (err) {
-      toast.error(errorMessage(err, "Failed to open class"));
-    }
+  function openClass(classScheduleId: string) {
+    submitAction(
+      () => api.createClassSession({ classScheduleId, date }),
+      (session) => {
+        classes.mutate();
+        setActiveSessionId(session.id);
+      },
+      "Class opened",
+      "Opening class…",
+    );
   }
 
   function selectExisting(sessionId: string) {
@@ -128,20 +128,20 @@ export default function MyClassesTodayPage() {
               <>
                 <form
                   className="flex flex-wrap items-end gap-3"
-                  onSubmit={async (e: FormEvent) => {
+                  onSubmit={(e: FormEvent) => {
                     e.preventDefault();
                     if (!activeSessionId) return;
-                    try {
-                      await api.recordProgress(activeSessionId, {
-                        actualSyllabusNodeId: progressForm.actualSyllabusNodeId || undefined,
-                        progressNotes: progressForm.progressNotes || undefined,
-                      });
-                      activeSession.mutate();
-                      classes.mutate();
-                      toast.success("Saved");
-                    } catch (err) {
-                      toast.error(errorMessage(err, "Failed to record progress"));
-                    }
+                    submitAction(
+                      () =>
+                        api.recordProgress(activeSessionId, {
+                          actualSyllabusNodeId: progressForm.actualSyllabusNodeId || undefined,
+                          progressNotes: progressForm.progressNotes || undefined,
+                        }),
+                      () => {
+                        activeSession.mutate();
+                        classes.mutate();
+                      },
+                    );
                   }}
                 >
                   <div className="space-y-2">
@@ -210,21 +210,21 @@ export default function MyClassesTodayPage() {
                   )}
                   <form
                     className="flex flex-wrap items-end gap-3"
-                    onSubmit={async (e: FormEvent) => {
+                    onSubmit={(e: FormEvent) => {
                       e.preventDefault();
                       if (!activeSessionId) return;
-                      try {
-                        await api.addClassMaterial(activeSessionId, {
-                          title: materialForm.title,
-                          url: materialForm.url || undefined,
-                          description: materialForm.description || undefined,
-                        });
-                        setMaterialForm({ title: "", url: "", description: "" });
-                        activeSession.mutate();
-                        toast.success("Saved");
-                      } catch (err) {
-                        toast.error(errorMessage(err, "Failed to add material"));
-                      }
+                      submitAction(
+                        () =>
+                          api.addClassMaterial(activeSessionId, {
+                            title: materialForm.title,
+                            url: materialForm.url || undefined,
+                            description: materialForm.description || undefined,
+                          }),
+                        () => {
+                          setMaterialForm({ title: "", url: "", description: "" });
+                          activeSession.mutate();
+                        },
+                      );
                     }}
                   >
                     <div className="space-y-2">
@@ -255,16 +255,16 @@ export default function MyClassesTodayPage() {
                 <Button
                   type="button"
                   disabled={activeSession.data.status === "COMPLETED" || !activeSession.data.actualSyllabusNode}
-                  onClick={async () => {
+                  onClick={() => {
                     if (!activeSessionId) return;
-                    try {
-                      await api.completeClassSession(activeSessionId);
-                      activeSession.mutate();
-                      classes.mutate();
-                      toast.success("Class marked completed");
-                    } catch (err) {
-                      toast.error(errorMessage(err, "Failed to complete class"));
-                    }
+                    submitAction(
+                      () => api.completeClassSession(activeSessionId),
+                      () => {
+                        activeSession.mutate();
+                        classes.mutate();
+                      },
+                      "Class marked completed",
+                    );
                   }}
                 >
                   {activeSession.data.status === "COMPLETED" ? "Completed" : "Mark completed"}

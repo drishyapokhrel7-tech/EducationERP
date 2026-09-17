@@ -13,8 +13,7 @@ import { EntityCard } from "@/components/dashboard/entity-card";
 import { api } from "@/lib/api";
 import { statusVariant } from "@/lib/status-variant";
 import { downloadBlob } from "@/lib/download";
-import { submitAction, submitDelete, errorMessage } from "@/lib/submit-action";
-import { toast } from "sonner";
+import { submitAction, submitDelete } from "@/lib/submit-action";
 import type {
   AccountRecord,
   AccountType,
@@ -99,14 +98,6 @@ export default function AccountingPage() {
   const incomeStatement = useSWR(["accounting-income-statement", incomeFrom, incomeTo], () =>
     api.getIncomeStatement(incomeFrom || undefined, incomeTo || undefined),
   );
-
-  async function handleExport(fetchBlob: () => Promise<Blob>, filename: string) {
-    try {
-      await downloadBlob(() => fetchBlob(), filename);
-    } catch (err) {
-      toast.error(errorMessage(err, "Export failed"));
-    }
-  }
 
   return (
     <div className="max-w-5xl space-y-6">
@@ -479,9 +470,9 @@ export default function AccountingPage() {
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Trial balance</CardTitle>
           <ExportButtons
-            onCsv={() => handleExport(() => api.exportTrialBalance("csv" as AnalyticsExportFormat, trialBalanceAsOf || undefined), "trial-balance.csv")}
-            onXlsx={() => handleExport(() => api.exportTrialBalance("xlsx" as AnalyticsExportFormat, trialBalanceAsOf || undefined), "trial-balance.xlsx")}
-            onPdf={() => handleExport(() => api.exportTrialBalance("pdf" as AnalyticsExportFormat, trialBalanceAsOf || undefined), "trial-balance.pdf")}
+            onCsv={() => downloadBlob(() => api.exportTrialBalance("csv" as AnalyticsExportFormat, trialBalanceAsOf || undefined), "trial-balance.csv")}
+            onXlsx={() => downloadBlob(() => api.exportTrialBalance("xlsx" as AnalyticsExportFormat, trialBalanceAsOf || undefined), "trial-balance.xlsx")}
+            onPdf={() => downloadBlob(() => api.exportTrialBalance("pdf" as AnalyticsExportFormat, trialBalanceAsOf || undefined), "trial-balance.pdf")}
           />
         </CardHeader>
         <CardContent className="space-y-3">
@@ -523,9 +514,9 @@ export default function AccountingPage() {
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Balance sheet</CardTitle>
           <ExportButtons
-            onCsv={() => handleExport(() => api.exportBalanceSheet("csv" as AnalyticsExportFormat, balanceSheetAsOf || undefined), "balance-sheet.csv")}
-            onXlsx={() => handleExport(() => api.exportBalanceSheet("xlsx" as AnalyticsExportFormat, balanceSheetAsOf || undefined), "balance-sheet.xlsx")}
-            onPdf={() => handleExport(() => api.exportBalanceSheet("pdf" as AnalyticsExportFormat, balanceSheetAsOf || undefined), "balance-sheet.pdf")}
+            onCsv={() => downloadBlob(() => api.exportBalanceSheet("csv" as AnalyticsExportFormat, balanceSheetAsOf || undefined), "balance-sheet.csv")}
+            onXlsx={() => downloadBlob(() => api.exportBalanceSheet("xlsx" as AnalyticsExportFormat, balanceSheetAsOf || undefined), "balance-sheet.xlsx")}
+            onPdf={() => downloadBlob(() => api.exportBalanceSheet("pdf" as AnalyticsExportFormat, balanceSheetAsOf || undefined), "balance-sheet.pdf")}
           />
         </CardHeader>
         <CardContent className="space-y-3">
@@ -589,9 +580,9 @@ export default function AccountingPage() {
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Income statement</CardTitle>
           <ExportButtons
-            onCsv={() => handleExport(() => api.exportIncomeStatement("csv" as AnalyticsExportFormat, incomeFrom || undefined, incomeTo || undefined), "income-statement.csv")}
-            onXlsx={() => handleExport(() => api.exportIncomeStatement("xlsx" as AnalyticsExportFormat, incomeFrom || undefined, incomeTo || undefined), "income-statement.xlsx")}
-            onPdf={() => handleExport(() => api.exportIncomeStatement("pdf" as AnalyticsExportFormat, incomeFrom || undefined, incomeTo || undefined), "income-statement.pdf")}
+            onCsv={() => downloadBlob(() => api.exportIncomeStatement("csv" as AnalyticsExportFormat, incomeFrom || undefined, incomeTo || undefined), "income-statement.csv")}
+            onXlsx={() => downloadBlob(() => api.exportIncomeStatement("xlsx" as AnalyticsExportFormat, incomeFrom || undefined, incomeTo || undefined), "income-statement.xlsx")}
+            onPdf={() => downloadBlob(() => api.exportIncomeStatement("pdf" as AnalyticsExportFormat, incomeFrom || undefined, incomeTo || undefined), "income-statement.pdf")}
           />
         </CardHeader>
         <CardContent className="space-y-3">

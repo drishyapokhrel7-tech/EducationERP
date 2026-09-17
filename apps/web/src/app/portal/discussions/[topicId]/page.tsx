@@ -2,18 +2,10 @@
 
 import { use, useState, type FormEvent } from "react";
 import useSWR from "swr";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
-
-function errorMessage(err: unknown, fallback: string) {
-  const message =
-    err && typeof err === "object" && "body" in err
-      ? ((err as { body?: { message?: string } }).body?.message ?? null)
-      : null;
-  return typeof message === "string" ? message : fallback;
-}
+import { submitAction } from "@/lib/submit-action";
 
 export default function PortalDiscussionTopicPage({ params }: { params: Promise<{ topicId: string }> }) {
   const { topicId } = use(params);
@@ -62,16 +54,17 @@ export default function PortalDiscussionTopicPage({ params }: { params: Promise<
 
               <form
                 className="space-y-2"
-                onSubmit={async (e: FormEvent) => {
+                onSubmit={(e: FormEvent) => {
                   e.preventDefault();
-                  try {
-                    await api.createStudentDiscussionPost(topicId, { body: replyBody });
-                    setReplyBody("");
-                    topic.mutate();
-                    toast.success("Reply posted");
-                  } catch (err) {
-                    toast.error(errorMessage(err, "Failed to post reply"));
-                  }
+                  submitAction(
+                    () => api.createStudentDiscussionPost(topicId, { body: replyBody }),
+                    () => {
+                      setReplyBody("");
+                      topic.mutate();
+                    },
+                    "Reply posted",
+                    "Posting…",
+                  );
                 }}
               >
                 <textarea

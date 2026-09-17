@@ -68,17 +68,18 @@ export default function TransportPage() {
     return organization.data ? `${organization.data.slug}.${employeeCode}` : employeeCode;
   }
 
-  async function handleCreateDriverLogin(employeeId: string) {
+  function handleCreateDriverLogin(employeeId: string) {
     const password = driverLoginPasswordForms[employeeId] ?? "";
-    try {
-      await api.createEmployeeLogin(employeeId, { password });
-      setDriverLoginPasswordForms((f) => ({ ...f, [employeeId]: "" }));
-      drivers.mutate();
-      employees.mutate();
-      toast.success("Login created");
-    } catch {
-      toast.error("Failed to create login — password must be at least 8 characters");
-    }
+    submitAction(
+      () => api.createEmployeeLogin(employeeId, { password }),
+      () => {
+        setDriverLoginPasswordForms((f) => ({ ...f, [employeeId]: "" }));
+        drivers.mutate();
+        employees.mutate();
+      },
+      "Login created",
+      "Creating login…",
+    );
   }
 
   // ── Routes ────────────────────────────────────────────────────────

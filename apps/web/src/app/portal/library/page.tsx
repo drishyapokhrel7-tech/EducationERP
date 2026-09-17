@@ -2,12 +2,11 @@
 
 import { useState } from "react";
 import useSWR from "swr";
-import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { errorMessage } from "@/lib/submit-action";
+import { submitAction } from "@/lib/submit-action";
 import { api } from "@/lib/api";
 
 function formatMoney(amount: string | number) {
@@ -25,24 +24,12 @@ export default function PortalLibraryPage() {
   const fines = useSWR("portal-library-my-fines", () => api.getMyLibraryFines());
   const reservations = useSWR("portal-library-my-reservations", () => api.getMyReservations());
 
-  async function reserve(bookId: string) {
-    try {
-      await api.createMyReservation(bookId);
-      reservations.mutate();
-      toast.success("Reservation placed");
-    } catch (err) {
-      toast.error(errorMessage(err, "Could not place reservation"));
-    }
+  function reserve(bookId: string) {
+    submitAction(() => api.createMyReservation(bookId), () => reservations.mutate(), "Reservation placed");
   }
 
-  async function cancelReservation(id: string) {
-    try {
-      await api.cancelMyReservation(id);
-      reservations.mutate();
-      toast.success("Reservation cancelled");
-    } catch (err) {
-      toast.error(errorMessage(err, "Could not cancel reservation"));
-    }
+  function cancelReservation(id: string) {
+    submitAction(() => api.cancelMyReservation(id), () => reservations.mutate(), "Reservation cancelled");
   }
 
   const outstandingFines = (fines.data ?? []).filter((f) => f.status === "PENDING");

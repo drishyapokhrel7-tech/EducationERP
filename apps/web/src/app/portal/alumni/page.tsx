@@ -12,6 +12,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
+import { submitAction } from "@/lib/submit-action";
 import type { ApplicationStatus, MentorshipStatus, OpportunityType } from "@education-erp/api-client";
 
 function mentorshipBadgeVariant(status: MentorshipStatus) {
@@ -28,23 +29,6 @@ function applicationBadgeVariant(status: ApplicationStatus) {
   return "outline" as const;
 }
 
-function errorMessage(err: unknown, fallback: string) {
-  const message =
-    err && typeof err === "object" && "body" in err
-      ? ((err as { body?: { message?: string } }).body?.message ?? null)
-      : null;
-  return typeof message === "string" ? message : fallback;
-}
-
-async function submitAction(action: () => Promise<unknown>, onSuccess: () => void) {
-  try {
-    await action();
-    onSuccess();
-    toast.success("Saved");
-  } catch (err) {
-    toast.error(errorMessage(err, "Failed"));
-  }
-}
 
 export default function PortalAlumniPage() {
   const profile = useSWR("portal-alumni-profile", () => api.getOwnAlumniProfile());

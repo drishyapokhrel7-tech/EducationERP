@@ -129,6 +129,9 @@ export default function FinancePage() {
   const [fineRuleForm, setFineRuleForm] = useState({ feeCategoryId: "", type: "PER_DAY" as FineRuleType, amount: "" });
 
   const [paymentForm, setPaymentForm] = useState({ amount: "", method: "CASH" as PaymentMethod, reference: "" });
+  // Guards the eSewa button below against a double-click firing two
+  // payment intents before the first one's redirect navigates away.
+  const [startingEsewa, setStartingEsewa] = useState(false);
   const [discountForm, setDiscountForm] = useState({ amount: "", reason: "" });
   const [refundForm, setRefundForm] = useState<Record<string, { amount: string; reason: string }>>({});
   // Money actions — real financial changes to a real invoice, each
@@ -1098,8 +1101,9 @@ export default function FinancePage() {
                       size="sm"
                       variant="outline"
                       className="h-8"
-                      disabled={!paymentForm.amount}
+                      disabled={!paymentForm.amount || startingEsewa}
                       onClick={async () => {
+                        setStartingEsewa(true);
                         try {
                           const { actionUrl, fields } = await api.initiateEsewaPayment(activeInvoiceId, {
                             amount: Number(paymentForm.amount),
@@ -1107,10 +1111,11 @@ export default function FinancePage() {
                           submitEsewaForm(actionUrl, fields);
                         } catch (err) {
                           toast.error(errorMessage(err, "Could not start the eSewa payment"));
+                          setStartingEsewa(false);
                         }
                       }}
                     >
-                      Pay with eSewa
+                      {startingEsewa ? "Starting…" : "Pay with eSewa"}
                     </Button>
                   </form>
 
