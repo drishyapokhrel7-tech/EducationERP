@@ -28,6 +28,12 @@ import { AttachGuardianDto } from "./dto/attach-guardian.dto";
 import { CreateEnrollmentDto } from "./dto/create-enrollment.dto";
 import { ListEnrollmentsQueryDto } from "./dto/list-enrollments.dto";
 import { UpdateEnrollmentStatusDto } from "./dto/update-enrollment-status.dto";
+import { CreateExtracurricularActivityDto } from "./dto/create-extracurricular-activity.dto";
+import { UpdateExtracurricularActivityDto } from "./dto/update-extracurricular-activity.dto";
+import { ListExtracurricularActivitiesQueryDto } from "./dto/list-extracurricular-activities.dto";
+import { CreateActivityLookupDto } from "./dto/create-activity-lookup.dto";
+import { UpdateActivityLookupDto } from "./dto/update-activity-lookup.dto";
+import { ExtracurricularActivityLookupKind } from "@prisma/client";
 import { UpdateStudentStatusDto } from "./dto/update-student-status.dto";
 import { CreateStudentLoginDto } from "./dto/create-student-login.dto";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
@@ -171,6 +177,70 @@ export class StudentsController {
     @Body() dto: UpdateEnrollmentStatusDto,
   ) {
     return this.students.updateEnrollmentStatus(user.organizationId, id, dto);
+  }
+
+  @Get("students/:studentId/extracurricular-activities")
+  @RequirePermissions("extracurricular_activity:view")
+  listActivities(@CurrentUser() user: JwtPayload, @Param("studentId") studentId: string) {
+    return this.students.listActivities(user.organizationId, studentId);
+  }
+
+  @Post("students/:studentId/extracurricular-activities")
+  @RequirePermissions("extracurricular_activity:create")
+  createActivity(
+    @CurrentUser() user: JwtPayload,
+    @Param("studentId") studentId: string,
+    @Body() dto: CreateExtracurricularActivityDto,
+  ) {
+    return this.students.createActivity(user.organizationId, studentId, dto);
+  }
+
+  // Org-wide, not per-student — the real list view behind the
+  // Extra-curricular Activities card, optionally filtered by student.
+  @Get("extracurricular-activities")
+  @RequirePermissions("extracurricular_activity:view")
+  listAllActivities(@CurrentUser() user: JwtPayload, @Query() filters: ListExtracurricularActivitiesQueryDto) {
+    return this.students.listAllActivities(user.organizationId, filters);
+  }
+
+  @Patch("extracurricular-activities/:id")
+  @RequirePermissions("extracurricular_activity:update")
+  updateActivity(
+    @CurrentUser() user: JwtPayload,
+    @Param("id") id: string,
+    @Body() dto: UpdateExtracurricularActivityDto,
+  ) {
+    return this.students.updateActivity(user.organizationId, id, dto);
+  }
+
+  @Delete("extracurricular-activities/:id")
+  @RequirePermissions("extracurricular_activity:delete")
+  deleteActivity(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.students.deleteActivity(user.organizationId, id);
+  }
+
+  @Post("activity-lookups")
+  @RequirePermissions("extracurricular_activity:manage")
+  createActivityLookup(@CurrentUser() user: JwtPayload, @Body() dto: CreateActivityLookupDto) {
+    return this.students.createActivityLookup(user.organizationId, dto);
+  }
+
+  @Get("activity-lookups")
+  @RequirePermissions("extracurricular_activity:view")
+  listActivityLookups(@CurrentUser() user: JwtPayload, @Query("kind") kind?: ExtracurricularActivityLookupKind) {
+    return this.students.listActivityLookups(user.organizationId, kind);
+  }
+
+  @Patch("activity-lookups/:id")
+  @RequirePermissions("extracurricular_activity:manage")
+  updateActivityLookup(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: UpdateActivityLookupDto) {
+    return this.students.updateActivityLookup(user.organizationId, id, dto);
+  }
+
+  @Delete("activity-lookups/:id")
+  @RequirePermissions("extracurricular_activity:manage")
+  deleteActivityLookup(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.students.deleteActivityLookup(user.organizationId, id);
   }
 
   @Put("students/:studentId/status")

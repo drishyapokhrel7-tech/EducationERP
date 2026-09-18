@@ -719,6 +719,68 @@ export interface ListEnrollmentsParams {
   status?: EnrollmentStatus;
 }
 
+// Extra-curricular activities — title/role are plain strings sourced
+// from the ExtracurricularActivityLookup catalog (admin-configurable
+// dropdowns), same "dropdown UI, string storage" pattern as HostelLookup.
+export interface ExtracurricularActivity {
+  id: string;
+  studentId: string;
+  title: string;
+  role: string | null;
+  description: string | null;
+  startDate: string;
+  endDate: string | null;
+}
+
+export interface CreateExtracurricularActivityInput {
+  title: string;
+  role?: string;
+  description?: string;
+  startDate: string;
+  endDate?: string;
+}
+
+export interface UpdateExtracurricularActivityInput {
+  title?: string;
+  role?: string;
+  description?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+// Org-wide activity list row (GET /organizations/me/extracurricular-activities)
+// — same fields as ExtracurricularActivity plus the student it belongs to.
+export interface ExtracurricularActivityListItem extends ExtracurricularActivity {
+  student: StudentPicker;
+}
+
+export interface ListExtracurricularActivitiesParams {
+  page?: number;
+  pageSize?: number;
+  studentId?: string;
+}
+
+export type ExtracurricularActivityLookupKind = "ACTIVITY_TITLE" | "ACTIVITY_ROLE";
+
+export interface CreateActivityLookupInput {
+  kind: ExtracurricularActivityLookupKind;
+  name: string;
+}
+
+// kind is intentionally not editable after creation — same reasoning as
+// UpdateHostelLookupInput.
+export interface UpdateActivityLookupInput {
+  name?: string;
+}
+
+export interface ActivityLookupRecord {
+  id: string;
+  organizationId: string;
+  kind: ExtracurricularActivityLookupKind;
+  name: string;
+  createdAt: string;
+}
+
 export interface StudentStatusHistoryEntry {
   id: string;
   studentId: string;
@@ -802,6 +864,7 @@ export interface ImportRowError {
 export interface ImportResult {
   totalRows: number;
   created: number;
+  updated: number;
   errors: ImportRowError[];
 }
 

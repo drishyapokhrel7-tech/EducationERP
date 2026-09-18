@@ -195,6 +195,11 @@ const RESOURCES = [
   // org admin grants it library:view/library:manage via the existing
   // Roles & Permissions UI.
   "library",
+  // Extra-curricular activities — folds the ACTIVITY_TITLE/ACTIVITY_ROLE
+  // admin-configurable dropdown catalogs (activity-lookups routes) in
+  // too, same folding precedent as every resource above that pairs
+  // records with their own small setup catalog (e.g. hostel).
+  "extracurricular_activity",
 ];
 const ACTIONS = Object.values(PermissionAction);
 

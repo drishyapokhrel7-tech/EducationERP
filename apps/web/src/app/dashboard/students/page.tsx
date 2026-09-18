@@ -17,6 +17,7 @@ import { PhotoInput, EMPTY_PHOTO, hasPhoto, resolvePhotoUrl, type PhotoValue } f
 import { Avatar } from "@/components/avatar";
 import { EditionUsageBadge } from "@/components/edition-usage-badge";
 import { EditionUpgradeBanner } from "@/components/edition-upgrade-banner";
+import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { downloadBlob } from "@/lib/download";
 import { statusVariant } from "@/lib/status-variant";
@@ -24,7 +25,15 @@ import { useHighlightFromSearch } from "@/lib/use-highlight-from-search";
 import { isEditionLimitError } from "@/lib/edition-limit-error";
 import { useEditionStatus } from "@/lib/use-edition-status";
 import { submitAction, submitDelete, errorMessage } from "@/lib/submit-action";
-import { ApiError, type Edition, type EnrollmentStatus, type ImportResult, type StudentStatus } from "@education-erp/api-client";
+import {
+  ApiError,
+  type Edition,
+  type EnrollmentStatus,
+  type ImportResult,
+  type StudentStatus,
+  type ExtracurricularActivityLookupKind,
+  type ActivityLookupRecord,
+} from "@education-erp/api-client";
 import { todayLocalDateString } from "@/lib/local-date";
 
 // Matches the backend's GENDER_OPTIONS
@@ -64,6 +73,153 @@ const RELATIONSHIP_OPTIONS = [
   { label: "Business Partner", nepali: "व्यावसायिक साझेदार" },
   { label: "Unknown", nepali: "अज्ञात" },
 ] as const;
+
+// Sources its options from the org's own ExtracurricularActivityLookup
+// catalog for that `kind` and lets the picker add a new standard value
+// inline — mirrors dashboard/hostel/page.tsx's LookupSelect exactly,
+// repointed at the activity-lookup endpoints since that component isn't
+// parameterized over which API function to call.
+function ActivityLookupSelect({
+  kind,
+  value,
+  onChange,
+  options,
+  onCreated,
+  placeholder,
+  className,
+}: {
+  kind: ExtracurricularActivityLookupKind;
+  value: string;
+  onChange: (value: string) => void;
+  options: string[];
+  onCreated: () => void;
+  placeholder: string;
+  className?: string;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [newValue, setNewValue] = useState("");
+
+  if (adding) {
+    return (
+      <div className="flex items-end gap-1">
+        <div className="space-y-1">
+          <Label className="text-xs">New {placeholder.toLowerCase()}</Label>
+          <Input className={className ?? "w-32"} value={newValue} onChange={(e) => setNewValue(e.target.value)} autoFocus />
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={!newValue.trim()}
+          onClick={() =>
+            submitAction(
+              () => api.createActivityLookup({ kind, name: newValue.trim() }),
+              () => {
+                onChange(newValue.trim());
+                setNewValue("");
+                setAdding(false);
+                onCreated();
+              },
+            )
+          }
+        >
+          Add
+        </Button>
+        <Button type="button" size="sm" variant="ghost" onClick={() => setAdding(false)}>
+          Cancel
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <NativeSelect
+      className={className}
+      placeholder={placeholder}
+      value={value}
+      onChange={(v) => (v === "__add_new__" ? setAdding(true) : onChange(v))}
+      options={[...options.map((o) => ({ value: o, label: o })), { value: "__add_new__", label: "+ Add new…" }]}
+    />
+  );
+}
+
+// Edit/Delete UI for one ExtracurricularActivityLookup kind's catalog —
+// mirrors dashboard/hostel/page.tsx's LookupManageList exactly. Only
+// `name` is editable and delete has no dependency guard on the backend,
+// by design (see StudentsService.deleteActivityLookup's comment).
+function ActivityLookupManageList({
+  title,
+  data,
+  mutate,
+}: {
+  title: string;
+  data: ActivityLookupRecord[] | undefined;
+  mutate: () => void;
+}) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ name: "" });
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-medium">{title}</p>
+      {!data || data.length === 0 ? (
+        <p className="text-muted-foreground text-xs">None yet.</p>
+      ) : (
+        <ul className="divide-y text-sm">
+          {data.map((l) => (
+            <li key={l.id} className="flex items-center justify-between gap-2 py-2">
+              <span>{l.name}</span>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setEditingId(l.id);
+                    setEditForm({ name: l.name });
+                  }}
+                >
+                  Edit
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => submitDelete(() => api.deleteActivityLookup(l.id), () => mutate())}
+                >
+                  Delete
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {editingId ? (
+        <form
+          className="flex flex-wrap items-end gap-2"
+          onSubmit={(e: FormEvent) => {
+            e.preventDefault();
+            submitAction(() => api.updateActivityLookup(editingId, editForm), () => {
+              setEditingId(null);
+              mutate();
+            });
+          }}
+        >
+          <div className="space-y-1">
+            <Label className="text-xs">Name</Label>
+            <Input className="h-7 w-40" value={editForm.name} onChange={(e) => setEditForm({ name: e.target.value })} />
+          </div>
+          <Button type="submit" size="sm" className="h-7" disabled={!editForm.name}>
+            Save
+          </Button>
+          <Button type="button" size="sm" variant="outline" className="h-7" onClick={() => setEditingId(null)}>
+            Cancel
+          </Button>
+        </form>
+      ) : null}
+    </div>
+  );
+}
 
 export default function StudentsPage() {
   // Same SWR key dashboard/page.tsx already fetches this under, so
@@ -153,6 +309,34 @@ export default function StudentsPage() {
   );
   const [enrollmentStatusEdits, setEnrollmentStatusEdits] = useState<Record<string, EnrollmentStatus>>({});
   const [studentStatusEdits, setStudentStatusEdits] = useState<Record<string, StudentStatus>>({});
+
+  // ── Extra-curricular activities ──────────────────────────────────
+  const activityTitleLookups = useSWR("activity-lookups-title", () => api.listActivityLookups("ACTIVITY_TITLE"));
+  const activityRoleLookups = useSWR("activity-lookups-role", () => api.listActivityLookups("ACTIVITY_ROLE"));
+  const [activitiesPage, setActivitiesPage] = useState(1);
+  const [activityStudentFilter, setActivityStudentFilter] = useState("");
+  const activities = useSWR(["activities", activitiesPage, activityStudentFilter], () =>
+    api.listAllExtracurricularActivities({
+      page: activitiesPage,
+      studentId: activityStudentFilter || undefined,
+    }),
+  );
+  const [activityForm, setActivityForm] = useState({
+    studentId: "",
+    title: "",
+    role: "",
+    description: "",
+    startDate: "",
+    endDate: "",
+  });
+  const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
+  const [editActivityForm, setEditActivityForm] = useState({
+    title: "",
+    role: "",
+    description: "",
+    startDate: "",
+    endDate: "",
+  });
 
   const importFileRef = useRef<HTMLInputElement>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
@@ -1185,6 +1369,262 @@ export default function StudentsPage() {
           </Button>
         </form>
       </EntityCard>
+
+      <EntityCard
+        id="extracurricular-activities"
+        title="Extra-curricular Activities"
+        emptyLabel="No activities match these filters."
+        items={activities.data?.data}
+        footer={
+          <>
+            {activities.data ? (
+              <ListPager
+                page={activities.data.page}
+                totalPages={activities.data.totalPages}
+                onPrev={() => setActivitiesPage((p) => Math.max(1, p - 1))}
+                onNext={() => setActivitiesPage((p) => p + 1)}
+              />
+            ) : null}
+            {editingActivityId ? (
+              <form
+                className="flex flex-wrap items-end gap-3 border-b pb-4"
+                onSubmit={(e: FormEvent) => {
+                  e.preventDefault();
+                  submitAction(
+                    () =>
+                      api.updateExtracurricularActivity(editingActivityId, {
+                        title: editActivityForm.title,
+                        role: editActivityForm.role || undefined,
+                        description: editActivityForm.description || undefined,
+                        startDate: editActivityForm.startDate,
+                        endDate: editActivityForm.endDate || undefined,
+                      }),
+                    () => {
+                      setEditingActivityId(null);
+                      activities.mutate();
+                    },
+                  );
+                }}
+              >
+                <div className="space-y-2">
+                  <Label>Title</Label>
+                  <ActivityLookupSelect
+                    className="w-40"
+                    kind="ACTIVITY_TITLE"
+                    placeholder="Select title"
+                    value={editActivityForm.title}
+                    onChange={(v) => setEditActivityForm((f) => ({ ...f, title: v }))}
+                    options={(activityTitleLookups.data ?? []).map((l) => l.name)}
+                    onCreated={() => activityTitleLookups.mutate()}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Role (optional)</Label>
+                  <ActivityLookupSelect
+                    className="w-36"
+                    kind="ACTIVITY_ROLE"
+                    placeholder="Select role"
+                    value={editActivityForm.role}
+                    onChange={(v) => setEditActivityForm((f) => ({ ...f, role: v }))}
+                    options={(activityRoleLookups.data ?? []).map((l) => l.name)}
+                    onCreated={() => activityRoleLookups.mutate()}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Start date</Label>
+                  <Input
+                    required
+                    type="date"
+                    value={editActivityForm.startDate}
+                    onChange={(e) => setEditActivityForm((f) => ({ ...f, startDate: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>End date (optional)</Label>
+                  <Input
+                    type="date"
+                    value={editActivityForm.endDate}
+                    onChange={(e) => setEditActivityForm((f) => ({ ...f, endDate: e.target.value }))}
+                  />
+                </div>
+                <div className="w-full space-y-2">
+                  <Label>Description (optional)</Label>
+                  <Textarea
+                    value={editActivityForm.description}
+                    onChange={(e) => setEditActivityForm((f) => ({ ...f, description: e.target.value }))}
+                  />
+                </div>
+                <Button type="submit" size="sm" disabled={!editActivityForm.title || !editActivityForm.startDate}>
+                  Save
+                </Button>
+                <Button type="button" size="sm" variant="outline" onClick={() => setEditingActivityId(null)}>
+                  Cancel
+                </Button>
+              </form>
+            ) : null}
+          </>
+        }
+        renderItem={(a: {
+          id: string;
+          title: string;
+          role: string | null;
+          description: string | null;
+          startDate: string;
+          endDate: string | null;
+          student: { firstName: string; lastName: string; studentCode: string };
+        }) => (
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <span>
+                {a.student.firstName} {a.student.lastName}{" "}
+                <span className="text-muted-foreground">({a.student.studentCode})</span> — {a.title}
+                {a.role ? ` · ${a.role}` : ""} ·{" "}
+                {new Date(a.startDate).toLocaleDateString()} –{" "}
+                {a.endDate ? new Date(a.endDate).toLocaleDateString() : "ongoing"}
+              </span>
+              {a.description ? <p className="text-muted-foreground text-xs">{a.description}</p> : null}
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setEditingActivityId(a.id);
+                  setEditActivityForm({
+                    title: a.title,
+                    role: a.role ?? "",
+                    description: a.description ?? "",
+                    startDate: a.startDate.slice(0, 10),
+                    endDate: a.endDate ? a.endDate.slice(0, 10) : "",
+                  });
+                }}
+              >
+                Edit
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                onClick={() => submitDelete(() => api.deleteExtracurricularActivity(a.id), () => activities.mutate())}
+              >
+                Delete
+              </Button>
+            </div>
+          </div>
+        )}
+      >
+        <div className="flex flex-wrap items-end gap-3 pb-3">
+          <div className="space-y-1">
+            <Label className="text-xs">Filter by student</Label>
+            <PersonPicker
+              className="w-56"
+              placeholder="All students"
+              value={activityStudentFilter}
+              onChange={(v) => {
+                setActivityStudentFilter(v);
+                setActivitiesPage(1);
+              }}
+              options={(studentsPicker.data ?? []).map(studentToPersonOption)}
+            />
+          </div>
+        </div>
+
+        <Separator className="mb-3" />
+
+        <form
+          className="flex flex-wrap items-end gap-3"
+          onSubmit={(e: FormEvent) => {
+            e.preventDefault();
+            submit(
+              () =>
+                api.createStudentActivity(activityForm.studentId, {
+                  title: activityForm.title,
+                  role: activityForm.role || undefined,
+                  description: activityForm.description || undefined,
+                  startDate: activityForm.startDate,
+                  endDate: activityForm.endDate || undefined,
+                }),
+              () => {
+                setActivityForm((f) => ({ ...f, title: "", role: "", description: "", startDate: "", endDate: "" }));
+                activities.mutate();
+              },
+            );
+          }}
+        >
+          <div className="space-y-2">
+            <Label>Student</Label>
+            <PersonPicker
+              className="w-56"
+              placeholder="Select student"
+              value={activityForm.studentId}
+              onChange={(v) => setActivityForm((f) => ({ ...f, studentId: v }))}
+              options={(studentsPicker.data ?? []).map(studentToPersonOption)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Title</Label>
+            <ActivityLookupSelect
+              className="w-40"
+              kind="ACTIVITY_TITLE"
+              placeholder="Select title"
+              value={activityForm.title}
+              onChange={(v) => setActivityForm((f) => ({ ...f, title: v }))}
+              options={(activityTitleLookups.data ?? []).map((l) => l.name)}
+              onCreated={() => activityTitleLookups.mutate()}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Role (optional)</Label>
+            <ActivityLookupSelect
+              className="w-36"
+              kind="ACTIVITY_ROLE"
+              placeholder="Select role"
+              value={activityForm.role}
+              onChange={(v) => setActivityForm((f) => ({ ...f, role: v }))}
+              options={(activityRoleLookups.data ?? []).map((l) => l.name)}
+              onCreated={() => activityRoleLookups.mutate()}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Start date</Label>
+            <Input
+              required
+              type="date"
+              value={activityForm.startDate}
+              onChange={(e) => setActivityForm((f) => ({ ...f, startDate: e.target.value }))}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>End date (optional)</Label>
+            <Input
+              type="date"
+              value={activityForm.endDate}
+              onChange={(e) => setActivityForm((f) => ({ ...f, endDate: e.target.value }))}
+            />
+          </div>
+          <div className="w-full space-y-2">
+            <Label>Description (optional)</Label>
+            <Textarea
+              value={activityForm.description}
+              onChange={(e) => setActivityForm((f) => ({ ...f, description: e.target.value }))}
+            />
+          </div>
+          <Button type="submit" disabled={!activityForm.studentId || !activityForm.title || !activityForm.startDate}>
+            Add
+          </Button>
+        </form>
+      </EntityCard>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Activity Catalogs</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-6 sm:grid-cols-2">
+          <ActivityLookupManageList title="Titles" data={activityTitleLookups.data} mutate={() => activityTitleLookups.mutate()} />
+          <ActivityLookupManageList title="Roles" data={activityRoleLookups.data} mutate={() => activityRoleLookups.mutate()} />
+        </CardContent>
+      </Card>
     </div>
   );
 }

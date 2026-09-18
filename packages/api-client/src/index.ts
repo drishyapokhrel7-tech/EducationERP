@@ -22,6 +22,15 @@ import type {
   EnrollmentListItem,
   ListEnrollmentsParams,
   EnrollmentStatus,
+  ExtracurricularActivity,
+  CreateExtracurricularActivityInput,
+  UpdateExtracurricularActivityInput,
+  ExtracurricularActivityListItem,
+  ListExtracurricularActivitiesParams,
+  ExtracurricularActivityLookupKind,
+  CreateActivityLookupInput,
+  UpdateActivityLookupInput,
+  ActivityLookupRecord,
   CreateFacultyInput,
   CreateGuardianInput,
   UpdateGuardianInput,
@@ -816,6 +825,14 @@ export function createApiClient({
         body: JSON.stringify(input),
       }),
 
+    importEmployees: (file: File) => {
+      const form = new FormData();
+      form.append("file", file);
+      return requestForm<ImportResult>("/organizations/me/employees/import", form);
+    },
+    downloadEmployeeImportTemplate: () => requestBlob("/organizations/me/employees/import-template"),
+    exportEmployeesEditable: () => requestBlob("/organizations/me/employees/export-editable"),
+
     listEmploymentHistory: (employeeId: string) =>
       request<EmploymentHistory[]>(`/organizations/me/employees/${employeeId}/employment-history`),
     createEmploymentHistory: (employeeId: string, input: CreateEmploymentHistoryInput) =>
@@ -933,6 +950,47 @@ export function createApiClient({
         body: JSON.stringify({ status }),
       }),
 
+    listStudentActivities: (studentId: string) =>
+      request<ExtracurricularActivity[]>(`/organizations/me/students/${studentId}/extracurricular-activities`),
+    createStudentActivity: (studentId: string, input: CreateExtracurricularActivityInput) =>
+      request<ExtracurricularActivity>(`/organizations/me/students/${studentId}/extracurricular-activities`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    // Org-wide, filterable, paginated — mirrors listAllEnrollments.
+    listAllExtracurricularActivities: (params: ListExtracurricularActivitiesParams = {}) => {
+      const q = new URLSearchParams();
+      if (params.page) q.set("page", String(params.page));
+      if (params.pageSize) q.set("pageSize", String(params.pageSize));
+      if (params.studentId) q.set("studentId", params.studentId);
+      const qs = q.toString();
+      return request<PaginatedResult<ExtracurricularActivityListItem>>(
+        `/organizations/me/extracurricular-activities${qs ? `?${qs}` : ""}`,
+      );
+    },
+    updateExtracurricularActivity: (id: string, input: UpdateExtracurricularActivityInput) =>
+      request<ExtracurricularActivity>(`/organizations/me/extracurricular-activities/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      }),
+    deleteExtracurricularActivity: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/extracurricular-activities/${id}`, { method: "DELETE" }),
+
+    createActivityLookup: (input: CreateActivityLookupInput) =>
+      request<ActivityLookupRecord>("/organizations/me/activity-lookups", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    updateActivityLookup: (id: string, input: UpdateActivityLookupInput) =>
+      request<ActivityLookupRecord>(`/organizations/me/activity-lookups/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      }),
+    deleteActivityLookup: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/activity-lookups/${id}`, { method: "DELETE" }),
+    listActivityLookups: (kind?: ExtracurricularActivityLookupKind) =>
+      request<ActivityLookupRecord[]>(`/organizations/me/activity-lookups${kind ? `?kind=${kind}` : ""}`),
+
     listStatusHistory: (studentId: string) =>
       request<StudentStatusHistoryEntry[]>(`/organizations/me/students/${studentId}/status-history`),
     updateStudentStatus: (studentId: string, input: UpdateStudentStatusInput) =>
@@ -970,6 +1028,7 @@ export function createApiClient({
     },
     downloadStudentImportTemplate: () => requestBlob("/organizations/me/students/import-template"),
     exportStudents: () => requestBlob("/organizations/me/students/export"),
+    exportStudentsEditable: () => requestBlob("/organizations/me/students/export-editable"),
     // Printable ID card PDF (org header + photo + name/ID/class) — a
     // Blob, for download or inline browser print.
     getStudentIdCardPdf: (id: string) => requestBlob(`/organizations/me/students/${id}/id-card`),

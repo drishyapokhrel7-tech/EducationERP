@@ -63,166 +63,168 @@ model Organization {
   updatedAt           DateTime  @updatedAt
   deletedAt           DateTime?
 
-  referredByPartner           MarketingPartner?            @relation("OrganizationReferrer", fields: [referredByPartnerId], references: [id])
-  marketingCommissions        MarketingCommission[]
-  editionUpgradePayments      EditionUpgradePayment[]
-  editionUpgradeRequests      EditionUpgradeRequest[]
-  campuses                    Campus[]
-  users                       User[]
-  roles                       Role[]
-  auditLogs                   AuditLog[]
-  loginEvents                 LoginEvent[]
-  accessPolicies              AccessPolicy[]
-  faculties                   Faculty[]
-  departments                 Department[]
-  programs                    Program[]
-  academicYears               AcademicYear[]
-  semesters                   Semester[]
-  termExams                   TermExam[]
-  sections                    Section[]
-  staffTypes                  StaffType[]
-  designations                Designation[]
-  employees                   Employee[]
-  employmentHistories         EmploymentHistory[]
-  qualifications              Qualification[]
-  teacherProfiles             TeacherProfile[]
-  subjects                    Subject[]
-  curricula                   Curriculum[]
-  curriculumSubjects          CurriculumSubject[]
-  students                    Student[]
-  guardians                   Guardian[]
-  studentGuardians            StudentGuardian[]
-  studentEnrollments          StudentEnrollment[]
-  studentStatusHistories      StudentStatusHistory[]
-  admissionApplications       AdmissionApplication[]
-  admissionStatusHistories    AdmissionStatusHistory[]
-  rooms                       Room[]
-  periods                     Period[]
-  teachingAssignments         TeachingAssignment[]
-  classSchedules              ClassSchedule[]
-  attendanceSessions          AttendanceSession[]
-  studentAttendances          StudentAttendance[]
-  staffAttendances            StaffAttendance[]
-  attendanceExceptions        AttendanceException[]
-  syllabi                     Syllabus[]
-  syllabusNodes               SyllabusNode[]
-  learningObjectives          LearningObjective[]
-  lessonPlans                 LessonPlan[]
-  classSessions               ClassSession[]
-  classMaterials              ClassMaterial[]
-  assignments                 Assignment[]
-  assignmentSubmissions       AssignmentSubmission[]
-  knowledgeChecks             KnowledgeCheck[]
-  knowledgeCheckQuestions     KnowledgeCheckQuestion[]
-  knowledgeCheckAttempts      KnowledgeCheckAttempt[]
-  knowledgeCheckAnswers       KnowledgeCheckAnswer[]
-  examTypes                   ExamType[]
-  gradingSchemes              GradingScheme[]
-  questionBanks               QuestionBank[]
-  questions                   Question[]
-  exams                       Exam[]
-  examSubjects                ExamSubject[]
-  examSchedules               ExamSchedule[]
-  examRooms                   ExamRoom[]
-  examAttempts                ExamAttempt[]
-  marks                       Marks[]
-  grades                      Grade[]
-  reportCards                 ReportCard[]
-  answers                     Answer[]
-  biometricPolicy             BiometricPolicy?
-  faceEnrollments             FaceEnrollment[]
-  cameras                     Camera[]
-  cameraEvents                CameraEvent[]
-  faceEmbeddings              FaceEmbedding[]
-  faceMatchEvents             FaceMatchEvent[]
-  feeCategories               FeeCategory[]
-  feeStructures               FeeStructure[]
-  feeStructureItems           FeeStructureItem[]
-  studentFeeAssignments       StudentFeeAssignment[]
-  invoices                    Invoice[]
-  invoiceItems                InvoiceItem[]
-  installments                Installment[]
-  fineRules                   FineRule[]
-  payments                    Payment[]
-  scholarships                Scholarship[]
-  studentScholarships         StudentScholarship[]
-  discounts                   Discount[]
-  refunds                     Refund[]
-  financialTransactions       FinancialTransaction[]
-  accounts                    Account[]
-  journalEntries              JournalEntry[]
-  journalLines                JournalLine[]
-  esewaTransactions           EsewaTransaction[]
-  leaveTypes                  LeaveType[]
-  staffLeaveBalances          StaffLeaveBalance[]
-  leaveRequests               LeaveRequest[]
-  salaryStructures            SalaryStructure[]
-  salaryStructureItems        SalaryStructureItem[]
-  payrolls                    Payroll[]
-  payrollItems                PayrollItem[]
-  vehicles                    Vehicle[]
-  drivers                     Driver[]
-  routes                      Route[]
-  stops                       Stop[]
-  studentTransportAssignments StudentTransportAssignment[]
-  vehicleTrackingEvents       VehicleTrackingEvent[]
-  courseModules               CourseModule[]
-  courseModuleItems           CourseModuleItem[]
-  courseModuleItemCompletions CourseModuleItemCompletion[]
-  announcements               Announcement[]
-  discussionTopics            DiscussionTopic[]
-  discussionPosts             DiscussionPost[]
-  notifications               Notification[]
-  hostels                     Hostel[]
-  hostelBuildings             HostelBuilding[]
-  hostelRooms                 HostelRoom[]
-  hostelBeds                  HostelBed[]
-  hostelAllocations           HostelAllocation[]
-  hostelAttendance            HostelAttendance[]
-  hostelVisitors              HostelVisitor[]
-  hostelComplaints            HostelComplaint[]
-  hostelMaintenanceRequests   HostelMaintenanceRequest[]
-  hostelLookups               HostelLookup[]
-  inventoryCategories         InventoryCategory[]
-  suppliers                   Supplier[]
-  inventoryItems              InventoryItem[]
-  purchaseOrders              PurchaseOrder[]
-  purchaseOrderItems          PurchaseOrderItem[]
-  stockMovements              StockMovement[]
-  assets                      Asset[]
-  assetAssignments            AssetAssignment[]
-  messageTemplates            MessageTemplate[]
-  messages                    Message[]
-  emailLogs                   EmailLog[]
-  smsLogs                     SmsLog[]
-  pushNotificationLogs        PushNotificationLog[]
-  studentDocuments            StudentDocument[]
-  staffDocuments              StaffDocument[]
-  certificates                Certificate[]
-  alumniProfiles              AlumniProfile[]
-  alumniEducation             AlumniEducation[]
-  alumniCompanies             AlumniCompany[]
-  alumniCareerHistory         AlumniCareerHistory[]
-  alumniSkills                AlumniSkill[]
-  alumniCertifications        AlumniCertification[]
-  alumniSurveys               AlumniSurvey[]
-  alumniSurveyResponses       AlumniSurveyResponse[]
-  alumniMentorships           AlumniMentorship[]
-  alumniAchievements          AlumniAchievement[]
-  careerOpportunities         CareerOpportunity[]
-  careerApplications          CareerApplication[]
-  careerServices              CareerService[]
-  graduateOutcomes            GraduateOutcome[]
-  gatewayDevices              GatewayDevice[]
-  gatewayCardBindings         GatewayCardBinding[]
-  gatewayScanEvents           GatewayScanEvent[]
-  guardianQuestions           GuardianQuestion[]
-  bookCategories              BookCategory[]
-  books                       Book[]
-  libraryTransactions         LibraryTransaction[]
-  libraryReservations         LibraryReservation[]
-  libraryFines                LibraryFine[]
-  librarySettings             LibrarySettings?
+  referredByPartner              MarketingPartner?               @relation("OrganizationReferrer", fields: [referredByPartnerId], references: [id])
+  marketingCommissions           MarketingCommission[]
+  editionUpgradePayments         EditionUpgradePayment[]
+  editionUpgradeRequests         EditionUpgradeRequest[]
+  campuses                       Campus[]
+  users                          User[]
+  roles                          Role[]
+  auditLogs                      AuditLog[]
+  loginEvents                    LoginEvent[]
+  accessPolicies                 AccessPolicy[]
+  faculties                      Faculty[]
+  departments                    Department[]
+  programs                       Program[]
+  academicYears                  AcademicYear[]
+  semesters                      Semester[]
+  termExams                      TermExam[]
+  sections                       Section[]
+  staffTypes                     StaffType[]
+  designations                   Designation[]
+  employees                      Employee[]
+  employmentHistories            EmploymentHistory[]
+  qualifications                 Qualification[]
+  teacherProfiles                TeacherProfile[]
+  subjects                       Subject[]
+  curricula                      Curriculum[]
+  curriculumSubjects             CurriculumSubject[]
+  students                       Student[]
+  guardians                      Guardian[]
+  studentGuardians               StudentGuardian[]
+  studentEnrollments             StudentEnrollment[]
+  studentStatusHistories         StudentStatusHistory[]
+  admissionApplications          AdmissionApplication[]
+  admissionStatusHistories       AdmissionStatusHistory[]
+  rooms                          Room[]
+  periods                        Period[]
+  teachingAssignments            TeachingAssignment[]
+  classSchedules                 ClassSchedule[]
+  attendanceSessions             AttendanceSession[]
+  studentAttendances             StudentAttendance[]
+  staffAttendances               StaffAttendance[]
+  attendanceExceptions           AttendanceException[]
+  syllabi                        Syllabus[]
+  syllabusNodes                  SyllabusNode[]
+  learningObjectives             LearningObjective[]
+  lessonPlans                    LessonPlan[]
+  classSessions                  ClassSession[]
+  classMaterials                 ClassMaterial[]
+  assignments                    Assignment[]
+  assignmentSubmissions          AssignmentSubmission[]
+  knowledgeChecks                KnowledgeCheck[]
+  knowledgeCheckQuestions        KnowledgeCheckQuestion[]
+  knowledgeCheckAttempts         KnowledgeCheckAttempt[]
+  knowledgeCheckAnswers          KnowledgeCheckAnswer[]
+  examTypes                      ExamType[]
+  gradingSchemes                 GradingScheme[]
+  questionBanks                  QuestionBank[]
+  questions                      Question[]
+  exams                          Exam[]
+  examSubjects                   ExamSubject[]
+  examSchedules                  ExamSchedule[]
+  examRooms                      ExamRoom[]
+  examAttempts                   ExamAttempt[]
+  marks                          Marks[]
+  grades                         Grade[]
+  reportCards                    ReportCard[]
+  answers                        Answer[]
+  biometricPolicy                BiometricPolicy?
+  faceEnrollments                FaceEnrollment[]
+  cameras                        Camera[]
+  cameraEvents                   CameraEvent[]
+  faceEmbeddings                 FaceEmbedding[]
+  faceMatchEvents                FaceMatchEvent[]
+  feeCategories                  FeeCategory[]
+  feeStructures                  FeeStructure[]
+  feeStructureItems              FeeStructureItem[]
+  studentFeeAssignments          StudentFeeAssignment[]
+  invoices                       Invoice[]
+  invoiceItems                   InvoiceItem[]
+  installments                   Installment[]
+  fineRules                      FineRule[]
+  payments                       Payment[]
+  scholarships                   Scholarship[]
+  studentScholarships            StudentScholarship[]
+  discounts                      Discount[]
+  refunds                        Refund[]
+  financialTransactions          FinancialTransaction[]
+  accounts                       Account[]
+  journalEntries                 JournalEntry[]
+  journalLines                   JournalLine[]
+  esewaTransactions              EsewaTransaction[]
+  leaveTypes                     LeaveType[]
+  staffLeaveBalances             StaffLeaveBalance[]
+  leaveRequests                  LeaveRequest[]
+  salaryStructures               SalaryStructure[]
+  salaryStructureItems           SalaryStructureItem[]
+  payrolls                       Payroll[]
+  payrollItems                   PayrollItem[]
+  vehicles                       Vehicle[]
+  drivers                        Driver[]
+  routes                         Route[]
+  stops                          Stop[]
+  studentTransportAssignments    StudentTransportAssignment[]
+  vehicleTrackingEvents          VehicleTrackingEvent[]
+  courseModules                  CourseModule[]
+  courseModuleItems              CourseModuleItem[]
+  courseModuleItemCompletions    CourseModuleItemCompletion[]
+  announcements                  Announcement[]
+  discussionTopics               DiscussionTopic[]
+  discussionPosts                DiscussionPost[]
+  notifications                  Notification[]
+  hostels                        Hostel[]
+  hostelBuildings                HostelBuilding[]
+  hostelRooms                    HostelRoom[]
+  hostelBeds                     HostelBed[]
+  hostelAllocations              HostelAllocation[]
+  hostelAttendance               HostelAttendance[]
+  hostelVisitors                 HostelVisitor[]
+  hostelComplaints               HostelComplaint[]
+  hostelMaintenanceRequests      HostelMaintenanceRequest[]
+  hostelLookups                  HostelLookup[]
+  inventoryCategories            InventoryCategory[]
+  suppliers                      Supplier[]
+  inventoryItems                 InventoryItem[]
+  purchaseOrders                 PurchaseOrder[]
+  purchaseOrderItems             PurchaseOrderItem[]
+  stockMovements                 StockMovement[]
+  assets                         Asset[]
+  assetAssignments               AssetAssignment[]
+  messageTemplates               MessageTemplate[]
+  messages                       Message[]
+  emailLogs                      EmailLog[]
+  smsLogs                        SmsLog[]
+  pushNotificationLogs           PushNotificationLog[]
+  studentDocuments               StudentDocument[]
+  staffDocuments                 StaffDocument[]
+  certificates                   Certificate[]
+  alumniProfiles                 AlumniProfile[]
+  alumniEducation                AlumniEducation[]
+  alumniCompanies                AlumniCompany[]
+  alumniCareerHistory            AlumniCareerHistory[]
+  alumniSkills                   AlumniSkill[]
+  alumniCertifications           AlumniCertification[]
+  alumniSurveys                  AlumniSurvey[]
+  alumniSurveyResponses          AlumniSurveyResponse[]
+  alumniMentorships              AlumniMentorship[]
+  alumniAchievements             AlumniAchievement[]
+  careerOpportunities            CareerOpportunity[]
+  careerApplications             CareerApplication[]
+  careerServices                 CareerService[]
+  graduateOutcomes               GraduateOutcome[]
+  gatewayDevices                 GatewayDevice[]
+  gatewayCardBindings            GatewayCardBinding[]
+  gatewayScanEvents              GatewayScanEvent[]
+  guardianQuestions              GuardianQuestion[]
+  bookCategories                 BookCategory[]
+  books                          Book[]
+  libraryTransactions            LibraryTransaction[]
+  libraryReservations            LibraryReservation[]
+  libraryFines                   LibraryFine[]
+  librarySettings                LibrarySettings?
+  extracurricularActivities      ExtracurricularActivity[]
+  extracurricularActivityLookups ExtracurricularActivityLookup[]
 
   @@map("organizations")
 }
@@ -1015,6 +1017,7 @@ model Student {
   libraryTransactions         LibraryTransaction[]
   libraryReservations         LibraryReservation[]
   libraryFines                LibraryFine[]
+  extracurricularActivities   ExtracurricularActivity[]
 
   @@unique([organizationId, studentCode])
   @@index([organizationId])
@@ -1108,6 +1111,61 @@ model StudentEnrollment {
   @@unique([studentId, semesterId])
   @@index([organizationId])
   @@map("student_enrollments")
+}
+
+enum ExtracurricularActivityLookupKind {
+  ACTIVITY_TITLE
+  ACTIVITY_ROLE
+}
+
+// Same pattern as HostelLookup — one small org-scoped catalog table with
+// a `kind` discriminator serving both the Title and Role dropdowns
+// (rather than two near-identical one-off tables), admin-configurable
+// instead of hardcoded. Not extending HostelLookupKind itself — that
+// enum/table/permission set is scoped to the hostel domain, this is a
+// new analogous table for the activities domain. Downstream
+// (ExtracurricularActivity.title/role) stores the picked value as a
+// plain string, not an FK — same reasoning as HostelLookup's own
+// consumers: renaming or removing a catalog entry later never orphans
+// or blocks a already-recorded activity.
+model ExtracurricularActivityLookup {
+  id             String                            @id @default(uuid())
+  organizationId String
+  kind           ExtracurricularActivityLookupKind
+  name           String
+  createdAt      DateTime                          @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, kind, name])
+  @@index([organizationId])
+  @@map("extracurricular_activity_lookups")
+}
+
+// A student's clubs/sports/competitions/community-service record — the
+// per-student child-record shape follows EmploymentHistory (dated range
+// + descriptive fields attached to a person); title/role are picked from
+// ExtracurricularActivityLookup above via a dropdown but stored here as
+// plain strings, same as every other lookup-backed free-text field in
+// this schema.
+model ExtracurricularActivity {
+  id             String    @id @default(uuid())
+  organizationId String
+  studentId      String
+  title          String
+  role           String?
+  description    String?
+  startDate      DateTime
+  endDate        DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  student      Student      @relation(fields: [studentId], references: [id])
+
+  @@index([organizationId])
+  @@index([studentId])
+  @@map("extracurricular_activities")
 }
 
 model StudentStatusHistory {

@@ -12,6 +12,12 @@ import { AttachGuardianDto } from "./dto/attach-guardian.dto";
 import { CreateEnrollmentDto } from "./dto/create-enrollment.dto";
 import { ListEnrollmentsQueryDto } from "./dto/list-enrollments.dto";
 import { UpdateEnrollmentStatusDto } from "./dto/update-enrollment-status.dto";
+import { CreateExtracurricularActivityDto } from "./dto/create-extracurricular-activity.dto";
+import { UpdateExtracurricularActivityDto } from "./dto/update-extracurricular-activity.dto";
+import { ListExtracurricularActivitiesQueryDto } from "./dto/list-extracurricular-activities.dto";
+import { CreateActivityLookupDto } from "./dto/create-activity-lookup.dto";
+import { UpdateActivityLookupDto } from "./dto/update-activity-lookup.dto";
+import { ExtracurricularActivityLookupKind } from "@prisma/client";
 import { UpdateStudentStatusDto } from "./dto/update-student-status.dto";
 import { CreateStudentLoginDto } from "./dto/create-student-login.dto";
 import { CreateGuardianLoginDto } from "./dto/create-guardian-login.dto";
@@ -458,6 +464,125 @@ export class StudentsService {
         },
       });
     });
+  }
+
+  // ── Extra-curricular activities ──────────────────────────────────
+
+  async listActivities(organizationId: string, studentId: string) {
+    await this.requireStudent(organizationId, studentId);
+    return this.prisma.withTenant(organizationId, (tx) =>
+      tx.extracurricularActivity.findMany({ where: { organizationId, studentId }, orderBy: { startDate: "desc" } }),
+    );
+  }
+
+  async createActivity(organizationId: string, studentId: string, dto: CreateExtracurricularActivityDto) {
+    await this.requireStudent(organizationId, studentId);
+    return this.prisma.withTenant(organizationId, (tx) =>
+      tx.extracurricularActivity.create({
+        data: {
+          organizationId,
+          studentId,
+          title: dto.title,
+          role: dto.role,
+          description: dto.description,
+          startDate: new Date(dto.startDate),
+          endDate: dto.endDate ? new Date(dto.endDate) : undefined,
+        },
+      }),
+    );
+  }
+
+  // Org-wide, filterable, paginated — mirrors listAllEnrollments.
+  listAllActivities(organizationId: string, filters: ListExtracurricularActivitiesQueryDto) {
+    return this.prisma.withTenant(organizationId, (tx) => {
+      const where = {
+        organizationId,
+        ...(filters.studentId ? { studentId: filters.studentId } : {}),
+      };
+      return paginate(
+        () =>
+          tx.extracurricularActivity.findMany({
+            where,
+            include: { student: true },
+            orderBy: [{ student: { firstName: "asc" } }, { student: { lastName: "asc" } }],
+            skip: ((filters.page ?? 1) - 1) * (filters.pageSize ?? 25),
+            take: filters.pageSize ?? 25,
+          }),
+        () => tx.extracurricularActivity.count({ where }),
+        filters.page ?? 1,
+        filters.pageSize ?? 25,
+      );
+    });
+  }
+
+  async updateActivity(organizationId: string, id: string, dto: UpdateExtracurricularActivityDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const activity = await tx.extracurricularActivity.findUnique({ where: { id } });
+      if (!activity || activity.organizationId !== organizationId) throw new NotFoundException("Activity not found");
+      return tx.extracurricularActivity.update({
+        where: { id },
+        data: {
+          title: dto.title,
+          role: dto.role,
+          description: dto.description,
+          startDate: dto.startDate ? new Date(dto.startDate) : undefined,
+          endDate: dto.endDate ? new Date(dto.endDate) : undefined,
+        },
+      });
+    });
+  }
+
+  async deleteActivity(organizationId: string, id: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const activity = await tx.extracurricularActivity.findUnique({ where: { id } });
+      if (!activity || activity.organizationId !== organizationId) throw new NotFoundException("Activity not found");
+      await tx.extracurricularActivity.delete({ where: { id } });
+      return { deleted: true };
+    });
+  }
+
+  // Upsert-by-name, same reasoning as HostelService.createLookup — the
+  // frontend's inline "+ Add new" flow can safely re-submit an
+  // already-listed value without erroring or duplicating it.
+  createActivityLookup(organizationId: string, dto: CreateActivityLookupDto) {
+    return this.prisma.withTenant(organizationId, (tx) =>
+      tx.extracurricularActivityLookup.upsert({
+        where: { organizationId_kind_name: { organizationId, kind: dto.kind, name: dto.name } },
+        update: {},
+        create: { organizationId, kind: dto.kind, name: dto.name },
+      }),
+    );
+  }
+
+  listActivityLookups(organizationId: string, kind?: ExtracurricularActivityLookupKind) {
+    return this.prisma.withTenant(organizationId, (tx) =>
+      tx.extracurricularActivityLookup.findMany({ where: { organizationId, kind }, orderBy: { name: "asc" } }),
+    );
+  }
+
+  async updateActivityLookup(organizationId: string, id: string, dto: UpdateActivityLookupDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadActivityLookup(tx, organizationId, id);
+      return tx.extracurricularActivityLookup.update({ where: { id }, data: dto });
+    });
+  }
+
+  // No assertNoDependents here, deliberately — same reasoning as
+  // HostelService.deleteLookup: ExtracurricularActivity.title/role store
+  // plain strings, not FKs, so removing a catalog entry never orphans or
+  // blocks deleting historical activity records.
+  async deleteActivityLookup(organizationId: string, id: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      await this.loadActivityLookup(tx, organizationId, id);
+      await tx.extracurricularActivityLookup.delete({ where: { id } });
+      return { deleted: true };
+    });
+  }
+
+  private async loadActivityLookup(tx: PrismaClient, organizationId: string, id: string) {
+    const lookup = await tx.extracurricularActivityLookup.findUnique({ where: { id } });
+    if (!lookup || lookup.organizationId !== organizationId) throw new NotFoundException("Activity lookup not found");
+    return lookup;
   }
 
   async listStatusHistory(organizationId: string, studentId: string) {
