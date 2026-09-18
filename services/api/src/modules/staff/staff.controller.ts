@@ -1,4 +1,6 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Res, UploadedFile, UseGuards, UseInterceptors } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
+import type { Response } from "express";
 import { StaffService } from "./staff.service";
 import { CreateStaffTypeDto } from "./dto/create-staff-type.dto";
 import { UpdateStaffTypeDto } from "./dto/update-staff-type.dto";
@@ -16,6 +18,7 @@ import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtPayload } from "../../common/auth/jwt-payload";
 import { PaginationQueryDto } from "../../common/dto/pagination.dto";
+import { IMPORT_UPLOAD_OPTIONS } from "../../common/upload-limits";
 
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller("organizations/me")
@@ -95,6 +98,38 @@ export class StaffController {
   @RequirePermissions("employee:update")
   updateEmployee(@CurrentUser() user: JwtPayload, @Param("id") id: string, @Body() dto: UpdateEmployeeDto) {
     return this.staff.updateEmployee(user.organizationId, id, dto);
+  }
+
+  // Excel round-trip trio — same shape as StudentsController's own
+  // import/import-template/export-editable routes (see that
+  // controller's comments for the multer/@Res()+res.send(buffer)
+  // reasoning, both reused verbatim here).
+  @Post("employees/import")
+  @RequirePermissions("employee:create")
+  @UseInterceptors(FileInterceptor("file", IMPORT_UPLOAD_OPTIONS))
+  importEmployees(@CurrentUser() user: JwtPayload, @UploadedFile() file: Express.Multer.File | undefined) {
+    if (!file) {
+      throw new BadRequestException("No file uploaded (expected a multipart field named 'file')");
+    }
+    return this.staff.importEmployees(user.organizationId, file.buffer, file.originalname);
+  }
+
+  @Get("employees/import-template")
+  @RequirePermissions("employee:create")
+  async downloadEmployeeImportTemplate(@CurrentUser() user: JwtPayload, @Res() res: Response) {
+    const buffer = await this.staff.generateEmployeeImportTemplate(user.organizationId);
+    res.set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.set("Content-Disposition", 'attachment; filename="employees-import-template.xlsx"');
+    res.send(buffer);
+  }
+
+  @Get("employees/export-editable")
+  @RequirePermissions("employee:export")
+  async exportEditableEmployees(@CurrentUser() user: JwtPayload, @Res() res: Response) {
+    const buffer = await this.staff.exportEditableEmployees(user.organizationId);
+    res.set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.set("Content-Disposition", 'attachment; filename="employees-editable.xlsx"');
+    res.send(buffer);
   }
 
   @Delete("employees/:id")

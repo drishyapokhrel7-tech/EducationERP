@@ -6,5 +6,6 @@ export interface ImportRowError {
 export interface ImportResult {
   totalRows: number;
   created: number;
+  updated: number;
   errors: ImportRowError[];
 }

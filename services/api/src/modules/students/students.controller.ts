@@ -235,4 +235,15 @@ export class StudentsController {
   exportStudents(@CurrentUser() user: JwtPayload) {
     return this.students.exportStudentsCsv(user.organizationId);
   }
+
+  // The other half of the round trip with students/import — same
+  // @Res()+res.send(buffer) reasoning as downloadImportTemplate above.
+  @Get("students/export-editable")
+  @RequirePermissions("student:export")
+  async exportEditable(@CurrentUser() user: JwtPayload, @Res() res: Response) {
+    const buffer = await this.students.exportEditableStudents(user.organizationId);
+    res.set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.set("Content-Disposition", 'attachment; filename="students-editable.xlsx"');
+    res.send(buffer);
+  }
 }

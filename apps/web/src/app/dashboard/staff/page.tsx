@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import useSWR from "swr";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -18,7 +19,7 @@ import { useHighlightFromSearch } from "@/lib/use-highlight-from-search";
 import { isEditionLimitError } from "@/lib/edition-limit-error";
 import { useEditionStatus } from "@/lib/use-edition-status";
 import { submitAction, submitDelete, errorMessage } from "@/lib/submit-action";
-import { ApiError, type Edition } from "@education-erp/api-client";
+import { ApiError, type Edition, type ImportResult } from "@education-erp/api-client";
 
 export default function StaffPage() {
   // Same SWR key dashboard/page.tsx already fetches this under, so
@@ -37,6 +38,65 @@ export default function StaffPage() {
   const editionStatus = useEditionStatus();
   const [editionLimitEdition, setEditionLimitEdition] = useState<Edition | null>(null);
   useHighlightFromSearch(Boolean(employees.data));
+
+  // Excel round-trip — same shape/handlers as the Students page's own
+  // Import/Export card (see that page's own comments for the reasoning).
+  const importFileRef = useRef<HTMLInputElement>(null);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
+  const [downloadingEditable, setDownloadingEditable] = useState(false);
+
+  async function handleImport() {
+    const file = importFileRef.current?.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    try {
+      const result = await api.importEmployees(file);
+      setImportResult(result);
+      employees.mutate();
+      toast.success(`${result.created} created, ${result.updated} updated (of ${result.totalRows} row(s))`);
+      if (importFileRef.current) importFileRef.current.value = "";
+    } catch {
+      toast.error("Import failed — check the file is a valid Excel template or CSV");
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  async function handleDownloadTemplate() {
+    setDownloadingTemplate(true);
+    try {
+      const blob = await api.downloadEmployeeImportTemplate();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "employees-import-template.xlsx";
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Could not download the template");
+    } finally {
+      setDownloadingTemplate(false);
+    }
+  }
+
+  async function handleDownloadEditable() {
+    setDownloadingEditable(true);
+    try {
+      const blob = await api.exportEmployeesEditable();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "employees-editable.xlsx";
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Could not download the editable copy");
+    } finally {
+      setDownloadingEditable(false);
+    }
+  }
 
   // Keyed by employeeId, same per-row pattern as the students page's
   // create-login form.
@@ -389,6 +449,57 @@ export default function StaffPage() {
           <Button type="submit">Add</Button>
         </form>
       </EntityCard>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Import / Export</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="space-y-2">
+              <Label>Import employees (Excel template or CSV)</Label>
+              <Input
+                ref={importFileRef}
+                type="file"
+                accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                className="w-64"
+              />
+            </div>
+            <Button type="button" disabled={importing} onClick={handleImport}>
+              {importing ? "Importing..." : "Import"}
+            </Button>
+            <Button type="button" variant="outline" disabled={downloadingTemplate} onClick={handleDownloadTemplate}>
+              {downloadingTemplate ? "Downloading..." : "Download template"}
+            </Button>
+            <Button type="button" variant="outline" disabled={downloadingEditable} onClick={handleDownloadEditable}>
+              {downloadingEditable ? "Downloading..." : "Download editable copy"}
+            </Button>
+          </div>
+          <p className="text-muted-foreground text-xs">
+            Columns: employeeCode, staffType, designation, department (optional), firstName,
+            middleName (optional), lastName, email, phone (optional), dateOfJoining. Staff
+            type/designation/department are dropdowns matching this org&apos;s real names. Leave
+            employeeCode blank for a new employee (a code is generated automatically), or fill it
+            in — e.g. from &quot;Download editable copy&quot; — to update that employee instead.
+          </p>
+          {importResult ? (
+            <div className="text-sm">
+              <p>
+                {importResult.created} created, {importResult.updated} updated (of {importResult.totalRows} row(s)).
+              </p>
+              {importResult.errors.length > 0 ? (
+                <ul className="text-destructive mt-2 list-disc space-y-1 pl-5">
+                  {importResult.errors.map((e, i) => (
+                    <li key={i}>
+                      Row {e.row}: {e.message}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
 
       <EntityCard
         id="employees"
