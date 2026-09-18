@@ -159,6 +159,7 @@ export default function StudentsPage() {
   const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
+  const [downloadingEditable, setDownloadingEditable] = useState(false);
 
   // Keyed by studentId, same pattern as the exams page's per-row forms.
   const [loginPasswordForms, setLoginPasswordForms] = useState<Record<string, string>>({});
@@ -217,7 +218,7 @@ export default function StudentsPage() {
       students.mutate();
       studentsPicker.mutate();
       if (importFileRef.current) importFileRef.current.value = "";
-      toast.success(`Imported ${result.created} of ${result.totalRows} row(s)`);
+      toast.success(`${result.created} created, ${result.updated} updated (of ${result.totalRows} row(s))`);
     } catch {
       toast.error("Import failed — check the file is a valid CSV");
     } finally {
@@ -256,6 +257,26 @@ export default function StudentsPage() {
       toast.error("Could not download the template");
     } finally {
       setDownloadingTemplate(false);
+    }
+  }
+
+  // The other half of the round trip: current students pre-filled into
+  // the same template, so editing this file and re-importing it updates
+  // existing rows instead of rejecting them as duplicates.
+  async function handleDownloadEditable() {
+    setDownloadingEditable(true);
+    try {
+      const blob = await api.exportStudentsEditable();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "students-editable.xlsx";
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Could not download the editable copy");
+    } finally {
+      setDownloadingEditable(false);
     }
   }
 
@@ -305,6 +326,9 @@ export default function StudentsPage() {
             <Button type="button" variant="outline" disabled={downloadingTemplate} onClick={handleDownloadTemplate}>
               {downloadingTemplate ? "Downloading..." : "Download template"}
             </Button>
+            <Button type="button" variant="outline" disabled={downloadingEditable} onClick={handleDownloadEditable}>
+              {downloadingEditable ? "Downloading..." : "Download editable copy"}
+            </Button>
             <Button type="button" variant="outline" disabled={exporting} onClick={handleExport}>
               {exporting ? "Exporting..." : "Export CSV"}
             </Button>
@@ -312,12 +336,14 @@ export default function StudentsPage() {
           <p className="text-muted-foreground text-xs">
             Columns: studentCode, firstName, lastName, dateOfBirth, gender (optional — Male, Female
             or Other). The Excel template includes a dropdown for gender so entries stay
-            standardized; CSV works too if you already have one.
+            standardized; CSV works too if you already have one. Leave studentCode blank for a new
+            student, or fill it in (e.g. from &quot;Download editable copy&quot;) to update that
+            student instead.
           </p>
           {importResult ? (
             <div className="text-sm">
               <p>
-                {importResult.created} of {importResult.totalRows} row(s) created.
+                {importResult.created} created, {importResult.updated} updated (of {importResult.totalRows} row(s)).
               </p>
               {importResult.errors.length > 0 ? (
                 <ul className="text-destructive mt-2 list-disc space-y-1 pl-5">
