@@ -22,6 +22,8 @@ import type {
   EnrollmentListItem,
   ListEnrollmentsParams,
   EnrollmentStatus,
+  BulkPromoteInput,
+  BulkPromoteResult,
   ExtracurricularActivity,
   CreateExtracurricularActivityInput,
   UpdateExtracurricularActivityInput,
@@ -948,6 +950,12 @@ export function createApiClient({
       request<EnrollmentListItem>(`/organizations/me/enrollments/${id}/status`, {
         method: "PATCH",
         body: JSON.stringify({ status }),
+      }),
+
+    bulkPromote: (input: BulkPromoteInput) =>
+      request<BulkPromoteResult>("/organizations/me/enrollments/bulk-promote", {
+        method: "POST",
+        body: JSON.stringify(input),
       }),
 
     listStudentActivities: (studentId: string) =>

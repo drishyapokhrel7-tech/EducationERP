@@ -719,6 +719,34 @@ export interface ListEnrollmentsParams {
   status?: EnrollmentStatus;
 }
 
+export type PromotionAction = "PROMOTE" | "RETAIN" | "GRADUATE";
+
+export interface BulkPromoteEntryInput {
+  enrollmentId: string;
+  action: PromotionAction;
+  // Required for PROMOTE/RETAIN, ignored for GRADUATE.
+  targetProgramId?: string;
+  targetSemesterId?: string;
+  targetSectionId?: string;
+  enrollmentDate?: string;
+}
+
+export interface BulkPromoteInput {
+  entries: BulkPromoteEntryInput[];
+}
+
+export interface BulkPromoteRowError {
+  enrollmentId: string;
+  message: string;
+}
+
+export interface BulkPromoteResult {
+  promoted: number;
+  retained: number;
+  graduated: number;
+  errors: BulkPromoteRowError[];
+}
+
 // Extra-curricular activities — title/role are plain strings sourced
 // from the ExtracurricularActivityLookup catalog (admin-configurable
 // dropdowns), same "dropdown UI, string storage" pattern as HostelLookup.

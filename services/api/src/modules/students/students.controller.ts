@@ -28,6 +28,7 @@ import { AttachGuardianDto } from "./dto/attach-guardian.dto";
 import { CreateEnrollmentDto } from "./dto/create-enrollment.dto";
 import { ListEnrollmentsQueryDto } from "./dto/list-enrollments.dto";
 import { UpdateEnrollmentStatusDto } from "./dto/update-enrollment-status.dto";
+import { BulkPromoteDto } from "./dto/bulk-promote.dto";
 import { CreateExtracurricularActivityDto } from "./dto/create-extracurricular-activity.dto";
 import { UpdateExtracurricularActivityDto } from "./dto/update-extracurricular-activity.dto";
 import { ListExtracurricularActivitiesQueryDto } from "./dto/list-extracurricular-activities.dto";
@@ -177,6 +178,15 @@ export class StudentsController {
     @Body() dto: UpdateEnrollmentStatusDto,
   ) {
     return this.students.updateEnrollmentStatus(user.organizationId, id, dto);
+  }
+
+  // Bulk year-end promotion/graduation — gated on the same
+  // enrollment:update permission as the single-row status transition
+  // above, since this is the same underlying action at scale.
+  @Post("enrollments/bulk-promote")
+  @RequirePermissions("enrollment:update")
+  bulkPromote(@CurrentUser() user: JwtPayload, @Body() dto: BulkPromoteDto) {
+    return this.students.bulkPromote(user.organizationId, dto);
   }
 
   @Get("students/:studentId/extracurricular-activities")

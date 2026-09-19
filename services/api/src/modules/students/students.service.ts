@@ -12,6 +12,8 @@ import { AttachGuardianDto } from "./dto/attach-guardian.dto";
 import { CreateEnrollmentDto } from "./dto/create-enrollment.dto";
 import { ListEnrollmentsQueryDto } from "./dto/list-enrollments.dto";
 import { UpdateEnrollmentStatusDto } from "./dto/update-enrollment-status.dto";
+import { BulkPromoteDto } from "./dto/bulk-promote.dto";
+import { BulkPromoteResult, BulkPromoteRowError } from "./dto/bulk-promote-result.dto";
 import { CreateExtracurricularActivityDto } from "./dto/create-extracurricular-activity.dto";
 import { UpdateExtracurricularActivityDto } from "./dto/update-extracurricular-activity.dto";
 import { ListExtracurricularActivitiesQueryDto } from "./dto/list-extracurricular-activities.dto";
@@ -464,6 +466,111 @@ export class StudentsService {
         },
       });
     });
+  }
+
+  // Bulk promotion / graduation — the year-end workflow this schema's
+  // per-student StudentEnrollment never had a batch action for. Each
+  // entry closes out one ACTIVE enrollment (status -> COMPLETED) and
+  // either opens a new one in the target program/semester/section
+  // (PROMOTE/RETAIN — RETAIN just targets the *same* program/semester,
+  // i.e. held back a year) or marks the student GRADUATED via the same
+  // updateStatus data shape used everywhere else, rather than a
+  // parallel status-write path. Per-row error collection, same
+  // "don't let one bad row kill the batch" reasoning as importStudents
+  // — this is a curated, admin-reviewed list, but still spans many
+  // students in one submit.
+  async bulkPromote(organizationId: string, dto: BulkPromoteDto): Promise<BulkPromoteResult> {
+    const errors: BulkPromoteRowError[] = [];
+    let promoted = 0;
+    let retained = 0;
+    let graduated = 0;
+
+    await this.prisma.withTenant(organizationId, async (tx) => {
+      for (const entry of dto.entries) {
+        const enrollment = await tx.studentEnrollment.findUnique({ where: { id: entry.enrollmentId } });
+        if (!enrollment || enrollment.organizationId !== organizationId) {
+          errors.push({ enrollmentId: entry.enrollmentId, message: "Enrollment not found" });
+          continue;
+        }
+        if (enrollment.status !== "ACTIVE") {
+          errors.push({ enrollmentId: entry.enrollmentId, message: `Enrollment is already ${enrollment.status}` });
+          continue;
+        }
+
+        if (entry.action === "GRADUATE") {
+          // Sequential, not Promise.all — same reasoning as updateStatus:
+          // this write and the enrollment closure below need to commit
+          // together.
+          await tx.student.update({ where: { id: enrollment.studentId }, data: { status: "GRADUATED" } });
+          await tx.studentStatusHistory.create({
+            data: {
+              organizationId,
+              studentId: enrollment.studentId,
+              status: "GRADUATED",
+              reason: "Bulk promotion — graduated",
+              effectiveDate: new Date(),
+            },
+          });
+          await tx.studentEnrollment.update({ where: { id: enrollment.id }, data: { status: "COMPLETED" } });
+          graduated++;
+          continue;
+        }
+
+        // PROMOTE or RETAIN — both open a new enrollment, only the
+        // target cohort differs (RETAIN keeps the same program/semester,
+        // i.e. held back), so both need the same target fields.
+        if (!entry.targetProgramId || !entry.targetSemesterId) {
+          errors.push({ enrollmentId: entry.enrollmentId, message: "targetProgramId and targetSemesterId are required" });
+          continue;
+        }
+        const [program, section, semester] = await Promise.all([
+          tx.program.findUnique({ where: { id: entry.targetProgramId } }),
+          entry.targetSectionId ? tx.section.findUnique({ where: { id: entry.targetSectionId } }) : null,
+          tx.semester.findUnique({ where: { id: entry.targetSemesterId } }),
+        ]);
+        if (!program) {
+          errors.push({ enrollmentId: entry.enrollmentId, message: "Target program not found" });
+          continue;
+        }
+        if (entry.targetSectionId && !section) {
+          errors.push({ enrollmentId: entry.enrollmentId, message: "Target section not found" });
+          continue;
+        }
+        if (!semester) {
+          errors.push({ enrollmentId: entry.enrollmentId, message: "Target semester not found" });
+          continue;
+        }
+        // StudentEnrollment's own @@unique([studentId, semesterId]) means
+        // a student can only ever have one enrollment (of any status) per
+        // semester — pre-checked here for a clear per-row error instead
+        // of a raw constraint violation surfacing as a 500. The common
+        // real cause is picking the *same* semester as both source and
+        // target (e.g. testing, or a genuine double-promotion attempt).
+        const targetConflict = await tx.studentEnrollment.findUnique({
+          where: { studentId_semesterId: { studentId: enrollment.studentId, semesterId: entry.targetSemesterId } },
+        });
+        if (targetConflict) {
+          errors.push({ enrollmentId: entry.enrollmentId, message: "Student already has an enrollment in the target semester" });
+          continue;
+        }
+
+        await tx.studentEnrollment.update({ where: { id: enrollment.id }, data: { status: "COMPLETED" } });
+        await tx.studentEnrollment.create({
+          data: {
+            organizationId,
+            studentId: enrollment.studentId,
+            programId: entry.targetProgramId,
+            sectionId: entry.targetSectionId,
+            semesterId: entry.targetSemesterId,
+            enrollmentDate: entry.enrollmentDate ? new Date(entry.enrollmentDate) : new Date(),
+          },
+        });
+        if (entry.action === "RETAIN") retained++;
+        else promoted++;
+      }
+    });
+
+    return { promoted, retained, graduated, errors };
   }
 
   // ── Extra-curricular activities ──────────────────────────────────

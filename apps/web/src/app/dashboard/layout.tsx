@@ -75,6 +75,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/dashboard/staff", label: "Staff", icon: Users },
       { href: "/dashboard/students", label: "Students", icon: GraduationCap },
+      { href: "/dashboard/students/promotion", label: "Promotion", icon: ListChecks },
       { href: "/dashboard/admissions", label: "Admissions", icon: ClipboardList },
     ],
   },
