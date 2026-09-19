@@ -9,7 +9,10 @@ import { CreateTeachingAssignmentDto } from "./dto/create-teaching-assignment.dt
 import { UpdateTeachingAssignmentDto } from "./dto/update-teaching-assignment.dto";
 import { CreateClassScheduleDto } from "./dto/create-class-schedule.dto";
 import { UpdateClassScheduleDto } from "./dto/update-class-schedule.dto";
+import { CreateSubstituteAssignmentDto } from "./dto/create-substitute-assignment.dto";
+import { ListSubstituteAssignmentsQueryDto } from "./dto/list-substitute-assignments.dto";
 import { assertNoDependents } from "../../common/assert-no-dependents";
+import { paginate } from "../../common/pagination";
 
 /**
  * Same FK-vs-RLS parent-guard pattern as every prior slice's service.
@@ -441,6 +444,195 @@ export class TimetableService {
         "schedule entry",
       );
       await tx.classSchedule.delete({ where: { id } });
+      return { deleted: true };
+    });
+  }
+
+  // ── Substitute teacher assignment ────────────────────────────────
+  //
+  // ClassSchedule is a recurring weekly template (dayOfWeek, not a
+  // date) — none of this needed a new "is this teacher out today"
+  // signal of its own, it reuses StaffAttendance (a day already marked
+  // ABSENT/ON_LEAVE) and LeaveRequest (an APPROVED range covering the
+  // date) exactly as attendance-reconciliation already treats them.
+
+  // ISO 8601: 1=Monday..7=Sunday, matching ClassSchedule.dayOfWeek —
+  // JS's own Date#getDay() is 0=Sunday..6=Saturday, so Sunday needs the
+  // one remap.
+  private isoDayOfWeek(date: Date): number {
+    const day = date.getUTCDay();
+    return day === 0 ? 7 : day;
+  }
+
+  private async absentEmployeeIds(tx: PrismaClient, organizationId: string, date: Date): Promise<Set<string>> {
+    const [attendance, leaves] = await Promise.all([
+      tx.staffAttendance.findMany({
+        where: { organizationId, date, status: { in: ["ABSENT", "ON_LEAVE"] } },
+        select: { employeeId: true },
+      }),
+      tx.leaveRequest.findMany({
+        where: { organizationId, status: "APPROVED", startDate: { lte: date }, endDate: { gte: date } },
+        select: { employeeId: true },
+      }),
+    ]);
+    return new Set([...attendance.map((a) => a.employeeId), ...leaves.map((l) => l.employeeId)]);
+  }
+
+  // The actual "who needs covering today" view — every scheduled period
+  // for a teacher marked absent/on-leave that date, with whatever
+  // substitute (if any) is already assigned to it.
+  async listAbsentTeacherSlots(organizationId: string, dateStr: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const date = new Date(dateStr);
+      const dayOfWeek = this.isoDayOfWeek(date);
+      const absentIds = await this.absentEmployeeIds(tx, organizationId, date);
+      if (absentIds.size === 0) return [];
+
+      const schedules = await tx.classSchedule.findMany({
+        where: {
+          organizationId,
+          dayOfWeek,
+          teacherId: { in: Array.from(absentIds) },
+          semester: { startDate: { lte: date }, endDate: { gte: date } },
+        },
+        include: {
+          period: true,
+          room: true,
+          teacher: true,
+          section: true,
+          teachingAssignment: { include: { subject: true, program: true } },
+          substituteAssignments: { where: { date }, include: { substituteEmployee: true } },
+        },
+        orderBy: { period: { sequence: "asc" } },
+      });
+
+      return schedules.map(({ substituteAssignments, ...schedule }) => ({
+        ...schedule,
+        existingAssignment: substituteAssignments[0] ?? null,
+      }));
+    });
+  }
+
+  // Candidates for one slot: any teacher in the org, minus the regular
+  // teacher, minus anyone absent/on-leave that date, minus anyone
+  // already teaching (or already substituting) at that exact
+  // day+period in the same semester — the same "who's actually free"
+  // check createClassSchedule already runs, just against candidates
+  // instead of a single proposed booking.
+  async listAvailableSubstitutes(organizationId: string, classScheduleId: string, dateStr: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const schedule = await this.loadClassSchedule(tx, organizationId, classScheduleId);
+      const date = new Date(dateStr);
+      const absentIds = await this.absentEmployeeIds(tx, organizationId, date);
+
+      const busy = await tx.classSchedule.findMany({
+        where: { semesterId: schedule.semesterId, dayOfWeek: schedule.dayOfWeek, periodId: schedule.periodId },
+        select: { teacherId: true },
+      });
+      const excludeIds = new Set([schedule.teacherId, ...absentIds, ...busy.map((b) => b.teacherId)]);
+
+      // "Already teaches something" alone would miss a just-hired
+      // teacher with no assignment yet — OR'd with a TeacherProfile and
+      // with the seeded "Teacher" staff type (StaffType.name is
+      // admin-editable free text everywhere else in this app, but this
+      // project's own DEFAULT_STAFF_TYPES seeds it under that exact
+      // name for every org, same convention the Staff Type -> Designation
+      // cascade already relies on).
+      return tx.employee.findMany({
+        where: {
+          organizationId,
+          deletedAt: null,
+          id: { notIn: Array.from(excludeIds) },
+          OR: [
+            { teachingAssignments: { some: {} } },
+            { teacherProfile: { isNot: null } },
+            { designation: { staffType: { name: { equals: "Teacher", mode: "insensitive" } } } },
+          ],
+        },
+        select: { id: true, firstName: true, middleName: true, lastName: true, employeeCode: true },
+        orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
+      });
+    });
+  }
+
+  // Upsert-by-slot, not a plain create — reassigning a substitute for
+  // the same classScheduleId+date (@@unique) is an edit to that one
+  // row, not a second row racing the first.
+  async createSubstituteAssignment(organizationId: string, dto: CreateSubstituteAssignmentDto) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const schedule = await this.loadClassSchedule(tx, organizationId, dto.classScheduleId);
+      const substitute = await tx.employee.findUnique({ where: { id: dto.substituteEmployeeId } });
+      if (!substitute || substitute.organizationId !== organizationId) throw new NotFoundException("Substitute employee not found");
+      if (dto.substituteEmployeeId === schedule.teacherId) {
+        throw new BadRequestException("The substitute can't be the same as the regularly scheduled teacher");
+      }
+
+      const date = new Date(dto.date);
+      const absentIds = await this.absentEmployeeIds(tx, organizationId, date);
+      if (absentIds.has(dto.substituteEmployeeId)) {
+        throw new ConflictException("This employee is marked absent or on leave that date");
+      }
+      const busy = await tx.classSchedule.findFirst({
+        where: { semesterId: schedule.semesterId, dayOfWeek: schedule.dayOfWeek, periodId: schedule.periodId, teacherId: dto.substituteEmployeeId },
+      });
+      if (busy) throw new ConflictException("This employee is already teaching another class in this day and period");
+
+      return tx.substituteAssignment.upsert({
+        where: { classScheduleId_date: { classScheduleId: dto.classScheduleId, date } },
+        update: { substituteEmployeeId: dto.substituteEmployeeId, notes: dto.notes },
+        create: {
+          organizationId,
+          classScheduleId: dto.classScheduleId,
+          date,
+          substituteEmployeeId: dto.substituteEmployeeId,
+          notes: dto.notes,
+        },
+        include: {
+          substituteEmployee: true,
+          classSchedule: {
+            include: { period: true, teacher: true, section: true, teachingAssignment: { include: { subject: true, program: true } } },
+          },
+        },
+      });
+    });
+  }
+
+  // Org-wide, filterable, paginated — the review/history list behind
+  // the day-of picker, same shape as every other bulk-action list in
+  // this app.
+  listSubstituteAssignments(organizationId: string, filters: ListSubstituteAssignmentsQueryDto) {
+    return this.prisma.withTenant(organizationId, (tx) => {
+      const where = {
+        organizationId,
+        ...(filters.date ? { date: new Date(filters.date) } : {}),
+        ...(filters.employeeId ? { substituteEmployeeId: filters.employeeId } : {}),
+      };
+      return paginate(
+        () =>
+          tx.substituteAssignment.findMany({
+            where,
+            include: {
+              substituteEmployee: true,
+              classSchedule: {
+                include: { period: true, teacher: true, section: true, teachingAssignment: { include: { subject: true, program: true } } },
+              },
+            },
+            orderBy: { date: "desc" },
+            skip: ((filters.page ?? 1) - 1) * (filters.pageSize ?? 25),
+            take: filters.pageSize ?? 25,
+          }),
+        () => tx.substituteAssignment.count({ where }),
+        filters.page ?? 1,
+        filters.pageSize ?? 25,
+      );
+    });
+  }
+
+  async deleteSubstituteAssignment(organizationId: string, id: string) {
+    return this.prisma.withTenant(organizationId, async (tx) => {
+      const row = await tx.substituteAssignment.findUnique({ where: { id } });
+      if (!row || row.organizationId !== organizationId) throw new NotFoundException("Substitute assignment not found");
+      await tx.substituteAssignment.delete({ where: { id } });
       return { deleted: true };
     });
   }

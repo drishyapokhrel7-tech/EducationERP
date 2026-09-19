@@ -200,6 +200,10 @@ const RESOURCES = [
   // too, same folding precedent as every resource above that pairs
   // records with their own small setup catalog (e.g. hostel).
   "extracurricular_activity",
+  // Substitute teacher assignment — a new concept distinct from
+  // class_schedule/staff_attendance (its two inputs), so it gets its
+  // own resource rather than folding into either.
+  "substitute_assignment",
 ];
 const ACTIONS = Object.values(PermissionAction);
 

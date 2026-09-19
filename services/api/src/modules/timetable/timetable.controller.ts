@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { TimetableService } from "./timetable.service";
 import { CreateRoomDto } from "./dto/create-room.dto";
 import { UpdateRoomDto } from "./dto/update-room.dto";
@@ -8,6 +8,8 @@ import { CreateTeachingAssignmentDto } from "./dto/create-teaching-assignment.dt
 import { UpdateTeachingAssignmentDto } from "./dto/update-teaching-assignment.dto";
 import { CreateClassScheduleDto } from "./dto/create-class-schedule.dto";
 import { UpdateClassScheduleDto } from "./dto/update-class-schedule.dto";
+import { CreateSubstituteAssignmentDto } from "./dto/create-substitute-assignment.dto";
+import { ListSubstituteAssignmentsQueryDto } from "./dto/list-substitute-assignments.dto";
 import { JwtAuthGuard } from "../../common/auth/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
@@ -120,5 +122,39 @@ export class TimetableController {
   @RequirePermissions("class_schedule:delete")
   deleteClassSchedule(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
     return this.timetable.deleteClassSchedule(user.organizationId, id);
+  }
+
+  @Get("substitute-needs")
+  @RequirePermissions("substitute_assignment:view")
+  listAbsentTeacherSlots(@CurrentUser() user: JwtPayload, @Query("date") date: string) {
+    return this.timetable.listAbsentTeacherSlots(user.organizationId, date);
+  }
+
+  @Get("substitute-candidates")
+  @RequirePermissions("substitute_assignment:view")
+  listAvailableSubstitutes(
+    @CurrentUser() user: JwtPayload,
+    @Query("classScheduleId") classScheduleId: string,
+    @Query("date") date: string,
+  ) {
+    return this.timetable.listAvailableSubstitutes(user.organizationId, classScheduleId, date);
+  }
+
+  @Post("substitute-assignments")
+  @RequirePermissions("substitute_assignment:create")
+  createSubstituteAssignment(@CurrentUser() user: JwtPayload, @Body() dto: CreateSubstituteAssignmentDto) {
+    return this.timetable.createSubstituteAssignment(user.organizationId, dto);
+  }
+
+  @Get("substitute-assignments")
+  @RequirePermissions("substitute_assignment:view")
+  listSubstituteAssignments(@CurrentUser() user: JwtPayload, @Query() filters: ListSubstituteAssignmentsQueryDto) {
+    return this.timetable.listSubstituteAssignments(user.organizationId, filters);
+  }
+
+  @Delete("substitute-assignments/:id")
+  @RequirePermissions("substitute_assignment:delete")
+  deleteSubstituteAssignment(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.timetable.deleteSubstituteAssignment(user.organizationId, id);
   }
 }

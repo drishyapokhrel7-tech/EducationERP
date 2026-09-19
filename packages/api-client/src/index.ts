@@ -117,6 +117,11 @@ import type {
   UpdateClassScheduleInput,
   ClassSchedule,
   CreateClassScheduleInput,
+  SubstituteSlot,
+  SubstituteCandidate,
+  SubstituteAssignmentRecord,
+  CreateSubstituteAssignmentInput,
+  ListSubstituteAssignmentsParams,
   AttendanceSession,
   AttendanceSessionWithRoster,
   CreateAttendanceSessionInput,
@@ -1083,6 +1088,29 @@ export function createApiClient({
       }),
     deleteClassSchedule: (id: string) =>
       request<{ deleted: true }>(`/organizations/me/class-schedules/${id}`, { method: "DELETE" }),
+
+    listAbsentTeacherSlots: (date: string) =>
+      request<SubstituteSlot[]>(`/organizations/me/substitute-needs?date=${encodeURIComponent(date)}`),
+    listAvailableSubstitutes: (classScheduleId: string, date: string) =>
+      request<SubstituteCandidate[]>(
+        `/organizations/me/substitute-candidates?classScheduleId=${encodeURIComponent(classScheduleId)}&date=${encodeURIComponent(date)}`,
+      ),
+    createSubstituteAssignment: (input: CreateSubstituteAssignmentInput) =>
+      request<SubstituteAssignmentRecord>("/organizations/me/substitute-assignments", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    listSubstituteAssignments: (params: ListSubstituteAssignmentsParams = {}) => {
+      const q = new URLSearchParams();
+      if (params.page) q.set("page", String(params.page));
+      if (params.pageSize) q.set("pageSize", String(params.pageSize));
+      if (params.date) q.set("date", params.date);
+      if (params.employeeId) q.set("employeeId", params.employeeId);
+      const qs = q.toString();
+      return request<PaginatedResult<SubstituteAssignmentRecord>>(`/organizations/me/substitute-assignments${qs ? `?${qs}` : ""}`);
+    },
+    deleteSubstituteAssignment: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/substitute-assignments/${id}`, { method: "DELETE" }),
 
     listAttendanceSessions: () => request<AttendanceSession[]>("/organizations/me/attendance-sessions"),
     createAttendanceSession: (input: CreateAttendanceSessionInput) =>

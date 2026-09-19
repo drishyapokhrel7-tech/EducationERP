@@ -4708,3 +4708,55 @@ export interface OcrScanResult {
   author: string | null;
   lowConfidence: boolean;
 }
+
+// Substitute teacher assignment — deliberately its own narrow shapes
+// rather than reusing ClassSchedule/TeachingAssignment, since these
+// endpoints include a different (smaller) set of nested relations than
+// those types declare.
+export interface SubstituteCandidate {
+  id: string;
+  firstName: string;
+  middleName: string | null;
+  lastName: string;
+  employeeCode: string;
+}
+
+export interface SubstituteSlot {
+  id: string;
+  dayOfWeek: number;
+  period: Period;
+  room: Room;
+  section: Section | null;
+  teacher: Employee;
+  teachingAssignment: { subject: Subject; program: Program };
+  existingAssignment: SubstituteAssignmentRecord | null;
+}
+
+export interface SubstituteAssignmentRecord {
+  id: string;
+  date: string;
+  classScheduleId: string;
+  substituteEmployeeId: string;
+  notes: string | null;
+  substituteEmployee: SubstituteCandidate;
+  classSchedule?: {
+    period: Period;
+    teacher: Employee;
+    section: Section | null;
+    teachingAssignment: { subject: Subject; program: Program };
+  };
+}
+
+export interface CreateSubstituteAssignmentInput {
+  classScheduleId: string;
+  date: string;
+  substituteEmployeeId: string;
+  notes?: string;
+}
+
+export interface ListSubstituteAssignmentsParams {
+  page?: number;
+  pageSize?: number;
+  date?: string;
+  employeeId?: string;
+}

@@ -100,6 +100,7 @@ model Organization {
   periods                        Period[]
   teachingAssignments            TeachingAssignment[]
   classSchedules                 ClassSchedule[]
+  substituteAssignments          SubstituteAssignment[]
   attendanceSessions             AttendanceSession[]
   studentAttendances             StudentAttendance[]
   staffAttendances               StaffAttendance[]
@@ -849,24 +850,25 @@ model Employee {
   updatedAt         DateTime       @updatedAt
   deletedAt         DateTime?
 
-  organization            Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user                    User?                @relation(fields: [userId], references: [id])
-  staffType               StaffType            @relation(fields: [staffTypeId], references: [id])
-  designation             Designation          @relation(fields: [designationId], references: [id])
-  department              Department?          @relation(fields: [departmentId], references: [id])
-  salaryStructure         SalaryStructure?     @relation(fields: [salaryStructureId], references: [id])
+  organization            Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user                    User?                  @relation(fields: [userId], references: [id])
+  staffType               StaffType              @relation(fields: [staffTypeId], references: [id])
+  designation             Designation            @relation(fields: [designationId], references: [id])
+  department              Department?            @relation(fields: [departmentId], references: [id])
+  salaryStructure         SalaryStructure?       @relation(fields: [salaryStructureId], references: [id])
   employmentHistory       EmploymentHistory[]
   qualifications          Qualification[]
   teacherProfile          TeacherProfile?
   teachingAssignments     TeachingAssignment[]
   classSchedulesAsTeacher ClassSchedule[]
+  substituteAssignments   SubstituteAssignment[]
   staffAttendances        StaffAttendance[]
   faceEnrollments         FaceEnrollment[]
   leaveBalances           StaffLeaveBalance[]
   leaveRequests           LeaveRequest[]
   payrolls                Payroll[]
   driverProfile           Driver?
-  routesAsDriver          Route[]              @relation("routesAsDriver")
+  routesAsDriver          Route[]                @relation("routesAsDriver")
   discussionPosts         DiscussionPost[]
   assetAssignments        AssetAssignment[]
   documents               StaffDocument[]
@@ -1385,21 +1387,49 @@ model ClassSchedule {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  semester           Semester            @relation(fields: [semesterId], references: [id])
-  teachingAssignment TeachingAssignment  @relation(fields: [teachingAssignmentId], references: [id])
-  section            Section?            @relation(fields: [sectionId], references: [id])
-  teacher            Employee            @relation(fields: [teacherId], references: [id])
-  room               Room                @relation(fields: [roomId], references: [id])
-  period             Period              @relation(fields: [periodId], references: [id])
-  attendanceSessions AttendanceSession[]
-  classSessions      ClassSession[]
+  organization          Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  semester              Semester               @relation(fields: [semesterId], references: [id])
+  teachingAssignment    TeachingAssignment     @relation(fields: [teachingAssignmentId], references: [id])
+  section               Section?               @relation(fields: [sectionId], references: [id])
+  teacher               Employee               @relation(fields: [teacherId], references: [id])
+  room                  Room                   @relation(fields: [roomId], references: [id])
+  period                Period                 @relation(fields: [periodId], references: [id])
+  attendanceSessions    AttendanceSession[]
+  classSessions         ClassSession[]
+  substituteAssignments SubstituteAssignment[]
 
   @@unique([semesterId, roomId, dayOfWeek, periodId], map: "class_schedules_room_slot_key")
   @@unique([semesterId, sectionId, dayOfWeek, periodId], map: "class_schedules_section_slot_key")
   @@unique([semesterId, teacherId, dayOfWeek, periodId], map: "class_schedules_teacher_slot_key")
   @@index([organizationId])
   @@map("class_schedules")
+}
+
+// One row per class-schedule-slot-on-a-specific-date that got covered by
+// someone other than its usual teacher. ClassSchedule itself is a
+// recurring weekly template (dayOfWeek, not a date) — this is what turns
+// "Tuesday period 3" into "this coming Tuesday, Nov 4th" for the one day
+// the regular teacher is out. @@unique([classScheduleId, date]) is the
+// same "one row per real-world occurrence" reasoning as
+// AttendanceSession/StaffAttendance's own date-scoped uniqueness —
+// reassigning a substitute is an update to that row, not a second one.
+model SubstituteAssignment {
+  id                   String   @id @default(uuid())
+  organizationId       String
+  date                 DateTime
+  classScheduleId      String
+  substituteEmployeeId String
+  notes                String?
+  createdAt            DateTime @default(now())
+
+  organization       Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  classSchedule      ClassSchedule @relation(fields: [classScheduleId], references: [id])
+  substituteEmployee Employee      @relation(fields: [substituteEmployeeId], references: [id])
+
+  @@unique([classScheduleId, date])
+  @@index([organizationId])
+  @@index([date])
+  @@map("substitute_assignments")
 }
 
 // ── Attendance (plan §6 "Attendance" — Phase 3 slice 3b) ────────────────────
