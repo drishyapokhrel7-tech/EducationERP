@@ -401,10 +401,16 @@ export class StaffService {
         tx.organization.findUnique({ where: { id: organizationId } }),
       ]);
       const existingByCode = new Map(existingRows.map((e) => [e.employeeCode, e]));
+      // Employee.email carries its own @@unique([organizationId, email])
+      // — a blank-employeeCode row ("create new") whose email already
+      // belongs to another employee would otherwise hit that constraint
+      // as a raw, unhandled 500 instead of a clean per-row error.
+      const existingByEmail = new Map(existingRows.map((e) => [e.email.toLowerCase(), e]));
       const staffTypeByName = new Map(staffTypes.map((t) => [t.name.toLowerCase(), t.id]));
       const designationByName = new Map(designations.map((d) => [d.name.toLowerCase(), d.id]));
       const departmentByName = new Map(departments.map((d) => [d.name.toLowerCase(), d.id]));
       const seenCodes = new Set<string>();
+      const seenEmails = new Set<string>();
 
       // Same "one upfront read + running counter" reasoning as
       // StudentsService.importStudents — only a create consumes this,
@@ -491,6 +497,17 @@ export class StaffService {
           errors.push({ row: rowNumber, message: `employeeCode "${employeeCode}" does not match any existing employee` });
           continue;
         }
+
+        const emailKey = email.toLowerCase();
+        if (seenEmails.has(emailKey)) {
+          errors.push({ row: rowNumber, message: `Duplicate email "${email}" within this file` });
+          continue;
+        }
+        if (existingByEmail.has(emailKey)) {
+          errors.push({ row: rowNumber, message: `Email "${email}" already belongs to an existing employee — set employeeCode to update that employee instead` });
+          continue;
+        }
+        seenEmails.add(emailKey);
 
         if (combinedCount >= limit) {
           errors.push({
