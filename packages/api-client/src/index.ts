@@ -137,6 +137,7 @@ import type {
   HealthVisitListItem,
   ListHealthVisitsParams,
   UpdateHealthVisitInput,
+  CombinedImportResult,
   AttendanceSession,
   AttendanceSessionWithRoster,
   CreateAttendanceSessionInput,
@@ -1218,6 +1219,14 @@ export function createApiClient({
     },
     downloadHealthVisitImportTemplate: () => requestBlob("/organizations/me/health-visits/import-template"),
     exportHealthVisitsEditable: () => requestBlob("/organizations/me/health-visits/export-editable"),
+
+    downloadDataSyncTemplate: () => requestBlob("/organizations/me/data-sync/template"),
+    exportDataSyncEditable: () => requestBlob("/organizations/me/data-sync/export-editable"),
+    importDataSync: (file: File) => {
+      const form = new FormData();
+      form.append("file", file);
+      return requestForm<CombinedImportResult>("/organizations/me/data-sync/import", form);
+    },
 
     listAttendanceSessions: () => request<AttendanceSession[]>("/organizations/me/attendance-sessions"),
     createAttendanceSession: (input: CreateAttendanceSessionInput) =>

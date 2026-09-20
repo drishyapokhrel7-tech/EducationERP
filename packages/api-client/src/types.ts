@@ -4888,3 +4888,15 @@ export interface ListHealthVisitsParams {
   pageSize?: number;
   studentId?: string;
 }
+
+// Result of POST /organizations/me/data-sync/import — one ImportResult
+// per sheet actually present in the uploaded combined workbook; a sheet
+// the user left out of the file (or never filled in) is simply absent
+// here rather than reported as zero.
+export interface CombinedImportResult {
+  students?: ImportResult;
+  employees?: ImportResult;
+  activities?: ImportResult;
+  disciplineIncidents?: ImportResult;
+  healthVisits?: ImportResult;
+}

@@ -77,6 +77,51 @@ function cellValueToString(value: ExcelJS.CellValue): string {
   return "";
 }
 
+// Combines several single-sheet workbooks (each produced by
+// buildWorkbook) into one multi-sheet workbook — used by the combined
+// data-sync template/export, which is just each entity's own existing
+// template/export buffer stitched together, not a separately-maintained
+// column list. Reassigning `.model` (with a fresh id/name) is exceljs's
+// documented way to move a worksheet's full content — cells, notes, and
+// data validations alike — into a different workbook.
+export async function mergeWorkbooks(buffers: Buffer[]): Promise<Buffer> {
+  const combined = new ExcelJS.Workbook();
+  for (const buf of buffers) {
+    const source = new ExcelJS.Workbook();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument -- same Multer-Buffer/@types/node generic mismatch as parseWorkbookRows
+    await source.xlsx.load(buf as any);
+    const sheet = source.worksheets[0];
+    if (!sheet) continue;
+    const target = combined.addWorksheet(sheet.name);
+    target.model = { ...sheet.model, id: target.id, name: sheet.name };
+  }
+  const buffer = await combined.xlsx.writeBuffer();
+  return Buffer.from(buffer);
+}
+
+// The inverse of mergeWorkbooks — pulls one named sheet back out of an
+// uploaded combined workbook as its own single-sheet buffer, so it can
+// be handed unchanged to that entity's existing importX(fileBuffer)
+// method. Returns null if the sheet isn't present (the user is allowed
+// to fill in only some of the combined template's sheets).
+export async function extractSheetBuffer(buffer: Buffer, sheetName: string): Promise<Buffer | null> {
+  const source = new ExcelJS.Workbook();
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument -- same Multer-Buffer/@types/node generic mismatch as parseWorkbookRows
+    await source.xlsx.load(buffer as any);
+  } catch (err) {
+    throw new Error(`Could not parse Excel file: ${(err as Error).message}`);
+  }
+  const sheet = source.worksheets.find((s) => s.name.trim().toLowerCase() === sheetName.trim().toLowerCase());
+  if (!sheet) return null;
+
+  const target = new ExcelJS.Workbook();
+  const targetSheet = target.addWorksheet(sheet.name);
+  targetSheet.model = { ...sheet.model, id: targetSheet.id, name: sheet.name };
+  const out = await target.xlsx.writeBuffer();
+  return Buffer.from(out);
+}
+
 export async function parseWorkbookRows(buffer: Buffer): Promise<Record<string, string>[]> {
   const workbook = new ExcelJS.Workbook();
   try {

@@ -36,6 +36,7 @@ import {
   Network,
   NotebookText,
   Repeat,
+  RefreshCw,
   Shield,
   ShieldAlert,
   HeartPulse,
@@ -145,6 +146,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Administration",
     items: [
       { href: "/dashboard/roles-permissions", label: "Roles & Permissions", icon: Shield },
+      { href: "/dashboard/data-sync", label: "Data Sync", icon: RefreshCw },
       { href: "/dashboard/billing", label: "Billing", icon: CreditCard },
     ],
   },
