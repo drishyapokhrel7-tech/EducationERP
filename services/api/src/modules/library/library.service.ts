@@ -248,25 +248,55 @@ export class LibraryService {
   // that's more likely wrong than right, so the caller's form can
   // still show it (never a dead end) while visually flagging "check
   // this."
+  //
+  // Publisher/edition/ISBN are searched across every recognized line,
+  // not just the title/author window — a publisher imprint or edition
+  // line is often set apart from the title block (bottom of the cover,
+  // a separate logo line), and a front-cover ISBN can land anywhere
+  // relative to the first few lines. Each is only ever taken from an
+  // explicit, low-ambiguity marker (a "Published by"/"Publisher:"
+  // prefix, an "Nth Edition" phrase, an "ISBN" label) — never guessed
+  // from an unlabeled short line, which would trade a null (safe,
+  // obviously "not found") for a wrong guess silently written into the
+  // form.
   async ocrScanCover(buffer: Buffer) {
     const worker = await this.getOcrWorker();
     const { data } = await worker.recognize(buffer);
-    const lines = data.text
+    const allLines = data.text
       .split("\n")
       .map((l) => l.trim())
-      .filter(Boolean)
-      .slice(0, 8);
+      .filter(Boolean);
+    const lines = allLines.slice(0, 8);
 
-    const authorLine = lines.find((l) => /^by\s+/i.test(l));
-    const author = authorLine ? authorLine.replace(/^by\s+/i, "").trim() : null;
-    const titleCandidates = lines.filter((l) => l !== authorLine);
+    const authorPattern = /^by\s+/i;
+    const publisherPattern = /^(published by|publisher:?)\s+/i;
+    const editionPattern = /\b(\d+(?:st|nd|rd|th)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\s+edition\b/i;
+    const isbnPattern = /isbn(?:-1[03])?[:\s-]*([0-9][0-9\- ]{8,16}[0-9xX])/i;
+    // A line claimed by one of the other fields is never also title
+    // material — without this, e.g. an "ISBN: 978-..." line (often the
+    // single longest line on a cover) would win the "longest line"
+    // title heuristic outright.
+    const isMetadataLine = (l: string) => authorPattern.test(l) || publisherPattern.test(l) || editionPattern.test(l) || isbnPattern.test(l);
+
+    const authorLine = lines.find((l) => authorPattern.test(l));
+    const author = authorLine ? authorLine.replace(authorPattern, "").trim() : null;
+    const titleCandidates = lines.filter((l) => !isMetadataLine(l));
     const title = titleCandidates.reduce<string | null>(
       (longest, line) => (line.length > (longest?.length ?? 0) ? line : longest),
       null,
     );
 
+    const publisherLine = allLines.find((l) => publisherPattern.test(l));
+    const publisher = publisherLine ? publisherLine.replace(publisherPattern, "").trim() || null : null;
+
+    const editionMatch = allLines.map((l) => l.match(editionPattern)).find((m): m is RegExpMatchArray => m !== null);
+    const edition = editionMatch ? editionMatch[0].trim() : null;
+
+    const isbnMatch = allLines.map((l) => l.match(isbnPattern)).find((m): m is RegExpMatchArray => m !== null);
+    const isbn = isbnMatch ? isbnMatch[1].replace(/[^0-9xX]/g, "") : null;
+
     const lowConfidence = data.confidence < 60 || lines.length === 0;
-    return { title, author, lowConfidence };
+    return { title, author, publisher, edition, isbn, lowConfidence };
   }
 
   // ── Circulation ───────────────────────────────────────────────────

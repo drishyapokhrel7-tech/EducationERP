@@ -182,7 +182,14 @@ export default function LibraryDashboardPage() {
     setScanningCover(true);
     try {
       const result = await api.ocrScanBookCover(file);
-      setBookForm((f) => ({ ...f, title: result.title ?? f.title, author: result.author ?? f.author }));
+      setBookForm((f) => ({
+        ...f,
+        title: result.title ?? f.title,
+        author: result.author ?? f.author,
+        publisher: result.publisher ?? f.publisher,
+        edition: result.edition ?? f.edition,
+        isbn: result.isbn ?? f.isbn,
+      }));
       toast.success(
         result.lowConfidence
           ? "Prefilled from cover scan (low confidence) — check carefully before saving"
@@ -572,6 +579,14 @@ export default function LibraryDashboardPage() {
             <div className="space-y-1">
               <Label className="text-xs">Author</Label>
               <Input className="w-36" value={bookForm.author} onChange={(e) => setBookForm((f) => ({ ...f, author: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Publisher</Label>
+              <Input className="w-36" value={bookForm.publisher} onChange={(e) => setBookForm((f) => ({ ...f, publisher: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Edition</Label>
+              <Input className="w-28" value={bookForm.edition} onChange={(e) => setBookForm((f) => ({ ...f, edition: e.target.value }))} />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Category</Label>

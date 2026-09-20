@@ -4706,6 +4706,9 @@ export interface IsbnLookupResult {
 export interface OcrScanResult {
   title: string | null;
   author: string | null;
+  publisher: string | null;
+  edition: string | null;
+  isbn: string | null;
   lowConfidence: boolean;
 }
 
