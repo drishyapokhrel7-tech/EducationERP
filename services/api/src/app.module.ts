@@ -41,6 +41,7 @@ import { TeacherPortalModule } from "./modules/teacher-portal/teacher-portal.mod
 import { StorageModule } from "./modules/storage/storage.module";
 import { HostelModule } from "./modules/hostel/hostel.module";
 import { DisciplineModule } from "./modules/discipline/discipline.module";
+import { HealthModule } from "./modules/health/health.module";
 import { InventoryModule } from "./modules/inventory/inventory.module";
 import { LibraryModule } from "./modules/library/library.module";
 import { LibraryPortalModule } from "./modules/library-portal/library-portal.module";
@@ -120,6 +121,7 @@ const queueModuleImports = process.env.REDIS_URL ? [QueueModule] : [];
     StorageModule,
     HostelModule,
     DisciplineModule,
+    HealthModule,
     InventoryModule,
     LibraryModule,
     LibraryPortalModule,

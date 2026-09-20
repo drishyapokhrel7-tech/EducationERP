@@ -130,6 +130,13 @@ import type {
   IncidentTypeRecord,
   CreateIncidentTypeInput,
   UpdateIncidentTypeInput,
+  StudentHealthProfile,
+  UpdateHealthProfileInput,
+  HealthVisit,
+  CreateHealthVisitInput,
+  HealthVisitListItem,
+  ListHealthVisitsParams,
+  UpdateHealthVisitInput,
   AttendanceSession,
   AttendanceSessionWithRoster,
   CreateAttendanceSessionInput,
@@ -1157,6 +1164,36 @@ export function createApiClient({
     deleteIncidentType: (id: string) =>
       request<{ deleted: true }>(`/organizations/me/discipline-incident-types/${id}`, { method: "DELETE" }),
     listIncidentTypes: () => request<IncidentTypeRecord[]>("/organizations/me/discipline-incident-types"),
+
+    getHealthProfile: (studentId: string) =>
+      request<StudentHealthProfile | null>(`/organizations/me/students/${studentId}/health-profile`),
+    updateHealthProfile: (studentId: string, input: UpdateHealthProfileInput) =>
+      request<StudentHealthProfile>(`/organizations/me/students/${studentId}/health-profile`, {
+        method: "PUT",
+        body: JSON.stringify(input),
+      }),
+    listStudentHealthVisits: (studentId: string) =>
+      request<HealthVisit[]>(`/organizations/me/students/${studentId}/health-visits`),
+    createStudentHealthVisit: (studentId: string, input: CreateHealthVisitInput) =>
+      request<HealthVisit>(`/organizations/me/students/${studentId}/health-visits`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    listAllHealthVisits: (params: ListHealthVisitsParams = {}) => {
+      const q = new URLSearchParams();
+      if (params.page) q.set("page", String(params.page));
+      if (params.pageSize) q.set("pageSize", String(params.pageSize));
+      if (params.studentId) q.set("studentId", params.studentId);
+      const qs = q.toString();
+      return request<PaginatedResult<HealthVisitListItem>>(`/organizations/me/health-visits${qs ? `?${qs}` : ""}`);
+    },
+    updateHealthVisit: (id: string, input: UpdateHealthVisitInput) =>
+      request<HealthVisit>(`/organizations/me/health-visits/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      }),
+    deleteHealthVisit: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/health-visits/${id}`, { method: "DELETE" }),
 
     listAttendanceSessions: () => request<AttendanceSession[]>("/organizations/me/attendance-sessions"),
     createAttendanceSession: (input: CreateAttendanceSessionInput) =>

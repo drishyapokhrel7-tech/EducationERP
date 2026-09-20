@@ -228,6 +228,8 @@ model Organization {
   extracurricularActivityLookups ExtracurricularActivityLookup[]
   disciplineIncidents            DisciplineIncident[]
   disciplineIncidentTypes        DisciplineIncidentType[]
+  studentHealthProfiles          StudentHealthProfile[]
+  healthVisits                   HealthVisit[]
 
   @@map("organizations")
 }
@@ -569,6 +571,7 @@ model User {
   staffDocumentsReviewed          StaffDocument[]         @relation("StaffDocumentsReviewed")
   certificatesIssued              Certificate[]           @relation("CertificatesIssued")
   disciplineIncidentsReported     DisciplineIncident[]    @relation("DisciplineIncidentsReported")
+  healthVisitsRecorded            HealthVisit[]           @relation("HealthVisitsRecorded")
   gatewayCardBindingsMade         GatewayCardBinding[]
 
   @@index([organizationId])
@@ -1024,6 +1027,8 @@ model Student {
   libraryFines                LibraryFine[]
   extracurricularActivities   ExtracurricularActivity[]
   disciplineIncidents         DisciplineIncident[]
+  healthProfile               StudentHealthProfile?
+  healthVisits                HealthVisit[]
 
   @@unique([organizationId, studentCode])
   @@index([organizationId])
@@ -1221,6 +1226,69 @@ model DisciplineIncident {
   @@index([organizationId])
   @@index([studentId])
   @@map("discipline_incidents")
+}
+
+// A real, universal fixed set (biology, not an institution vocabulary)
+// — unlike DisciplineIncidentType/ExtracurricularActivityLookup, this
+// one is a genuine enum, not an admin-configurable catalog.
+enum BloodGroup {
+  A_POSITIVE
+  A_NEGATIVE
+  B_POSITIVE
+  B_NEGATIVE
+  AB_POSITIVE
+  AB_NEGATIVE
+  O_POSITIVE
+  O_NEGATIVE
+  UNKNOWN
+}
+
+// One row per student, created/updated in place (not a history log —
+// StudentStatusHistory-style versioning isn't needed here since only
+// the current state matters for day-to-day use, e.g. a nurse checking
+// allergies before giving medication).
+model StudentHealthProfile {
+  id                    String      @id @default(uuid())
+  organizationId        String
+  studentId             String      @unique
+  bloodGroup            BloodGroup?
+  allergies             String?
+  chronicConditions     String?
+  currentMedications    String?
+  emergencyMedicalNotes String?
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  student      Student      @relation(fields: [studentId], references: [id])
+
+  @@index([organizationId])
+  @@map("student_health_profiles")
+}
+
+// The nurse's-office visit log — genuinely free-text `reason`, unlike
+// DisciplineIncident.incidentType/ExtracurricularActivity.title: what
+// brings a student to the health office varies too much to usefully
+// standardize into a dropdown.
+model HealthVisit {
+  id                 String   @id @default(uuid())
+  organizationId     String
+  studentId          String
+  visitDate          DateTime
+  reason             String
+  treatmentGiven     String?
+  referredExternally Boolean  @default(false)
+  recordedByUserId   String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  student      Student      @relation(fields: [studentId], references: [id])
+  recordedBy   User         @relation("HealthVisitsRecorded", fields: [recordedByUserId], references: [id])
+
+  @@index([organizationId])
+  @@index([studentId])
+  @@map("health_visits")
 }
 
 model StudentStatusHistory {

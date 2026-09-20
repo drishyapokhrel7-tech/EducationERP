@@ -207,6 +207,11 @@ const RESOURCES = [
   // Discipline/behavior tracking — folds the incident-type admin
   // catalog in too, same folding precedent as extracurricular_activity.
   "discipline_incident",
+  // Health/medical records — folds the per-student health profile and
+  // the nurse's-office visit log together, same "closely-related
+  // concepts share one resource" precedent as every folded resource
+  // above.
+  "health_record",
 ];
 const ACTIONS = Object.values(PermissionAction);
 

@@ -4821,3 +4821,70 @@ export interface UpdateIncidentTypeInput {
   name?: string;
 }
 
+// A real, universal fixed set (biology, not an institution vocabulary)
+// — unlike DisciplineIncidentType/ExtracurricularActivityLookup names,
+// this is a genuine enum, not an admin-configurable catalog.
+export type BloodGroup =
+  | "A_POSITIVE"
+  | "A_NEGATIVE"
+  | "B_POSITIVE"
+  | "B_NEGATIVE"
+  | "AB_POSITIVE"
+  | "AB_NEGATIVE"
+  | "O_POSITIVE"
+  | "O_NEGATIVE"
+  | "UNKNOWN";
+
+export interface StudentHealthProfile {
+  id: string;
+  studentId: string;
+  bloodGroup: BloodGroup | null;
+  allergies: string | null;
+  chronicConditions: string | null;
+  currentMedications: string | null;
+  emergencyMedicalNotes: string | null;
+}
+
+export interface UpdateHealthProfileInput {
+  bloodGroup?: BloodGroup;
+  allergies?: string;
+  chronicConditions?: string;
+  currentMedications?: string;
+  emergencyMedicalNotes?: string;
+}
+
+export interface HealthVisit {
+  id: string;
+  studentId: string;
+  visitDate: string;
+  reason: string;
+  treatmentGiven: string | null;
+  referredExternally: boolean;
+  recordedBy: { firstName: string; lastName: string };
+}
+
+export interface CreateHealthVisitInput {
+  visitDate: string;
+  reason: string;
+  treatmentGiven?: string;
+  referredExternally?: boolean;
+}
+
+export interface UpdateHealthVisitInput {
+  visitDate?: string;
+  reason?: string;
+  treatmentGiven?: string;
+  referredExternally?: boolean;
+}
+
+// Org-wide list row (GET /organizations/me/health-visits) — same fields
+// as HealthVisit plus the student it belongs to.
+export interface HealthVisitListItem extends HealthVisit {
+  student: StudentPicker;
+}
+
+export interface ListHealthVisitsParams {
+  page?: number;
+  pageSize?: number;
+  studentId?: string;
+}
