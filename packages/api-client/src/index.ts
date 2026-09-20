@@ -122,6 +122,14 @@ import type {
   SubstituteAssignmentRecord,
   CreateSubstituteAssignmentInput,
   ListSubstituteAssignmentsParams,
+  DisciplineIncident,
+  CreateIncidentInput,
+  UpdateIncidentInput,
+  DisciplineIncidentListItem,
+  ListIncidentsParams,
+  IncidentTypeRecord,
+  CreateIncidentTypeInput,
+  UpdateIncidentTypeInput,
   AttendanceSession,
   AttendanceSessionWithRoster,
   CreateAttendanceSessionInput,
@@ -1111,6 +1119,44 @@ export function createApiClient({
     },
     deleteSubstituteAssignment: (id: string) =>
       request<{ deleted: true }>(`/organizations/me/substitute-assignments/${id}`, { method: "DELETE" }),
+
+    listStudentIncidents: (studentId: string) =>
+      request<DisciplineIncident[]>(`/organizations/me/students/${studentId}/discipline-incidents`),
+    createStudentIncident: (studentId: string, input: CreateIncidentInput) =>
+      request<DisciplineIncident>(`/organizations/me/students/${studentId}/discipline-incidents`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    listAllIncidents: (params: ListIncidentsParams = {}) => {
+      const q = new URLSearchParams();
+      if (params.page) q.set("page", String(params.page));
+      if (params.pageSize) q.set("pageSize", String(params.pageSize));
+      if (params.studentId) q.set("studentId", params.studentId);
+      if (params.severity) q.set("severity", params.severity);
+      const qs = q.toString();
+      return request<PaginatedResult<DisciplineIncidentListItem>>(`/organizations/me/discipline-incidents${qs ? `?${qs}` : ""}`);
+    },
+    updateIncident: (id: string, input: UpdateIncidentInput) =>
+      request<DisciplineIncident>(`/organizations/me/discipline-incidents/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      }),
+    deleteIncident: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/discipline-incidents/${id}`, { method: "DELETE" }),
+
+    createIncidentType: (input: CreateIncidentTypeInput) =>
+      request<IncidentTypeRecord>("/organizations/me/discipline-incident-types", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    updateIncidentType: (id: string, input: UpdateIncidentTypeInput) =>
+      request<IncidentTypeRecord>(`/organizations/me/discipline-incident-types/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      }),
+    deleteIncidentType: (id: string) =>
+      request<{ deleted: true }>(`/organizations/me/discipline-incident-types/${id}`, { method: "DELETE" }),
+    listIncidentTypes: () => request<IncidentTypeRecord[]>("/organizations/me/discipline-incident-types"),
 
     listAttendanceSessions: () => request<AttendanceSession[]>("/organizations/me/attendance-sessions"),
     createAttendanceSession: (input: CreateAttendanceSessionInput) =>

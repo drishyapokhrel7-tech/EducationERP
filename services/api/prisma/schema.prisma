@@ -226,6 +226,8 @@ model Organization {
   librarySettings                LibrarySettings?
   extracurricularActivities      ExtracurricularActivity[]
   extracurricularActivityLookups ExtracurricularActivityLookup[]
+  disciplineIncidents            DisciplineIncident[]
+  disciplineIncidentTypes        DisciplineIncidentType[]
 
   @@map("organizations")
 }
@@ -566,6 +568,7 @@ model User {
   studentDocumentsReviewed        StudentDocument[]       @relation("StudentDocumentsReviewed")
   staffDocumentsReviewed          StaffDocument[]         @relation("StaffDocumentsReviewed")
   certificatesIssued              Certificate[]           @relation("CertificatesIssued")
+  disciplineIncidentsReported     DisciplineIncident[]    @relation("DisciplineIncidentsReported")
   gatewayCardBindingsMade         GatewayCardBinding[]
 
   @@index([organizationId])
@@ -1020,6 +1023,7 @@ model Student {
   libraryReservations         LibraryReservation[]
   libraryFines                LibraryFine[]
   extracurricularActivities   ExtracurricularActivity[]
+  disciplineIncidents         DisciplineIncident[]
 
   @@unique([organizationId, studentCode])
   @@index([organizationId])
@@ -1168,6 +1172,55 @@ model ExtracurricularActivity {
   @@index([organizationId])
   @@index([studentId])
   @@map("extracurricular_activities")
+}
+
+enum DisciplineSeverity {
+  MINOR
+  MODERATE
+  MAJOR
+}
+
+// Admin-configurable catalog of incident types (e.g. "Bullying", "Late
+// to class", "Uniform violation") — same "dropdown UI, plain-string
+// storage" pattern as ExtracurricularActivityLookup, just one category
+// instead of a kind-discriminated few, so no `kind` column here.
+model DisciplineIncidentType {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("discipline_incident_types")
+}
+
+model DisciplineIncident {
+  id               String             @id @default(uuid())
+  organizationId   String
+  studentId        String
+  // Plain string, not a foreign key to DisciplineIncidentType — same
+  // reasoning as ExtracurricularActivity.title: deleting or renaming a
+  // catalog entry must never orphan or block deleting a historical
+  // incident record.
+  incidentType     String
+  severity         DisciplineSeverity
+  description      String
+  actionTaken      String?
+  incidentDate     DateTime
+  reportedByUserId String
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  student      Student      @relation(fields: [studentId], references: [id])
+  reportedBy   User         @relation("DisciplineIncidentsReported", fields: [reportedByUserId], references: [id])
+
+  @@index([organizationId])
+  @@index([studentId])
+  @@map("discipline_incidents")
 }
 
 model StudentStatusHistory {

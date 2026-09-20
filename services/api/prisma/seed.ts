@@ -204,6 +204,9 @@ const RESOURCES = [
   // class_schedule/staff_attendance (its two inputs), so it gets its
   // own resource rather than folding into either.
   "substitute_assignment",
+  // Discipline/behavior tracking — folds the incident-type admin
+  // catalog in too, same folding precedent as extracurricular_activity.
+  "discipline_incident",
 ];
 const ACTIONS = Object.values(PermissionAction);
 

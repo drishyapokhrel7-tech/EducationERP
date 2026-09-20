@@ -4760,3 +4760,64 @@ export interface ListSubstituteAssignmentsParams {
   date?: string;
   employeeId?: string;
 }
+
+export type DisciplineSeverity = "MINOR" | "MODERATE" | "MAJOR";
+
+// incidentType is a plain string sourced from the
+// DisciplineIncidentType catalog (admin-configurable dropdown), same
+// "dropdown UI, string storage" pattern as ExtracurricularActivity.title.
+export interface DisciplineIncident {
+  id: string;
+  studentId: string;
+  incidentType: string;
+  severity: DisciplineSeverity;
+  description: string;
+  actionTaken: string | null;
+  incidentDate: string;
+  reportedBy: { firstName: string; lastName: string };
+}
+
+export interface CreateIncidentInput {
+  incidentType: string;
+  severity: DisciplineSeverity;
+  description: string;
+  actionTaken?: string;
+  incidentDate: string;
+}
+
+export interface UpdateIncidentInput {
+  incidentType?: string;
+  severity?: DisciplineSeverity;
+  description?: string;
+  actionTaken?: string;
+  incidentDate?: string;
+}
+
+// Org-wide list row (GET /organizations/me/discipline-incidents) — same
+// fields as DisciplineIncident plus the student it belongs to.
+export interface DisciplineIncidentListItem extends DisciplineIncident {
+  student: StudentPicker;
+}
+
+export interface ListIncidentsParams {
+  page?: number;
+  pageSize?: number;
+  studentId?: string;
+  severity?: DisciplineSeverity;
+}
+
+export interface IncidentTypeRecord {
+  id: string;
+  organizationId: string;
+  name: string;
+  createdAt: string;
+}
+
+export interface CreateIncidentTypeInput {
+  name: string;
+}
+
+export interface UpdateIncidentTypeInput {
+  name?: string;
+}
+
