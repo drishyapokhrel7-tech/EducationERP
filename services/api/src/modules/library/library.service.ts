@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException, ServiceUnavailableException } from "@nestjs/common";
 import { Prisma, PrismaClient, type FaceVerifiedOutcome } from "@prisma/client";
 import { createWorker, type Worker } from "tesseract.js";
+import * as path from "path";
 import { PrismaService } from "../../prisma/prisma.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { AiGatewayService } from "../ai-gateway/ai-gateway.service";
@@ -235,8 +236,44 @@ export class LibraryService {
     throw new NotFoundException("No book found for this ISBN");
   }
 
+  // tesseract.js's own defaults are written for a normal long-running
+  // server: cachePath defaults to the process's CWD (a serverless
+  // function's own bundle directory, which is READ-ONLY everywhere
+  // except /tmp — Vercel), and langPath defaults to fetching the
+  // English model from a CDN on every cold start. Both are pinned
+  // explicitly here — cachePath to the one writable directory, langPath
+  // to a copy of eng.traineddata bundled into the deployment itself
+  // (services/api/tessdata/, included via vercel.json's includeFiles)
+  // — so a cold start never depends on outbound network latency/
+  // reachability for the language model.
+  // KNOWN ISSUE (confirmed via diagnostic checkpoints logged to the
+  // response body during investigation, since streamed platform logs
+  // for this endpoint proved unreliable to retrieve after the fact):
+  // tesseract.js's native WASM engine reliably reaches "initializing
+  // tesseract" inside its spawned worker_thread (core WASM load and
+  // language-file load both complete in well under a second — the
+  // langPath/cachePath fix below is confirmed working) but then never
+  // progresses past it, even given 55s — a hang, not merely slowness,
+  // isolated specifically to Tesseract's native init call running
+  // inside a Node worker_thread on this Vercel deployment. This is not
+  // fixable via createWorker options or vercel.json config; it needs
+  // either bypassing tesseract.js's worker_thread architecture (calling
+  // tesseract.js-core directly on the main thread) or moving off
+  // self-hosted Tesseract entirely (e.g. a cloud OCR API). Until then,
+  // this fails after a bounded wait with a clear error instead of
+  // hanging for the entire request lifetime with no response at all.
   private async getOcrWorker(): Promise<Worker> {
-    if (!this.ocrWorker) this.ocrWorker = await createWorker("eng");
+    if (!this.ocrWorker) {
+      const workerPromise = createWorker("eng", 1, {
+        langPath: path.join(__dirname, "..", "..", "..", "tessdata"),
+        cachePath: "/tmp",
+        gzip: true,
+      });
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new ServiceUnavailableException("Cover scan is temporarily unavailable — try again shortly, or enter details manually")), 55000),
+      );
+      this.ocrWorker = await Promise.race([workerPromise, timeoutPromise]);
+    }
     return this.ocrWorker;
   }
 
@@ -260,8 +297,11 @@ export class LibraryService {
   // obviously "not found") for a wrong guess silently written into the
   // form.
   async ocrScanCover(buffer: Buffer) {
+    const t0 = Date.now();
     const worker = await this.getOcrWorker();
+    console.log(`[ocr-scan] worker ready after ${Date.now() - t0}ms`);
     const { data } = await worker.recognize(buffer);
+    console.log(`[ocr-scan] recognize() done after ${Date.now() - t0}ms total`);
     const allLines = data.text
       .split("\n")
       .map((l) => l.trim())
