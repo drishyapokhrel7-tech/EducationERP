@@ -84,6 +84,7 @@ export function PhotoInput({ value, onChange }: { value: PhotoValue; onChange: (
       </div>
       {showCamera ? (
         <CameraCapture
+          defaultFacingMode="user"
           onCapture={({ blob }) => {
             const file = new File([blob], "photo.jpg", { type: "image/jpeg" });
             onChange({ status: "pending", file, previewUrl: URL.createObjectURL(file) });

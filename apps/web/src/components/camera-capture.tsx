@@ -22,7 +22,21 @@ import { Button } from "@/components/ui/button";
 // tell what you'd actually captured until the caller's upload
 // finished. The frozen frame is the confirmation; "Recapture"
 // restarts the live stream to try again.
-export function CameraCapture({ onCapture }: { onCapture: (result: { blob: Blob }) => void }) {
+type FacingMode = "environment" | "user";
+
+export function CameraCapture({
+  onCapture,
+  defaultFacingMode = "environment",
+}: {
+  onCapture: (result: { blob: Blob }) => void;
+  // "environment" (rear camera) is the right default for photographing
+  // something external — a book cover, an ID document; a caller doing
+  // a self-portrait (PhotoInput's staff/student photo) overrides to
+  // "user". A bare string value (not {exact: ...}) is an *ideal*
+  // constraint per the getUserMedia spec, so a device with only one
+  // camera — most laptops — still gets that camera instead of failing.
+  defaultFacingMode?: FacingMode;
+}) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -31,11 +45,17 @@ export function CameraCapture({ onCapture }: { onCapture: (result: { blob: Blob 
   const frozenUrlRef = useRef<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [frozenUrl, setFrozenUrl] = useState<string | null>(null);
+  const [facingMode, setFacingMode] = useState<FacingMode>(defaultFacingMode);
+  // Only shown when a flip would actually do something — most laptops
+  // report exactly one video input, and a visible "Flip camera" button
+  // that silently does nothing on those is worse than no button.
+  const [canFlip, setCanFlip] = useState(false);
 
-  function startCamera() {
+  function startCamera(mode: FacingMode) {
     setError(null);
+    stopCamera();
     navigator.mediaDevices
-      .getUserMedia({ video: true })
+      .getUserMedia({ video: { facingMode: mode } })
       .then((s) => {
         streamRef.current = s;
         if (videoRef.current) videoRef.current.srcObject = s;
@@ -54,12 +74,23 @@ export function CameraCapture({ onCapture }: { onCapture: (result: { blob: Blob 
     // synchronously within the effect body itself — same restructuring
     // already used by CaptchaField's own load effect, same
     // react-hooks/set-state-in-effect reasoning.
-    void Promise.resolve().then(startCamera);
+    void Promise.resolve().then(() => startCamera(defaultFacingMode));
+    navigator.mediaDevices
+      ?.enumerateDevices()
+      .then((devices) => setCanFlip(devices.filter((d) => d.kind === "videoinput").length > 1))
+      .catch(() => {});
     return () => {
       stopCamera();
       if (frozenUrlRef.current) URL.revokeObjectURL(frozenUrlRef.current);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only; flipCamera/recapture below restart the stream explicitly on their own triggers
   }, []);
+
+  function flipCamera() {
+    const next: FacingMode = facingMode === "environment" ? "user" : "environment";
+    setFacingMode(next);
+    startCamera(next);
+  }
 
   async function capture() {
     const video = videoRef.current;
@@ -84,7 +115,7 @@ export function CameraCapture({ onCapture }: { onCapture: (result: { blob: Blob 
     if (frozenUrlRef.current) URL.revokeObjectURL(frozenUrlRef.current);
     frozenUrlRef.current = null;
     setFrozenUrl(null);
-    startCamera();
+    startCamera(facingMode);
   }
 
   if (error) {
@@ -100,15 +131,22 @@ export function CameraCapture({ onCapture }: { onCapture: (result: { blob: Blob 
         <video ref={videoRef} autoPlay muted playsInline className="h-32 w-44 rounded border bg-black object-cover" />
       )}
       <canvas ref={canvasRef} className="hidden" />
-      {frozenUrl ? (
-        <Button type="button" size="sm" variant="outline" onClick={recapture}>
-          Recapture
-        </Button>
-      ) : (
-        <Button type="button" size="sm" variant="outline" onClick={capture}>
-          Capture
-        </Button>
-      )}
+      <div className="flex gap-2">
+        {frozenUrl ? (
+          <Button type="button" size="sm" variant="outline" onClick={recapture}>
+            Recapture
+          </Button>
+        ) : (
+          <Button type="button" size="sm" variant="outline" onClick={capture}>
+            Capture
+          </Button>
+        )}
+        {!frozenUrl && canFlip ? (
+          <Button type="button" size="sm" variant="outline" onClick={flipCamera}>
+            Flip camera
+          </Button>
+        ) : null}
+      </div>
     </div>
   );
 }

@@ -19,6 +19,7 @@ import {
 } from "@/components/person-picker";
 import { toast } from "sonner";
 import { CameraCapture } from "@/components/camera-capture";
+import { BarcodeScanner } from "@/components/barcode-scanner";
 import { submitAction, submitDelete, errorMessage } from "@/lib/submit-action";
 import { api } from "@/lib/api";
 import type { LibraryTransactionRecord, LibraryFineRecord, LibraryReservationRecord } from "@education-erp/api-client";
@@ -143,15 +144,22 @@ export default function LibraryDashboardPage() {
   const [isbnLookingUp, setIsbnLookingUp] = useState(false);
   const [showCoverScan, setShowCoverScan] = useState(false);
   const [scanningCover, setScanningCover] = useState(false);
+  const [showBarcodeScan, setShowBarcodeScan] = useState(false);
 
-  async function lookupIsbn() {
+  // Takes an optional override so a barcode scan can trigger the same
+  // lookup immediately with the code it just decoded, instead of
+  // requiring a second "Look up ISBN" click on a value that was only
+  // just written to state (and so isn't readable from isbnLookupValue
+  // yet within the same tick).
+  async function lookupIsbn(codeOverride?: string) {
+    const code = codeOverride ?? isbnLookupValue;
     setIsbnLookingUp(true);
     try {
-      const result = await api.isbnLookupBook(isbnLookupValue);
+      const result = await api.isbnLookupBook(code);
       setBookForm((f) => ({
         ...f,
         title: result.title ?? f.title,
-        isbn: isbnLookupValue,
+        isbn: code,
         author: result.author ?? f.author,
         publisher: result.publisher ?? f.publisher,
         coverImageUrl: result.coverImageUrl ?? f.coverImageUrl,
@@ -162,6 +170,12 @@ export default function LibraryDashboardPage() {
     } finally {
       setIsbnLookingUp(false);
     }
+  }
+
+  function onBarcodeDetected(code: string) {
+    setIsbnLookupValue(code);
+    setShowBarcodeScan(false);
+    void lookupIsbn(code);
   }
 
   async function scanCover(file: File) {
@@ -484,11 +498,30 @@ export default function LibraryDashboardPage() {
                   onChange={(e) => setIsbnLookupValue(e.target.value)}
                 />
               </div>
-              <Button type="button" size="sm" variant="outline" disabled={!isbnLookupValue || isbnLookingUp} onClick={lookupIsbn}>
+              <Button type="button" size="sm" variant="outline" disabled={!isbnLookupValue || isbnLookingUp} onClick={() => lookupIsbn()}>
                 {isbnLookingUp ? "Looking up…" : "Look up ISBN"}
               </Button>
-              <Button type="button" size="sm" variant="outline" onClick={() => setShowCoverScan((s) => !s)}>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setShowBarcodeScan(false);
+                  setShowCoverScan((s) => !s);
+                }}
+              >
                 {showCoverScan ? "Cancel scan" : "Scan cover"}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setShowCoverScan(false);
+                  setShowBarcodeScan((s) => !s);
+                }}
+              >
+                {showBarcodeScan ? "Cancel scan" : "Scan ISBN barcode"}
               </Button>
               <label className="text-muted-foreground flex h-8 cursor-pointer items-center text-xs underline">
                 or upload a cover photo
@@ -506,6 +539,7 @@ export default function LibraryDashboardPage() {
               {scanningCover ? <span className="text-muted-foreground text-xs">Reading cover…</span> : null}
             </div>
             {showCoverScan ? <CameraCapture onCapture={({ blob }) => scanCover(new File([blob], "cover.jpg", { type: "image/jpeg" }))} /> : null}
+            {showBarcodeScan ? <BarcodeScanner onDetected={onBarcodeDetected} /> : null}
           </div>
 
           <Separator />

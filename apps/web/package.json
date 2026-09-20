@@ -12,6 +12,8 @@
   "dependencies": {
     "@base-ui/react": "^1.7.0",
     "@education-erp/api-client": "workspace:*",
+    "@zxing/browser": "^0.2.1",
+    "@zxing/library": "^0.23.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "leaflet": "^1.9.4",
