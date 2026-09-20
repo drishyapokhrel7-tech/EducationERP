@@ -17,7 +17,8 @@
     "platform:seed": "ts-node prisma/seed-platform-admin.ts",
     "insights:export": "ts-node prisma/export-insights-snapshot.ts",
     "smoke": "node scripts/smoke.mjs",
-    "vercel-build": "prisma generate && node scripts/migrate-deploy.mjs"
+    "vercel-build": "prisma generate && node scripts/migrate-deploy.mjs",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.734.0",

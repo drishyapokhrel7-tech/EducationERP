@@ -2,6 +2,13 @@ packages:
   - "apps/*"
   - "services/*"
   - "packages/*"
+# Vercel's Node.js Function packager for services/api's api/index.ts
+# refuses pnpm's default symlinked node_modules layout ("The framework
+# produced an invalid deployment package... files in symlinked
+# directories"), specifically around the Prisma-generated client living
+# in the .pnpm virtual store. Hoisted (flat, non-symlinked) node_modules
+# avoids that class of problem entirely.
+nodeLinker: hoisted
 overrides:
   # qs is a transitive dep shared by shadcn (devDependency CLI) and the
   # real runtime chain body-parser > express > @nestjs/platform-express
