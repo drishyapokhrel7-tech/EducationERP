@@ -1,4 +1,20 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Res,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
+import type { Response } from "express";
 import { DisciplineService } from "./discipline.service";
 import { CreateIncidentTypeDto } from "./dto/create-incident-type.dto";
 import { UpdateIncidentTypeDto } from "./dto/update-incident-type.dto";
@@ -10,6 +26,7 @@ import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtPayload } from "../../common/auth/jwt-payload";
+import { IMPORT_UPLOAD_OPTIONS } from "../../common/upload-limits";
 
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller("organizations/me")
@@ -73,5 +90,31 @@ export class DisciplineController {
   @RequirePermissions("discipline_incident:manage")
   deleteIncidentType(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
     return this.discipline.deleteIncidentType(user.organizationId, id);
+  }
+
+  @Post("discipline-incidents/import")
+  @RequirePermissions("discipline_incident:create")
+  @UseInterceptors(FileInterceptor("file", IMPORT_UPLOAD_OPTIONS))
+  importIncidents(@CurrentUser() user: JwtPayload, @UploadedFile() file: Express.Multer.File | undefined) {
+    if (!file) throw new BadRequestException("No file uploaded (expected a multipart field named 'file')");
+    return this.discipline.importIncidents(user.organizationId, user.sub, file.buffer, file.originalname);
+  }
+
+  @Get("discipline-incidents/import-template")
+  @RequirePermissions("discipline_incident:create")
+  async downloadIncidentImportTemplate(@CurrentUser() user: JwtPayload, @Res() res: Response) {
+    const buffer = await this.discipline.generateIncidentImportTemplate(user.organizationId);
+    res.set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.set("Content-Disposition", 'attachment; filename="discipline-incidents-import-template.xlsx"');
+    res.send(buffer);
+  }
+
+  @Get("discipline-incidents/export-editable")
+  @RequirePermissions("discipline_incident:view")
+  async exportEditableIncidents(@CurrentUser() user: JwtPayload, @Res() res: Response) {
+    const buffer = await this.discipline.exportEditableIncidents(user.organizationId);
+    res.set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.set("Content-Disposition", 'attachment; filename="discipline-incidents-editable.xlsx"');
+    res.send(buffer);
   }
 }

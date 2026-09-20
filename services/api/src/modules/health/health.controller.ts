@@ -1,4 +1,21 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards } from "@nestjs/common";
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Put,
+  Query,
+  Res,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
+import type { Response } from "express";
 import { HealthService } from "./health.service";
 import { UpdateHealthProfileDto } from "./dto/update-health-profile.dto";
 import { CreateHealthVisitDto } from "./dto/create-health-visit.dto";
@@ -9,6 +26,7 @@ import { PermissionsGuard } from "../../common/auth/permissions.guard";
 import { RequirePermissions } from "../../common/auth/permissions.decorator";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { JwtPayload } from "../../common/auth/jwt-payload";
+import { IMPORT_UPLOAD_OPTIONS } from "../../common/upload-limits";
 
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller("organizations/me")
@@ -64,5 +82,31 @@ export class HealthController {
   @RequirePermissions("health_record:delete")
   deleteHealthVisit(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
     return this.health.deleteHealthVisit(user.organizationId, id);
+  }
+
+  @Post("health-visits/import")
+  @RequirePermissions("health_record:create")
+  @UseInterceptors(FileInterceptor("file", IMPORT_UPLOAD_OPTIONS))
+  importVisits(@CurrentUser() user: JwtPayload, @UploadedFile() file: Express.Multer.File | undefined) {
+    if (!file) throw new BadRequestException("No file uploaded (expected a multipart field named 'file')");
+    return this.health.importVisits(user.organizationId, user.sub, file.buffer, file.originalname);
+  }
+
+  @Get("health-visits/import-template")
+  @RequirePermissions("health_record:create")
+  async downloadVisitImportTemplate(@Res() res: Response) {
+    const buffer = await this.health.generateVisitImportTemplate();
+    res.set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.set("Content-Disposition", 'attachment; filename="health-visits-import-template.xlsx"');
+    res.send(buffer);
+  }
+
+  @Get("health-visits/export-editable")
+  @RequirePermissions("health_record:view")
+  async exportEditableVisits(@CurrentUser() user: JwtPayload, @Res() res: Response) {
+    const buffer = await this.health.exportEditableVisits(user.organizationId);
+    res.set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.set("Content-Disposition", 'attachment; filename="health-visits-editable.xlsx"');
+    res.send(buffer);
   }
 }

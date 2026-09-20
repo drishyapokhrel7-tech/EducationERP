@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import useSWR from "swr";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,8 +15,9 @@ import { Separator } from "@/components/ui/separator";
 import { EntityCard } from "@/components/dashboard/entity-card";
 import { ListPager } from "@/components/dashboard/list-pager";
 import { api } from "@/lib/api";
+import { downloadBlob } from "@/lib/download";
 import { submitAction, submitDelete } from "@/lib/submit-action";
-import type { DisciplineSeverity, IncidentTypeRecord } from "@education-erp/api-client";
+import type { DisciplineSeverity, IncidentTypeRecord, ImportResult } from "@education-erp/api-client";
 
 const SEVERITY_OPTIONS: { value: DisciplineSeverity; label: string }[] = [
   { value: "MINOR", label: "Minor" },
@@ -191,6 +193,27 @@ export default function DisciplinePage() {
     incidentDate: "",
   });
 
+  const importFileRef = useRef<HTMLInputElement>(null);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [importing, setImporting] = useState(false);
+
+  async function handleImport() {
+    const file = importFileRef.current?.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    try {
+      const result = await api.importIncidents(file);
+      setImportResult(result);
+      incidents.mutate();
+      if (importFileRef.current) importFileRef.current.value = "";
+      toast.success(`${result.created} created, ${result.updated} updated (of ${result.totalRows} row(s))`);
+    } catch {
+      toast.error("Import failed — check the file is a valid Excel/CSV file");
+    } finally {
+      setImporting(false);
+    }
+  }
+
   return (
     <div className="space-y-6 p-6">
       <div>
@@ -348,6 +371,46 @@ export default function DisciplinePage() {
           </div>
         )}
       >
+        <div className="flex flex-wrap items-end gap-2 pb-3">
+          <input ref={importFileRef} type="file" accept=".csv,.xlsx" className="text-sm" disabled={importing} />
+          <Button type="button" size="sm" variant="outline" disabled={importing} onClick={handleImport}>
+            {importing ? "Importing…" : "Import"}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => downloadBlob(() => api.downloadIncidentImportTemplate(), "discipline-incidents-import-template.xlsx")}
+          >
+            Download template
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => downloadBlob(() => api.exportIncidentsEditable(), "discipline-incidents-editable.xlsx")}
+          >
+            Download editable copy
+          </Button>
+        </div>
+        {importResult ? (
+          <div className="pb-3 text-sm">
+            <p>
+              {importResult.created} created, {importResult.updated} updated (of {importResult.totalRows} row(s)).
+            </p>
+            {importResult.errors.length > 0 ? (
+              <ul className="text-destructive mt-2 list-disc space-y-1 pl-5">
+                {importResult.errors.map((e, i) => (
+                  <li key={i}>
+                    Row {e.row}: {e.message}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
+        <Separator className="mb-3" />
+
         <div className="flex flex-wrap items-end gap-3 pb-3">
           <div className="space-y-1">
             <Label className="text-xs">Filter by student</Label>

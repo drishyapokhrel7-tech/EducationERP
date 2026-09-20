@@ -338,6 +338,27 @@ export default function StudentsPage() {
     endDate: "",
   });
 
+  const activityImportFileRef = useRef<HTMLInputElement>(null);
+  const [activityImportResult, setActivityImportResult] = useState<ImportResult | null>(null);
+  const [activityImporting, setActivityImporting] = useState(false);
+
+  async function handleActivityImport() {
+    const file = activityImportFileRef.current?.files?.[0];
+    if (!file) return;
+    setActivityImporting(true);
+    try {
+      const result = await api.importActivities(file);
+      setActivityImportResult(result);
+      activities.mutate();
+      if (activityImportFileRef.current) activityImportFileRef.current.value = "";
+      toast.success(`${result.created} created, ${result.updated} updated (of ${result.totalRows} row(s))`);
+    } catch {
+      toast.error("Import failed — check the file is a valid Excel/CSV file");
+    } finally {
+      setActivityImporting(false);
+    }
+  }
+
   const importFileRef = useRef<HTMLInputElement>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [importing, setImporting] = useState(false);
@@ -1514,6 +1535,53 @@ export default function StudentsPage() {
           </div>
         )}
       >
+        <div className="flex flex-wrap items-end gap-2 pb-3">
+          <input
+            ref={activityImportFileRef}
+            type="file"
+            accept=".csv,.xlsx"
+            className="text-sm"
+            disabled={activityImporting}
+          />
+          <Button type="button" size="sm" variant="outline" disabled={activityImporting} onClick={handleActivityImport}>
+            {activityImporting ? "Importing…" : "Import"}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => downloadBlob(() => api.downloadActivityImportTemplate(), "activities-import-template.xlsx")}
+          >
+            Download template
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => downloadBlob(() => api.exportActivitiesEditable(), "activities-editable.xlsx")}
+          >
+            Download editable copy
+          </Button>
+        </div>
+        {activityImportResult ? (
+          <div className="pb-3 text-sm">
+            <p>
+              {activityImportResult.created} created, {activityImportResult.updated} updated (of{" "}
+              {activityImportResult.totalRows} row(s)).
+            </p>
+            {activityImportResult.errors.length > 0 ? (
+              <ul className="text-destructive mt-2 list-disc space-y-1 pl-5">
+                {activityImportResult.errors.map((e, i) => (
+                  <li key={i}>
+                    Row {e.row}: {e.message}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
+        <Separator className="mb-3" />
+
         <div className="flex flex-wrap items-end gap-3 pb-3">
           <div className="space-y-1">
             <Label className="text-xs">Filter by student</Label>

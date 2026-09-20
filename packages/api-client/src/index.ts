@@ -1019,6 +1019,14 @@ export function createApiClient({
     listActivityLookups: (kind?: ExtracurricularActivityLookupKind) =>
       request<ActivityLookupRecord[]>(`/organizations/me/activity-lookups${kind ? `?kind=${kind}` : ""}`),
 
+    importActivities: (file: File) => {
+      const form = new FormData();
+      form.append("file", file);
+      return requestForm<ImportResult>("/organizations/me/extracurricular-activities/import", form);
+    },
+    downloadActivityImportTemplate: () => requestBlob("/organizations/me/extracurricular-activities/import-template"),
+    exportActivitiesEditable: () => requestBlob("/organizations/me/extracurricular-activities/export-editable"),
+
     listStatusHistory: (studentId: string) =>
       request<StudentStatusHistoryEntry[]>(`/organizations/me/students/${studentId}/status-history`),
     updateStudentStatus: (studentId: string, input: UpdateStudentStatusInput) =>
@@ -1165,6 +1173,14 @@ export function createApiClient({
       request<{ deleted: true }>(`/organizations/me/discipline-incident-types/${id}`, { method: "DELETE" }),
     listIncidentTypes: () => request<IncidentTypeRecord[]>("/organizations/me/discipline-incident-types"),
 
+    importIncidents: (file: File) => {
+      const form = new FormData();
+      form.append("file", file);
+      return requestForm<ImportResult>("/organizations/me/discipline-incidents/import", form);
+    },
+    downloadIncidentImportTemplate: () => requestBlob("/organizations/me/discipline-incidents/import-template"),
+    exportIncidentsEditable: () => requestBlob("/organizations/me/discipline-incidents/export-editable"),
+
     getHealthProfile: (studentId: string) =>
       request<StudentHealthProfile | null>(`/organizations/me/students/${studentId}/health-profile`),
     updateHealthProfile: (studentId: string, input: UpdateHealthProfileInput) =>
@@ -1194,6 +1210,14 @@ export function createApiClient({
       }),
     deleteHealthVisit: (id: string) =>
       request<{ deleted: true }>(`/organizations/me/health-visits/${id}`, { method: "DELETE" }),
+
+    importHealthVisits: (file: File) => {
+      const form = new FormData();
+      form.append("file", file);
+      return requestForm<ImportResult>("/organizations/me/health-visits/import", form);
+    },
+    downloadHealthVisitImportTemplate: () => requestBlob("/organizations/me/health-visits/import-template"),
+    exportHealthVisitsEditable: () => requestBlob("/organizations/me/health-visits/export-editable"),
 
     listAttendanceSessions: () => request<AttendanceSession[]>("/organizations/me/attendance-sessions"),
     createAttendanceSession: (input: CreateAttendanceSessionInput) =>

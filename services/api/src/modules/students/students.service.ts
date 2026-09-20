@@ -692,6 +692,141 @@ export class StudentsService {
     return lookup;
   }
 
+  // ── Extra-curricular activities — Excel round trip ─────────────────
+  //
+  // Same buildWorkbook/parseWorkbookRows round trip as importStudents,
+  // with one structural difference: an activity's natural "is this an
+  // update or a new row" key isn't a human-assigned code like
+  // studentCode — it's the record's own id, blank for a new row and
+  // filled (via exportEditableActivities) to update that exact row.
+  // Each row also carries its own studentCode to resolve which
+  // student it belongs to, since this is an org-wide import spanning
+  // many students in one file, not scoped to one student's own page.
+
+  private async buildActivityImportColumns(organizationId: string): Promise<ColumnSpec[]> {
+    const [titles, roles] = await Promise.all([
+      this.prisma.withTenant(organizationId, (tx) =>
+        tx.extracurricularActivityLookup.findMany({ where: { organizationId, kind: "ACTIVITY_TITLE" }, orderBy: { name: "asc" } }),
+      ),
+      this.prisma.withTenant(organizationId, (tx) =>
+        tx.extracurricularActivityLookup.findMany({ where: { organizationId, kind: "ACTIVITY_ROLE" }, orderBy: { name: "asc" } }),
+      ),
+    ]);
+    return [
+      { key: "id", header: "id", width: 24, note: "Leave blank for a new activity. Fill in (from an export) to update that activity instead." },
+      { key: "studentCode", header: "studentCode", width: 16 },
+      { key: "title", header: "title", width: 20, dropdownOptions: titles.map((t) => t.name) },
+      { key: "role", header: "role", width: 16, dropdownOptions: roles.map((r) => r.name) },
+      { key: "description", header: "description", width: 30 },
+      { key: "startDate", header: "startDate", width: 14, note: "Format: YYYY-MM-DD" },
+      { key: "endDate", header: "endDate", width: 14, note: "Format: YYYY-MM-DD, leave blank if ongoing" },
+    ];
+  }
+
+  async generateActivityImportTemplate(organizationId: string): Promise<Buffer> {
+    const columns = await this.buildActivityImportColumns(organizationId);
+    return buildWorkbook("Activities", columns, []);
+  }
+
+  async exportEditableActivities(organizationId: string): Promise<Buffer> {
+    const [columns, activities] = await Promise.all([
+      this.buildActivityImportColumns(organizationId),
+      this.prisma.withTenant(organizationId, (tx) =>
+        tx.extracurricularActivity.findMany({ where: { organizationId }, include: { student: true }, orderBy: { startDate: "desc" } }),
+      ),
+    ]);
+    const rows = activities.map((a) => ({
+      id: a.id,
+      studentCode: a.student.studentCode,
+      title: a.title,
+      role: a.role ?? "",
+      description: a.description ?? "",
+      startDate: a.startDate.toISOString().slice(0, 10),
+      endDate: a.endDate ? a.endDate.toISOString().slice(0, 10) : "",
+    }));
+    return buildWorkbook("Activities", columns, rows);
+  }
+
+  async importActivities(organizationId: string, fileBuffer: Buffer, originalName: string): Promise<ImportResult> {
+    let records: Record<string, string>[];
+    if (/\.xlsx$/i.test(originalName)) {
+      try {
+        records = await parseWorkbookRows(fileBuffer);
+      } catch (err) {
+        throw new BadRequestException((err as Error).message);
+      }
+    } else {
+      try {
+        records = parse(fileBuffer, { columns: true, skip_empty_lines: true, trim: true }) as Record<string, string>[];
+      } catch (err) {
+        throw new BadRequestException(`Could not parse CSV: ${(err as Error).message}`);
+      }
+    }
+
+    const errors: ImportRowError[] = [];
+    let created = 0;
+    let updated = 0;
+
+    await this.prisma.withTenant(organizationId, async (tx) => {
+      const [studentsByCode, existingById] = await Promise.all([
+        tx.student.findMany({ where: { organizationId }, select: { id: true, studentCode: true } }).then((rows) => new Map(rows.map((s) => [s.studentCode, s.id]))),
+        tx.extracurricularActivity.findMany({ where: { organizationId } }).then((rows) => new Map(rows.map((a) => [a.id, a]))),
+      ]);
+
+      for (let i = 0; i < records.length; i++) {
+        const rowNumber = i + 2;
+        const row = records[i];
+        const id = row.id?.trim() || undefined;
+        const studentCode = row.studentCode?.trim();
+        const title = row.title?.trim();
+        const role = row.role?.trim() || undefined;
+        const description = row.description?.trim() || undefined;
+        const startDateRaw = row.startDate?.trim();
+        const endDateRaw = row.endDate?.trim();
+
+        if (!studentCode || !title || !startDateRaw) {
+          errors.push({ row: rowNumber, message: "Missing required field (studentCode, title, startDate)" });
+          continue;
+        }
+        const studentId = studentsByCode.get(studentCode);
+        if (!studentId) {
+          errors.push({ row: rowNumber, message: `studentCode "${studentCode}" does not match any existing student` });
+          continue;
+        }
+        const startDate = new Date(startDateRaw);
+        if (Number.isNaN(startDate.getTime())) {
+          errors.push({ row: rowNumber, message: `Invalid startDate "${startDateRaw}"` });
+          continue;
+        }
+        const endDate = endDateRaw ? new Date(endDateRaw) : undefined;
+        if (endDateRaw && Number.isNaN(endDate?.getTime())) {
+          errors.push({ row: rowNumber, message: `Invalid endDate "${endDateRaw}"` });
+          continue;
+        }
+
+        if (id) {
+          const existing = existingById.get(id);
+          if (!existing) {
+            errors.push({ row: rowNumber, message: `id "${id}" does not match any existing activity` });
+            continue;
+          }
+          await tx.extracurricularActivity.update({
+            where: { id },
+            data: { studentId, title, role, description, startDate, endDate },
+          });
+          updated++;
+        } else {
+          await tx.extracurricularActivity.create({
+            data: { organizationId, studentId, title, role, description, startDate, endDate },
+          });
+          created++;
+        }
+      }
+    });
+
+    return { totalRows: records.length, created, updated, errors };
+  }
+
   async listStatusHistory(organizationId: string, studentId: string) {
     await this.requireStudent(organizationId, studentId);
     return this.prisma.withTenant(organizationId, (tx) =>

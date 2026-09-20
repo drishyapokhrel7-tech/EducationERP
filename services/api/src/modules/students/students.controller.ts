@@ -253,6 +253,32 @@ export class StudentsController {
     return this.students.deleteActivityLookup(user.organizationId, id);
   }
 
+  @Post("extracurricular-activities/import")
+  @RequirePermissions("extracurricular_activity:create")
+  @UseInterceptors(FileInterceptor("file", IMPORT_UPLOAD_OPTIONS))
+  importActivities(@CurrentUser() user: JwtPayload, @UploadedFile() file: Express.Multer.File | undefined) {
+    if (!file) throw new BadRequestException("No file uploaded (expected a multipart field named 'file')");
+    return this.students.importActivities(user.organizationId, file.buffer, file.originalname);
+  }
+
+  @Get("extracurricular-activities/import-template")
+  @RequirePermissions("extracurricular_activity:create")
+  async downloadActivityImportTemplate(@CurrentUser() user: JwtPayload, @Res() res: Response) {
+    const buffer = await this.students.generateActivityImportTemplate(user.organizationId);
+    res.set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.set("Content-Disposition", 'attachment; filename="activities-import-template.xlsx"');
+    res.send(buffer);
+  }
+
+  @Get("extracurricular-activities/export-editable")
+  @RequirePermissions("extracurricular_activity:view")
+  async exportEditableActivities(@CurrentUser() user: JwtPayload, @Res() res: Response) {
+    const buffer = await this.students.exportEditableActivities(user.organizationId);
+    res.set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.set("Content-Disposition", 'attachment; filename="activities-editable.xlsx"');
+    res.send(buffer);
+  }
+
   @Put("students/:studentId/status")
   @RequirePermissions("student:manage")
   updateStatus(
