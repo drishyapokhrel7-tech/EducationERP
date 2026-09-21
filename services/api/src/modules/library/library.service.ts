@@ -177,12 +177,22 @@ export class LibraryService {
   // OCR/lookup-assisted entry flow (e.g. librarysystem's own Phase 5,
   // used as this feature's design reference).
 
-  // Open Library's bibkeys API is public, keyed by a global cache
-  // (IsbnLookupCache has no organizationId — an ISBN means the same
-  // book everywhere) so a second org's lookup of the same ISBN never
-  // re-hits the network. A successful-but-empty API response is a
-  // real "not found," not a failure — only a genuine network/HTTP
-  // failure falls back to the cache.
+  // Open Library is public, keyed by a global cache (IsbnLookupCache has
+  // no organizationId — an ISBN means the same book everywhere) so a
+  // second org's lookup of the same ISBN never re-hits the network. A
+  // successful-but-empty API response is a real "not found," not a
+  // failure — only a genuine network/HTTP failure falls back to the
+  // cache.
+  //
+  // Uses /isbn/{isbn}.json (redirects to the edition record), not
+  // Open Library's older /api/books?bibkeys=...&jscmd=data endpoint —
+  // that one was found, during testing with a real Nepal-registered
+  // ISBN, to 404 for editions that genuinely exist and have full data
+  // via this endpoint (confirmed even for the isbn Open Library's own
+  // API docs use as their example, so this isn't Nepal-specific — that
+  // whole endpoint looks degraded). The tradeoff: this endpoint returns
+  // authors as bare {key} references rather than resolved names, so
+  // each author needs its own follow-up fetch.
   async isbnLookup(isbn: string) {
     const normalized = isbn.replace(/[\s-]/g, "");
     if (!normalized) throw new BadRequestException("Provide an ISBN");
@@ -190,21 +200,37 @@ export class LibraryService {
     let apiResult: { title?: string; author?: string; publisher?: string; coverImageUrl?: string } | undefined;
     let apiReachable = true;
     try {
-      const res = await fetch(
-        `https://openlibrary.org/api/books?bibkeys=ISBN:${encodeURIComponent(normalized)}&format=json&jscmd=data`,
-      );
-      if (!res.ok) throw new Error(`status ${res.status}`);
-      const body = (await res.json()) as Record<
-        string,
-        { title?: string; authors?: { name: string }[]; publishers?: { name: string }[]; cover?: { medium?: string; large?: string } }
-      >;
-      const entry = body[`ISBN:${normalized}`];
-      if (entry) {
+      const res = await fetch(`https://openlibrary.org/isbn/${encodeURIComponent(normalized)}.json`);
+      // A genuinely unknown ISBN 404s (an HTML error page, not JSON —
+      // checked before ever calling res.json() below). That's a real
+      // "not found," not a service failure.
+      if (!res.ok && res.status !== 404) throw new Error(`status ${res.status}`);
+      if (res.ok) {
+        const edition = (await res.json()) as {
+          title?: string;
+          authors?: { key: string }[];
+          publishers?: string[];
+          covers?: number[];
+        };
+        const authorNames = await Promise.all(
+          (edition.authors ?? []).map(async (a) => {
+            try {
+              const authorRes = await fetch(`https://openlibrary.org${a.key}.json`);
+              if (!authorRes.ok) return null;
+              const author = (await authorRes.json()) as { name?: string };
+              return author.name ?? null;
+            } catch {
+              // One author's name failing to resolve shouldn't sink the
+              // whole lookup — the title/publisher/cover are still real.
+              return null;
+            }
+          }),
+        );
         apiResult = {
-          title: entry.title,
-          author: entry.authors?.map((a) => a.name).join(", "),
-          publisher: entry.publishers?.map((p) => p.name).join(", "),
-          coverImageUrl: entry.cover?.medium ?? entry.cover?.large,
+          title: edition.title,
+          author: authorNames.filter((n): n is string => n !== null).join(", ") || undefined,
+          publisher: edition.publishers?.join(", "),
+          coverImageUrl: edition.covers?.[0] ? `https://covers.openlibrary.org/b/id/${edition.covers[0]}-M.jpg` : undefined,
         };
       }
     } catch {
