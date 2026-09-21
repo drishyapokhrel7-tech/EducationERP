@@ -254,28 +254,53 @@ export class LibraryService {
       .filter(Boolean);
     const lines = allLines.slice(0, 8);
 
-    const authorPattern = /^by\s+/i;
-    const publisherPattern = /^(published by|publisher:?)\s+/i;
-    const editionPattern = /\b(\d+(?:st|nd|rd|th)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\s+edition\b/i;
+    // Each field is matched in English and Nepali (Devanagari) — the OCR
+    // itself now reads both scripts (see ocr-direct.ts), but recognizing
+    // a line's characters correctly doesn't mean knowing what it *is*:
+    // "लेखक:" ("author:") isn't English "by ", so without a matching
+    // Nepali marker a correctly-OCR'd Nepali author line was falling
+    // through to the "longest line wins" title heuristic — a title
+    // regression on a mixed-script cover even though every character
+    // was read right. ः (Devanagari visarga) is included alongside the
+    // plain colon since covers use both stylistically for these labels.
+    const authorPatternEn = /^by\s+/i;
+    // eslint-disable-next-line no-misleading-character-class -- ः (Devanagari visarga, U+0903) is a real, standalone character used here as one alternative separator alongside ":"/"-", not a misplaced combining diacritic
+    const authorPatternNe = /^(लेखक|लेखिका)[:ः\-\s]*/;
+    const publisherPatternEn = /^(published by|publisher:?)\s+/i;
+    // eslint-disable-next-line no-misleading-character-class -- same standalone-visarga-as-separator reasoning as authorPatternNe above
+    const publisherPatternNe = /^(प्रकाशक|प्रकाशन)[:ः\-\s]*/;
+    const editionPatternEn = /\b(\d+(?:st|nd|rd|th)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\s+edition\b/i;
+    // A leading ordinal word (पहिलो/दोस्रो/...) is optional and captured
+    // loosely rather than enumerated — Devanagari ordinals inflect in
+    // ways not worth hand-listing here — "संस्करण" alone is still a
+    // reliable, low-ambiguity edition marker on its own.
+    const editionPatternNe = /(\S+\s+)?संस्करण/;
     const isbnPattern = /isbn(?:-1[03])?[:\s-]*([0-9][0-9\- ]{8,16}[0-9xX])/i;
+
+    const isAuthorLine = (l: string) => authorPatternEn.test(l) || authorPatternNe.test(l);
+    const stripAuthorPrefix = (l: string) => l.replace(authorPatternEn, "").replace(authorPatternNe, "").trim();
+    const isPublisherLine = (l: string) => publisherPatternEn.test(l) || publisherPatternNe.test(l);
+    const stripPublisherPrefix = (l: string) => l.replace(publisherPatternEn, "").replace(publisherPatternNe, "").trim();
+    const isEditionLine = (l: string) => editionPatternEn.test(l) || editionPatternNe.test(l);
+
     // A line claimed by one of the other fields is never also title
     // material — without this, e.g. an "ISBN: 978-..." line (often the
     // single longest line on a cover) would win the "longest line"
     // title heuristic outright.
-    const isMetadataLine = (l: string) => authorPattern.test(l) || publisherPattern.test(l) || editionPattern.test(l) || isbnPattern.test(l);
+    const isMetadataLine = (l: string) => isAuthorLine(l) || isPublisherLine(l) || isEditionLine(l) || isbnPattern.test(l);
 
-    const authorLine = lines.find((l) => authorPattern.test(l));
-    const author = authorLine ? authorLine.replace(authorPattern, "").trim() : null;
+    const authorLine = lines.find(isAuthorLine);
+    const author = authorLine ? stripAuthorPrefix(authorLine) || null : null;
     const titleCandidates = lines.filter((l) => !isMetadataLine(l));
     const title = titleCandidates.reduce<string | null>(
       (longest, line) => (line.length > (longest?.length ?? 0) ? line : longest),
       null,
     );
 
-    const publisherLine = allLines.find((l) => publisherPattern.test(l));
-    const publisher = publisherLine ? publisherLine.replace(publisherPattern, "").trim() || null : null;
+    const publisherLine = allLines.find(isPublisherLine);
+    const publisher = publisherLine ? stripPublisherPrefix(publisherLine) || null : null;
 
-    const editionMatch = allLines.map((l) => l.match(editionPattern)).find((m): m is RegExpMatchArray => m !== null);
+    const editionMatch = allLines.map((l) => l.match(editionPatternEn) ?? l.match(editionPatternNe)).find((m): m is RegExpMatchArray => m !== null);
     const edition = editionMatch ? editionMatch[0].trim() : null;
 
     const isbnMatch = allLines.map((l) => l.match(isbnPattern)).find((m): m is RegExpMatchArray => m !== null);
