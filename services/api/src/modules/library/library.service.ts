@@ -1,7 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException, ServiceUnavailableException } from "@nestjs/common";
 import { Prisma, PrismaClient, type FaceVerifiedOutcome } from "@prisma/client";
-import { createWorker, type Worker } from "tesseract.js";
-import * as path from "path";
+import { recognizeCover } from "./ocr-direct";
 import { PrismaService } from "../../prisma/prisma.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { AiGatewayService } from "../ai-gateway/ai-gateway.service";
@@ -28,14 +27,6 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
  */
 @Injectable()
 export class LibraryService {
-  // Lazily created, never terminated — reused across every OCR
-  // request for the life of the process rather than paying tesseract's
-  // ~1-2s worker-init cost per call. No cleanup hook needed: this
-  // mirrors every other long-lived singleton client in this codebase
-  // (e.g. PrismaService's own connection), not a resource that needs
-  // per-request teardown.
-  private ocrWorker: Worker | null = null;
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
@@ -236,47 +227,6 @@ export class LibraryService {
     throw new NotFoundException("No book found for this ISBN");
   }
 
-  // tesseract.js's own defaults are written for a normal long-running
-  // server: cachePath defaults to the process's CWD (a serverless
-  // function's own bundle directory, which is READ-ONLY everywhere
-  // except /tmp — Vercel), and langPath defaults to fetching the
-  // English model from a CDN on every cold start. Both are pinned
-  // explicitly here — cachePath to the one writable directory, langPath
-  // to a copy of eng.traineddata bundled into the deployment itself
-  // (services/api/tessdata/, included via vercel.json's includeFiles)
-  // — so a cold start never depends on outbound network latency/
-  // reachability for the language model.
-  // KNOWN ISSUE (confirmed via diagnostic checkpoints logged to the
-  // response body during investigation, since streamed platform logs
-  // for this endpoint proved unreliable to retrieve after the fact):
-  // tesseract.js's native WASM engine reliably reaches "initializing
-  // tesseract" inside its spawned worker_thread (core WASM load and
-  // language-file load both complete in well under a second — the
-  // langPath/cachePath fix below is confirmed working) but then never
-  // progresses past it, even given 55s — a hang, not merely slowness,
-  // isolated specifically to Tesseract's native init call running
-  // inside a Node worker_thread on this Vercel deployment. This is not
-  // fixable via createWorker options or vercel.json config; it needs
-  // either bypassing tesseract.js's worker_thread architecture (calling
-  // tesseract.js-core directly on the main thread) or moving off
-  // self-hosted Tesseract entirely (e.g. a cloud OCR API). Until then,
-  // this fails after a bounded wait with a clear error instead of
-  // hanging for the entire request lifetime with no response at all.
-  private async getOcrWorker(): Promise<Worker> {
-    if (!this.ocrWorker) {
-      const workerPromise = createWorker("eng", 1, {
-        langPath: path.join(__dirname, "..", "..", "..", "tessdata"),
-        cachePath: "/tmp",
-        gzip: true,
-      });
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new ServiceUnavailableException("Cover scan is temporarily unavailable — try again shortly, or enter details manually")), 55000),
-      );
-      this.ocrWorker = await Promise.race([workerPromise, timeoutPromise]);
-    }
-    return this.ocrWorker;
-  }
-
   // Deliberately simple heuristic, not a real layout-analysis model —
   // matches the reference implementation exactly: the longest of the
   // first several non-empty lines is taken as the title (cover titles
@@ -297,12 +247,8 @@ export class LibraryService {
   // obviously "not found") for a wrong guess silently written into the
   // form.
   async ocrScanCover(buffer: Buffer) {
-    const t0 = Date.now();
-    const worker = await this.getOcrWorker();
-    console.log(`[ocr-scan] worker ready after ${Date.now() - t0}ms`);
-    const { data } = await worker.recognize(buffer);
-    console.log(`[ocr-scan] recognize() done after ${Date.now() - t0}ms total`);
-    const allLines = data.text
+    const { text, confidence } = await recognizeCover(buffer);
+    const allLines = text
       .split("\n")
       .map((l) => l.trim())
       .filter(Boolean);
@@ -335,7 +281,7 @@ export class LibraryService {
     const isbnMatch = allLines.map((l) => l.match(isbnPattern)).find((m): m is RegExpMatchArray => m !== null);
     const isbn = isbnMatch ? isbnMatch[1].replace(/[^0-9xX]/g, "") : null;
 
-    const lowConfidence = data.confidence < 60 || lines.length === 0;
+    const lowConfidence = confidence < 60 || lines.length === 0;
     return { title, author, publisher, edition, isbn, lowConfidence };
   }
 

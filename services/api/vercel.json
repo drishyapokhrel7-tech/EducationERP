@@ -2,7 +2,7 @@
   "rewrites": [{ "source": "/(.*)", "destination": "/api" }],
   "functions": {
     "api/index.ts": {
-      "includeFiles": "{node_modules/pdfkit/js,node_modules/tesseract.js,node_modules/tesseract.js-core,tessdata}/**",
+      "includeFiles": "{node_modules/pdfkit/js,tessdata}/**",
       "maxDuration": 60
     }
   },
