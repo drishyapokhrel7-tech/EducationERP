@@ -53,6 +53,21 @@ let apiPromise: Promise<TessBaseApi> | null = null;
 
 const TESSDATA_DIR = path.join(__dirname, "..", "..", "..", "tessdata");
 
+// Covers in this ERP's market are routinely Nepali (Devanagari script),
+// English, or — on a lot of real covers — both on the same page (a
+// Nepali title with a Latin-script publisher/ISBN line, or vice versa).
+// Tesseract's own multi-language mode ("eng+nep") handles exactly this:
+// it isn't "detect the language then pick a model," each recognized
+// word is matched against whichever loaded language model fits best,
+// so mixed-script covers work in one pass instead of needing a
+// separate detect-then-recognize step.
+const LANGS = ["eng", "nep"];
+
+function loadLanguageData(tessModule: TessModule, lang: string): void {
+  const compressed = fs.readFileSync(path.join(TESSDATA_DIR, `${lang}.traineddata.gz`));
+  tessModule.FS.writeFile(`/${lang}.traineddata`, zlib.gunzipSync(compressed));
+}
+
 function getTessModule(): Promise<TessModule> {
   if (!tessModulePromise) {
     // The .wasm binary is loaded by the glue code's own emscripten
@@ -67,12 +82,11 @@ function getTessModule(): Promise<TessModule> {
     // entirely by pointing the read at a copy of just this one file
     // living in services/api/tessdata/ instead — the exact same
     // project-local, explicitly includeFiles'd location the bundled
-    // eng.traineddata already uses reliably.
+    // traineddata files already use reliably.
     tessModulePromise = TesseractCore({
       locateFile: (filename: string) => path.join(TESSDATA_DIR, filename),
     }).then((tessModule) => {
-      const compressed = fs.readFileSync(path.join(TESSDATA_DIR, "eng.traineddata.gz"));
-      tessModule.FS.writeFile("/eng.traineddata", zlib.gunzipSync(compressed));
+      for (const lang of LANGS) loadLanguageData(tessModule, lang);
       return tessModule;
     });
   }
@@ -82,7 +96,7 @@ function getTessModule(): Promise<TessModule> {
 function getApi(): Promise<TessBaseApi> {
   apiPromise ??= getTessModule().then((tessModule) => {
     const api = new tessModule.TessBaseAPI();
-    const status = api.Init(null, "eng", OEM_LSTM_ONLY);
+    const status = api.Init(null, LANGS.join("+"), OEM_LSTM_ONLY);
     if (status === -1) throw new Error("Tesseract initialization failed");
     return api;
   });
