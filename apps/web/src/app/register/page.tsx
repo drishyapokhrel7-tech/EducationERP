@@ -193,6 +193,10 @@ function RegisterPageContent() {
     <RegisterShell>
       <h1 className="font-heading text-2xl font-semibold">Register your institution</h1>
       <p className="text-muted-foreground mt-2 text-sm">
+        Creates a new organization and your own Organization Admin login — the account
+        you&apos;ll use to sign in every day.
+      </p>
+      <p className="text-muted-foreground mt-1 text-sm">
         Already have an account?{" "}
         <Link href="/login" className="text-primary font-medium underline underline-offset-4">
           Sign in
