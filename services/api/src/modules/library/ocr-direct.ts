@@ -51,7 +51,26 @@ const OEM_LSTM_ONLY = 1;
 let tessModulePromise: Promise<TessModule> | null = null;
 let apiPromise: Promise<TessBaseApi> | null = null;
 
-const TESSDATA_DIR = path.join(__dirname, "..", "..", "..", "tessdata");
+// Walks up from this compiled file looking for a sibling `tessdata`
+// directory, rather than a fixed "go up N levels" — the number of
+// levels between this file and the project root differs by
+// deployment: Vercel's bundler keeps this file at
+// `<bundle-root>/src/modules/library/ocr-direct.js` (3 up), while a
+// local `nest build`/`nest start` output adds an extra `dist/` layer
+// (`dist/src/modules/library/ocr-direct.js`, 4 up). A fixed depth
+// silently works on one and ENOENTs on the other — this makes both
+// deployment layouts resolve to the same real tessdata/ directory.
+function findTessdataDir(): string {
+  let dir = __dirname;
+  for (let i = 0; i < 6; i++) {
+    const candidate = path.join(dir, "tessdata");
+    if (fs.existsSync(candidate)) return candidate;
+    dir = path.join(dir, "..");
+  }
+  throw new Error(`Could not locate a tessdata/ directory above ${__dirname}`);
+}
+
+const TESSDATA_DIR = findTessdataDir();
 
 // Covers in this ERP's market are routinely Nepali (Devanagari script),
 // English, or — on a lot of real covers — both on the same page (a
