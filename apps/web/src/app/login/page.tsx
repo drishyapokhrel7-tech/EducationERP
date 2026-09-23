@@ -4,7 +4,7 @@ import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Eye, EyeOff, GraduationCap, Sparkles } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 import { ApiError, type PasswordResetChallenge } from "@education-erp/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,9 @@ import { useAuth } from "@/lib/auth-context";
 import { getAccessToken } from "@/lib/auth-storage";
 import { api } from "@/lib/api";
 import { CaptchaField } from "@/components/captcha-field";
+import { AuthShell, authInputClassName } from "@/components/auth-shell";
+
+const LOGIN_BRAND_TAGS = ["Admissions", "Academics", "Finance", "Examinations"] as const;
 
 // Payload decode only, no signature check — this is purely a client-side
 // routing convenience (which landing page to show), never an
@@ -37,77 +40,15 @@ function errorMessage(err: unknown, fallback: string): string {
   return typeof message === "string" ? message : fallback;
 }
 
-// Left brand panel — purely visual, no auth logic, no real/internal
-// data. Hidden below `lg` so small screens just get the plain form,
-// full width. The centerpiece is an abstract illustration + brand
-// copy for Ovexa Education, not a data mockup.
-function BrandPanel() {
+function LoginShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="from-primary via-primary relative hidden overflow-hidden bg-gradient-to-br to-[oklch(0.5_0.15_290)] p-10 lg:flex lg:w-1/2 lg:flex-col lg:justify-between">
-      <div
-        className="absolute inset-0 opacity-[0.07]"
-        style={{
-          backgroundImage:
-            "linear-gradient(white 1px, transparent 1px), linear-gradient(90deg, white 1px, transparent 1px)",
-          backgroundSize: "42px 42px",
-        }}
-      />
-      {/* Soft decorative glow — abstract, not a data visualization */}
-      <div className="absolute -top-24 -right-24 size-80 rounded-full bg-white/10 blur-3xl" />
-      <div className="absolute -bottom-32 -left-16 size-96 rounded-full bg-white/10 blur-3xl" />
-
-      <div className="relative flex items-center gap-2">
-        <div className="flex size-9 items-center justify-center rounded-lg bg-white/15 backdrop-blur">
-          <GraduationCap className="size-5 text-white" />
-        </div>
-        <span className="font-heading text-lg font-semibold text-white">Ovexa Education</span>
-      </div>
-
-      <div className="relative flex flex-1 flex-col items-center justify-center gap-6 py-10 text-center">
-        <div className="relative flex size-28 items-center justify-center rounded-3xl bg-white/10 backdrop-blur">
-          <div className="absolute inset-0 rounded-3xl border border-white/20" />
-          <GraduationCap className="size-14 text-white" strokeWidth={1.5} />
-          <div className="absolute -top-2 -right-2 flex size-8 items-center justify-center rounded-full bg-white shadow-lg">
-            <Sparkles className="size-4 text-primary" />
-          </div>
-        </div>
-        <div className="max-w-sm space-y-3">
-          <h2 className="font-heading text-2xl font-semibold text-white">
-            Run your institution, effortlessly
-          </h2>
-          <p className="text-sm leading-relaxed text-white/80">
-            Ovexa Education brings admissions, academics, attendance, exams, and fees together
-            in one place — built for schools and colleges to run smoothly, end to end.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center justify-center gap-2">
-          {["Admissions", "Academics", "Finance", "Examinations"].map((label) => (
-            <span
-              key={label}
-              className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs text-white/90 backdrop-blur"
-            >
-              {label}
-            </span>
-          ))}
-        </div>
-      </div>
-
-      <p className="relative text-sm text-white/70">A complete Education Operating System.</p>
-    </div>
-  );
-}
-
-// Shared shell for all three modes — plain (no Card border) to match
-// the two-panel layout; each mode supplies its own heading/subtitle/
-// body.
-function AuthShell({ children }: { children: React.ReactNode }) {
-  return (
-    <main className="flex min-h-screen">
-      <BrandPanel />
-      <div className="flex flex-1 items-center justify-center p-6 lg:p-10">
-        <div className="w-full max-w-sm">{children}</div>
-      </div>
-    </main>
+    <AuthShell
+      brandHeading="Run your institution, effortlessly"
+      brandSubtitle="Ovexa Education brings admissions, academics, attendance, exams, and fees together in one place — built for schools and colleges to run smoothly, end to end."
+      brandTags={LOGIN_BRAND_TAGS}
+    >
+      {children}
+    </AuthShell>
   );
 }
 
@@ -238,11 +179,9 @@ export default function LoginPage() {
     }
   }
 
-  const inputClassName = "h-11 rounded-xl px-4";
-
   if (mode === "forgot") {
     return (
-      <AuthShell>
+      <LoginShell>
         <h1 className="font-heading text-2xl font-semibold">Reset your password</h1>
         <p className="text-muted-foreground mt-2 text-sm">
           Enter your User Id and, if we find a matching account, we&apos;ll email you a reset
@@ -254,7 +193,7 @@ export default function LoginPage() {
             <Input
               id="reset-identifier"
               required
-              className={inputClassName}
+              className={authInputClassName}
               placeholder="you@example.com or org.STU001"
               value={resetIdentifier}
               onChange={(e) => setResetIdentifier(e.target.value)}
@@ -272,13 +211,13 @@ export default function LoginPage() {
         >
           Back to sign in
         </button>
-      </AuthShell>
+      </LoginShell>
     );
   }
 
   if (mode === "reset" && resetChallenge) {
     return (
-      <AuthShell>
+      <LoginShell>
         <h1 className="font-heading text-2xl font-semibold">Please Type Your Reset Code to Proceed.</h1>
         <p className="text-muted-foreground mt-2 text-sm">
           Check your email — we&apos;ve sent a 6-digit reset code to the address on your account.
@@ -292,7 +231,7 @@ export default function LoginPage() {
               required
               autoFocus
               inputMode="numeric"
-              className={inputClassName}
+              className={authInputClassName}
               placeholder="6-digit code"
               value={resetCodeInput}
               onChange={(e) => setResetCodeInput(e.target.value)}
@@ -306,7 +245,7 @@ export default function LoginPage() {
                 type={showNewPassword ? "text" : "password"}
                 required
                 minLength={8}
-                className={`${inputClassName} pr-10`}
+                className={`${authInputClassName} pr-10`}
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
               />
@@ -337,12 +276,12 @@ export default function LoginPage() {
         >
           Back to sign in
         </button>
-      </AuthShell>
+      </LoginShell>
     );
   }
 
   return (
-    <AuthShell>
+    <LoginShell>
       <h1 className="font-heading text-2xl font-semibold">Welcome to Ovexa Education</h1>
       <p className="text-muted-foreground mt-2 text-sm">
         No institution yet?{" "}
@@ -357,11 +296,15 @@ export default function LoginPage() {
             id="identifier"
             type="text"
             required
-            className={inputClassName}
+            className={authInputClassName}
             placeholder="you@example.com or org.STU001"
             value={identifier}
             onChange={(e) => setIdentifier(e.target.value)}
           />
+          <p className="text-muted-foreground text-xs">
+            Staff and admins sign in with email. Students use their student ID, e.g.{" "}
+            <span className="font-mono">yourschool.STU001</span>.
+          </p>
         </div>
         <div className="space-y-2">
           <div className="flex items-center justify-between">
@@ -382,7 +325,7 @@ export default function LoginPage() {
               id="password"
               type={showPassword ? "text" : "password"}
               required
-              className={`${inputClassName} pr-10`}
+              className={`${authInputClassName} pr-10`}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
@@ -401,6 +344,6 @@ export default function LoginPage() {
           {submitting ? "Signing in…" : "Sign in"}
         </Button>
       </form>
-    </AuthShell>
+    </LoginShell>
   );
 }
