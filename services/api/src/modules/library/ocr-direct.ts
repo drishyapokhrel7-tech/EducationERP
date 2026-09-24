@@ -136,11 +136,28 @@ function sniffExifOrientation(image: Buffer): number {
   return Number.isNaN(value) ? 1 : value;
 }
 
+// The LSTM model occasionally confuses similarly-shaped Latin letters at
+// the start of a word — reported live on real covers: "Nepali" (a common
+// word on this ERP's book covers, being a Nepal-market library) read as
+// "Tepali" (N -> T). This can't be fixed by retraining nep.traineddata/
+// eng.traineddata here — that needs real training data and Google's
+// tesstrain tooling, out of scope for a code change. Instead: a small,
+// explicit correction list, not a general spell-checker — blindly
+// "fixing" arbitrary OCR output risks introducing wrong corrections with
+// no real data to validate against, so only add an entry here for a
+// confusion actually observed in practice, the same way this first one
+// was.
+const KNOWN_OCR_CONFUSIONS: [RegExp, string][] = [[/\bTepali\b/g, "Nepali"]];
+
+function correctKnownOcrConfusions(text: string): string {
+  return KNOWN_OCR_CONFUSIONS.reduce((corrected, [pattern, replacement]) => corrected.replace(pattern, replacement), text);
+}
+
 export async function recognizeCover(buffer: Buffer): Promise<{ text: string; confidence: number }> {
   const [tessModule, api] = await Promise.all([getTessModule(), getApi()]);
   tessModule.FS.writeFile("/input", buffer);
   const result = api.SetImageFile(sniffExifOrientation(buffer), 0);
   if (result === 1) throw new Error("Error attempting to read image");
   api.Recognize(null);
-  return { text: api.GetUTF8Text(), confidence: api.MeanTextConf() };
+  return { text: correctKnownOcrConfusions(api.GetUTF8Text()), confidence: api.MeanTextConf() };
 }
