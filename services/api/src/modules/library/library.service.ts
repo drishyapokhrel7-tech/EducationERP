@@ -18,6 +18,14 @@ import { UpdateLibrarySettingsDto } from "./dto/update-library-settings.dto";
 const DEFAULT_SETTINGS = { loanPeriodDays: 14, finePerDayRate: 5, maxActiveLoans: 3 };
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
+function borrowerDisplayName(t: {
+  student: { firstName: string; lastName: string } | null;
+  employee: { firstName: string; lastName: string } | null;
+}): string {
+  const person = t.student ?? t.employee;
+  return person ? `${person.firstName} ${person.lastName}` : "Unknown borrower";
+}
+
 /**
  * Native Library module — this ERP's own Book/circulation/fine/
  * reservation data (~librarysystem's design used only as a feature
@@ -393,6 +401,20 @@ export class LibraryService {
         await tx.libraryReservation.update({ where: { id: readyReservation.id }, data: { status: "FULFILLED" } });
       }
 
+      // Feeds the dashboard's cross-module "Recent activity" feed —
+      // metadata carries a human-readable title/borrower so that feed
+      // doesn't have to reconstruct one from raw foreign keys.
+      await tx.auditLog.create({
+        data: {
+          organizationId,
+          userId: issuedByUserId,
+          action: "library_book.issued",
+          resource: "library_transaction",
+          resourceId: transaction.id,
+          metadata: { bookTitle: transaction.book.title, borrowerName: borrowerDisplayName(transaction) },
+        },
+      });
+
       return transaction;
     });
   }
@@ -409,7 +431,7 @@ export class LibraryService {
       const updated = await tx.libraryTransaction.update({
         where: { id: transactionId },
         data: { returnedAt, returnedByUserId },
-        include: { book: true },
+        include: { book: true, student: true, employee: true },
       });
       await tx.book.update({ where: { id: transaction.bookId }, data: { availableCopies: { increment: 1 } } });
 
@@ -450,6 +472,17 @@ export class LibraryService {
           });
         }
       }
+
+      await tx.auditLog.create({
+        data: {
+          organizationId,
+          userId: returnedByUserId,
+          action: "library_book.returned",
+          resource: "library_transaction",
+          resourceId: updated.id,
+          metadata: { bookTitle: updated.book.title, borrowerName: borrowerDisplayName(updated), daysLate },
+        },
+      });
 
       return { ...updated, fine };
     });

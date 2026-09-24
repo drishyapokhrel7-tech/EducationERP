@@ -55,6 +55,27 @@ const QUICK_ACTIONS = [
   { href: "/dashboard/admissions", label: "New admission", icon: ClipboardList },
 ] as const;
 
+// The library circulation actions (see library.service.ts) stash a
+// human-readable title/borrower in `metadata` specifically so this
+// feed can show a real sentence instead of the generic fallback below
+// — extend this per action as other modules start writing audit logs
+// with their own metadata shapes.
+function activityDescription(entry: { action: string; resource: string; metadata: unknown }): string {
+  const meta = (entry.metadata ?? {}) as Record<string, unknown>;
+  const bookTitle = typeof meta.bookTitle === "string" ? meta.bookTitle : null;
+  const borrowerName = typeof meta.borrowerName === "string" ? meta.borrowerName : "a borrower";
+
+  if (entry.action === "library_book.issued" && bookTitle) {
+    return `issued "${bookTitle}" to ${borrowerName}`;
+  }
+  if (entry.action === "library_book.returned" && bookTitle) {
+    const daysLate = typeof meta.daysLate === "number" ? meta.daysLate : 0;
+    const lateNote = daysLate > 0 ? ` (${daysLate} day${daysLate === 1 ? "" : "s"} late)` : "";
+    return `returned "${bookTitle}" from ${borrowerName}${lateNote}`;
+  }
+  return `${entry.action.toLowerCase()} ${entry.resource.replace(/_/g, " ")}`;
+}
+
 function ChartCard({
   title,
   loading,
@@ -310,6 +331,40 @@ export default function DashboardPage() {
         <OnboardingChecklist steps={onboardingSteps} firstWeekSteps={firstWeekSteps} />
       ) : null}
 
+      {/* Whatever just happened anywhere in the system — a book issued
+          in Library, an admission recorded, a payment taken — surfaces
+          here first, ahead of any one module's own chart. Sorted purely
+          by recency (the API already orders by createdAt desc), not by
+          which module it came from. */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent activity</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {!activity.data ? (
+            <p className="text-muted-foreground text-sm">Loading…</p>
+          ) : activity.data.length === 0 ? (
+            <p className="text-muted-foreground text-sm">No activity recorded yet.</p>
+          ) : (
+            <ul className="divide-y">
+              {activity.data.map((entry) => (
+                <li key={entry.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+                  <span>
+                    <span className="font-medium">
+                      {entry.user ? `${entry.user.firstName} ${entry.user.lastName}` : "System"}
+                    </span>{" "}
+                    <span className="text-muted-foreground">{activityDescription(entry)}</span>
+                  </span>
+                  <span className="text-muted-foreground shrink-0 text-xs">
+                    {formatRelativeTime(entry.createdAt)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
       <div className="grid gap-4 md:grid-cols-2">
         <ChartCard
           title="Admissions funnel"
@@ -420,37 +475,6 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent activity</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {!activity.data ? (
-            <p className="text-muted-foreground text-sm">Loading…</p>
-          ) : activity.data.length === 0 ? (
-            <p className="text-muted-foreground text-sm">No activity recorded yet.</p>
-          ) : (
-            <ul className="divide-y">
-              {activity.data.map((entry) => (
-                <li key={entry.id} className="flex items-center justify-between gap-3 py-2 text-sm">
-                  <span>
-                    <span className="font-medium">
-                      {entry.user ? `${entry.user.firstName} ${entry.user.lastName}` : "System"}
-                    </span>{" "}
-                    <span className="text-muted-foreground">
-                      {entry.action.toLowerCase()} {entry.resource.replace(/_/g, " ")}
-                    </span>
-                  </span>
-                  <span className="text-muted-foreground shrink-0 text-xs">
-                    {formatRelativeTime(entry.createdAt)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }
